@@ -1,32 +1,34 @@
 # ParisPulse
 
-Projet de M2 Data Science : prévision de la fréquentation cyclable à Paris.
+Comprendre et prévoir la fréquentation cyclable à l'échelle d'un réseau.
 
-## Organisation du projet
+Plan mis à jour le **10 novembre 2026**, après lecture intégrale de [ParisPulse - Sujet étudiants](ParisPulse_Sujet_etudiants.docx). Ce document détaillé devient la référence de travail et précise le [premier sujet PDF](<Projet 1 - Construire un observatoire prédictif des déplacements à vélo.pdf>).
 
-- `data/history/` : données historiques au format CSV.
-- `data/processed/` : données préparées au format CSV, utilisées notamment par les modèles.
-- `doc/` : documentation commune aux équipes.
-- `notebooks/` : exploration, expérimentations et évaluations des équipes 1 à 5.
-- `src/data/` : code de parsing, preprocessing et feature engineering (équipe 1).
-- `src/models/` : code des modèles (équipes 2 et 3).
-- `src/eval` : code réutilisable de fonctions d'évaluation (équipe 4)
-- `src/app/` : interface de l'application finale (équipe 5).
-- `artifacts/` : artefacts générés, notamment les modèles entraînés.
+## Documents pour démarrer
 
-L'équipe 5 coordonne l'intégration et la livraison de l'application finale et gère le merge des PULL REQUESTS.
+| Document | Contenu |
+| --- | --- |
+| [Plan du projet](PLAN_PROJET.md) | Exigences, priorités, cinq équipes, trois journées, architecture, backlog et risques |
+| [Plan opérationnel de l'équipe 2](docs/PLAN_EQUIPE_2.md) | Démarrage, répartition à 3–4, modèles, expériences, trois journées et livraisons |
+| [Contrats v2](docs/CONTRATS.md) | Formats communs, contexte, cas de prévision, adaptation, couverture, exports et interfaces |
+| [Protocole proposé](docs/PROTOCOLE_EVALUATION.md) | Sites connus/nouveaux, disponibilité de l'information, comparaisons, MAE et tests réservés |
+| [Suivi et remise](docs/SUIVI_ET_REMISE.md) | Livrables, barème, journal individuel et preuves d'intégration |
+| [Bibliographie initiale](docs/BIBLIOGRAPHIE.md) | Sources de données, lectures méthodologiques et pistes de modèles à examiner |
 
-## Docker
+## Exigences qui structurent la réalisation
 
-Construire l'image depuis la racine du dépôt :
+- **15 à 20 étudiants**, répartis en **cinq équipes de 3 à 4** ; trois journées complètes et une demi-journée d'évaluation.
+- Une première prévision et son score affichés sur une **série réelle avant la fin de la première matinée**, si les accès fonctionnent.
+- Deux situations accessibles dans l'application : **sites connus** et **nouveaux sites avec peu de mesures**, avec comparaison avant/après adaptation.
+- Une **source complémentaire intégrée**, au moins une **expérience de deep learning**, une étude du réseau puis une extension mesurée.
+- Comparaison par MAE moyenne entre compteurs, couverture des cas complets de 24 heures et coût de calcul.
+- Export de l'étude, installation depuis une copie neuve et recalcul de la référence sur un autre cas admissible.
+- Rapport et présentation par équipe, démonstration collective et journal individuel daté.
 
-```bash
-docker build -t parispulse .
-```
+Le sujet demande de **faire valider le protocole par le professeur avant les comparaisons servant à retenir les modèles**. Le protocole fourni ici est prêt à discuter ; sa validation n'est pas acquise.
 
-Le point d'entrée de l'application et la commande de lancement du conteneur
-seront à définir lorsque le framework et l'interface de l'équipe 4 seront prêts.
+## Première action
 
-## Dépendances Python
+Un représentant par équipe fixe les échanges pendant que les autres commencent : E1 extrait une série, E2 code une référence, E3 prépare les sites réservés et une méthode transférable, E4 vérifie un score à la main, E5 raccorde l'écran. Le premier cas technique ne remplace pas l'inventaire qui justifiera l'échantillon scientifique.
 
-Ajouter les dépendances du projet dans `requirements.txt`.
+**État : planification uniquement.** Les formats, modules et commandes décrits sont à implémenter. Les métadonnées publiques et l'accès au calendrier ont été vérifiés ; l'audit complet, les expériences et l'application restent à réaliser.
