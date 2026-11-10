@@ -7,13 +7,14 @@ Projet de M2 Data Science : prévision de la fréquentation cyclable à Paris.
 - `data/history/` : données historiques au format CSV.
 - `data/processed/` : données préparées au format CSV, utilisées notamment par les modèles.
 - `doc/` : documentation commune aux équipes.
-- `notebooks/` : exploration, expérimentations et évaluations des équipes 1 à 4.
+- `notebooks/` : exploration, expérimentations et évaluations des équipes 1 à 5.
 - `src/data/` : code de parsing, preprocessing et feature engineering (équipe 1).
 - `src/models/` : code des modèles (équipes 2 et 3).
-- `src/app/` : interface de l'application finale (équipe 4).
+- `src/eval` : code réutilisable de fonctions d'évaluation (équipe 4)
+- `src/app/` : interface de l'application finale (équipe 5).
 - `artifacts/` : artefacts générés, notamment les modèles entraînés.
 
-L'équipe 5 coordonne l'intégration et la livraison de l'application finale.
+L'équipe 5 coordonne l'intégration et la livraison de l'application finale et gère le merge des PULL REQUESTS.
 
 ## Docker
 
