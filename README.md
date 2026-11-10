@@ -4,6 +4,18 @@ Comprendre et prévoir la fréquentation cyclable à l'échelle d'un réseau.
 
 Structure de travail fondée sur le [sujet étudiants](ParisPulse_Sujet_etudiants.pdf) et les plans du **10 novembre 2026**. Les fichiers Python contiennent des consignes à compléter par les équipes ; l'application et les algorithmes restent à développer.
 
+## Environnement de développement
+
+Installer [uv 0.13.x](doc/ENVIRONNEMENT.md), puis, depuis la racine du dépôt :
+
+```sh
+./run.sh setup
+./run.sh check
+./run.sh notebook
+```
+
+Python 3.11 et les dépendances verrouillées sont installés dans `.venv/`. JupyterLab, pytest et Ruff sont inclus ; PyTorch s'ajoute avec `./run.sh setup --group dl`. Les [instructions détaillées](doc/ENVIRONNEMENT.md) couvrent VS Code, Windows, Docker et la gestion des dépendances. Aucun code métier n'est fourni par cette installation.
+
 ## Architecture et démarrage du travail
 
 Lire l'[architecture](doc/ARCHITECTURE.md) puis les consignes du dossier de son équipe :
@@ -18,13 +30,14 @@ Lire l'[architecture](doc/ARCHITECTURE.md) puis les consignes du dossier de son 
 
 Les objets et paramètres communs sont à définir dans [src/common](src/common/README.md). Les échanges suivent les [gabarits](doc/templates/README.md) : vérité terrain dans `data/processed/`, prévisions dans `data/prediction_results/`, résultats d'évaluation dans `data/evaluation/`.
 
-Un représentant de chaque équipe fixe les échanges pendant que les autres commencent leurs premiers travaux. Le `Dockerfile`, `requirements.txt` et `run.sh.example` décrivent le packaging à réaliser par E5 ; aucune commande de lancement de l'application n'est encore implémentée.
+Un représentant de chaque équipe fixe les échanges pendant que les autres commencent leurs premiers travaux. Le `Dockerfile`, `compose.yaml` et `run.sh` fournissent l'environnement de développement. E5 complétera le lancement de l'application suivant `run.sh.example` ; cette commande applicative reste à implémenter.
 
 ## Documents pour démarrer
 
 | Document | Contenu |
 | --- | --- |
 | [Index de la documentation](doc/README.md) | Ordre de lecture et références du dépôt |
+| [Environnement de développement](doc/ENVIRONNEMENT.md) | Installation, dépendances verrouillées, notebooks, vérifications et Docker |
 | [Architecture à compléter](doc/ARCHITECTURE.md) | Fichiers, responsabilités, flux et premières tâches |
 | [Gabarits d'échange et de suivi](doc/templates/README.md) | CSV vides, provenance, fiche d'expérience et journal individuel |
 | [Plan du projet](PLAN_PROJET.md) | Exigences, priorités, cinq équipes, trois journées, architecture, backlog et risques |
@@ -49,4 +62,4 @@ Le sujet demande de **faire valider le protocole par le professeur avant les com
 
 Un représentant par équipe fixe les échanges pendant que les autres commencent : E1 extrait une série, E2 code une référence, E3 prépare les sites réservés et une méthode transférable, E4 vérifie un score à la main, E5 raccorde l'écran. Le premier cas technique ne remplace pas l'inventaire qui justifiera l'échantillon scientifique.
 
-**État : squelette documenté.** Les modules sont des fichiers d'instructions, les CSV sont des en-têtes vides et les configurations sont des exemples à renseigner. Les données, modèles, calculs, tests et lancement restent à réaliser. Aucun résultat scientifique n'est fourni par cette structure.
+**État : environnement de développement configuré et squelette documenté.** Les modules sont des fichiers d'instructions, les CSV sont des en-têtes vides et les configurations scientifiques sont des exemples à renseigner. Les données, modèles, calculs, tests applicatifs et lancement de l'application restent à réaliser. Aucun résultat scientifique n'est fourni par cette structure.

@@ -8,6 +8,6 @@ Commencer par un cas d'essai construit par l'équipe, puis utiliser rapidement l
 
 L'analyste distingue inventaire, données chargées et méthodes disponibles. Le mode nouveau site expose son budget local. Toute sélection nouvelle remet les observations cibles à l'état masqué ; la révélation ne recalcule pas la prévision.
 
-Prévoir le recalcul d'une autre date, des erreurs explicites et des caches versionnés. Définir les dépendances puis compléter `Dockerfile` et le futur lanceur à partir de `run.sh.example`. Faire vérifier une copie neuve par une autre équipe.
+Prévoir le recalcul d'une autre date, des erreurs explicites et des caches versionnés. L'[environnement de développement](../../doc/ENVIRONNEMENT.md) est configuré ; compléter le packaging et ajouter le lancement applicatif suivant `run.sh.example`. Déclarer toute dépendance supplémentaire dans `pyproject.toml`, actualiser le verrou et l'export. Faire vérifier une copie neuve par une autre équipe.
 
-Les fichiers sont des gabarits d'instructions ; aucune application ni commande de lancement n'est fournie à ce stade.
+Les fichiers Python sont des gabarits d'instructions ; l'application et sa commande de lancement restent à développer.

@@ -1,6 +1,6 @@
 # Architecture de travail - ParisPulse
 
-Ce dépôt contient une **structure à compléter par les cinq équipes** : fichiers de départ, consignes et formats d'échange. Les modules Python sont des gabarits documentés, sans algorithmes implémentés. Les modèles, l'application, les tests et le lancement restent à développer.
+Ce dépôt contient une **structure à compléter par les cinq équipes** : fichiers de départ, consignes et formats d'échange. L'[environnement de développement](ENVIRONNEMENT.md) est configuré. Les modules Python sont des gabarits documentés, sans algorithmes implémentés. Les modèles, l'application, les tests applicatifs et le lancement de l'application restent à développer.
 
 Références : [plan collectif](../PLAN_PROJET.md), [contrats](CONTRATS.md), [protocole proposé](PROTOCOLE_EVALUATION.md) et [sujet](../ParisPulse_Sujet_etudiants.pdf).
 
@@ -54,9 +54,13 @@ reports/
   experiments/                  fiches des comparaisons
 doc/
   templates/                    en-têtes CSV et fiches à copier/remplir
-Dockerfile                      consignes de packaging, à compléter
-requirements.txt                dépendances à choisir et à figer
-run.sh.example                  contrat du futur lanceur, à compléter
+pyproject.toml                  dépendances directes et outils de développement
+uv.lock                         versions verrouillées, y compris groupes dev/DL
+.python-version                 Python 3.11
+requirements.txt                export généré du socle pour pip
+Dockerfile + compose.yaml       environnement de développement conteneurisé
+run.sh                          setup, check, test et notebook
+run.sh.example                  consignes du futur lancement applicatif
 ```
 
 `doc/` est le répertoire de documentation de ce dépôt. Les noms `src/data/`, `src/models/`, `src/eval/`, `src/app/` et `data/history/` sont conservés. Les échanges CSV existants restent la convention commune ; Parquet peut servir de format interne si une équipe en a besoin.
@@ -136,9 +140,9 @@ Chaque méthode E2/E3 devra accepter les mêmes entrées contrôlées et produir
 
 L'expérience de deep learning est obligatoire au niveau collectif. E2/E3 doivent attribuer explicitement sa responsabilité et conserver un résultat interprétable, même sans gain.
 
-## 7. Lancement et packaging à réaliser
+## 7. Environnement et packaging applicatif
 
-Le `Dockerfile`, `requirements.txt` et `run.sh.example` contiennent des instructions, pas une application prête à lancer. E5 doit choisir et figer l'environnement commun, préparer les ressources et fournir ensuite une commande unique documentée.
+Le `Dockerfile`, `compose.yaml` et `run.sh` installent l'environnement commun décrit dans le [guide de développement](ENVIRONNEMENT.md). Les dépendances sont déclarées dans `pyproject.toml`, verrouillées dans `uv.lock` et exportées pour pip dans `requirements.txt`. E5 doit encore préparer les ressources scientifiques et ajouter une commande applicative documentée, suivant `run.sh.example`.
 
 Critères de sortie : installation depuis une copie neuve par une autre équipe ; référence recalculée sur un autre cas ; redémarrage et nouvelle sélection ; ressources accessibles sans chemin personnel ; poids et paramètres annoncés fournis ; aucune dépendance obligatoire à un GPU pour les fonctions essentielles.
 

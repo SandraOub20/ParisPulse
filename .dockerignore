@@ -1,12 +1,15 @@
 .git
 .venv
 venv
+.uv-cache
+.pytest_cache
+.ruff_cache
 __pycache__
 *.py[cod]
 *.pdf
 .ipynb_checkpoints
 
-# E5 définit comment fournir ou récupérer ces ressources à l'exécution.
+# Le service de développement monte le dépôt ; E5 définira les ressources livrées.
 data/
 artifacts/
 notebooks/

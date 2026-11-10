@@ -102,7 +102,7 @@ Une mesure météo future révélée après coup peut expliquer une erreur ; ell
 
 ## 4. Architecture et exécution proposées
 
-**Stack proposée :** Python 3.11+, pandas pour les échanges CSV, scikit-learn, PyTorch CPU pour le réseau compact, Streamlit, Folium et Plotly. PyArrow/Parquet ou DuckDB peuvent servir au stockage interne si les volumes le justifient. Les équipes choisissent et figent les dépendances dans requirements.txt ; aucune de ces bibliothèques n’est encore installée par le squelette.
+**Environnement configuré :** Python 3.11, pandas pour les échanges CSV, scikit-learn, Streamlit, Folium et Plotly ; PyTorch s'installe séparément via le groupe `dl` (roues CPU sous Linux/Windows). PyArrow/Parquet ou DuckDB peuvent servir au stockage interne si les volumes le justifient. Les dépendances sont déclarées dans `pyproject.toml`, verrouillées dans `uv.lock` et exportées dans `requirements.txt`. Voir le [guide d'installation](doc/ENVIRONNEMENT.md).
 
 ```mermaid
 flowchart LR
@@ -127,8 +127,11 @@ Une application Python commune appelle directement les modules des équipes. E5 
 ### Organisation cible à implémenter
 
 ```text
-requirements.txt                # dépendances à choisir et figer
-run.sh.example                  # consignes pour le futur lanceur unique
+pyproject.toml + uv.lock         # dépendances et versions verrouillées
+requirements.txt                # export généré du socle pour pip
+Dockerfile + compose.yaml       # environnement de développement
+run.sh                          # installation, vérifications et notebooks
+run.sh.example                  # consignes du futur lancement applicatif
 config/project.example.yaml     # paramètres à renseigner et adopter
 src/common/                     # E1–E5 : contrats et configuration
 src/data/                       # E1 : acquisition, inventaire, qualité, contexte
@@ -144,11 +147,11 @@ doc/templates/                  # gabarits CSV, provenance et suivi
 tests/                          # contrôles à implémenter
 ```
 
-Les fichiers du squelette contiennent les consignes à réaliser, sans algorithmes ni application exécutables. Le futur environnement essentiel devra fonctionner sur CPU ; une méthode additionnelle peut déclarer d'autres ressources.
+Les modules Python du squelette contiennent les consignes à réaliser, sans algorithmes ni application exécutables. L'environnement de développement fonctionne sur CPU ; une méthode additionnelle peut déclarer d'autres ressources.
 
 ### Installation et calcul
 
-E5 complétera `run.sh.example` pour fournir un véritable `run.sh`. Après les prérequis annoncés, ce lanceur devra créer l'environnement, installer les dépendances verrouillées, préparer les ressources vérifiées et lancer l'application. Annoncer les systèmes pris en charge et la nécessité éventuelle d'un premier accès réseau. Aucun chemin personnel, jeton privé obligatoire ou téléchargement implicite de poids non versionnés.
+`./run.sh setup` crée déjà l'environnement et installe les dépendances verrouillées. E5 ajoutera le lancement applicatif suivant `run.sh.example` : préparer les ressources vérifiées puis lancer l'application. Les commandes de développement existantes doivent rester utilisables. Annoncer les systèmes pris en charge et la nécessité éventuelle d'un premier accès réseau. Aucun chemin personnel, jeton privé obligatoire ou téléchargement implicite de poids non versionnés.
 
 Fournir ou récupérer un instantané vérifié qui contient plusieurs cas admissibles, dont un autre que la démonstration. L'enseignant peut choisir ce second cas et **recalculer réellement la référence**. Un mode limité à des prédictions préenregistrées ne remplit pas cette exigence. Fournir également les paramètres, code et poids nécessaires aux autres calculs annoncés.
 

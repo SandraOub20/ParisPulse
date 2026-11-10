@@ -8,4 +8,6 @@
 6. [Suivi individuel, livrables et barème](SUIVI_ET_REMISE.md).
 7. [Sujet étudiants](../ParisPulse_Sujet_etudiants.pdf).
 
+Avant de coder, installer l'[environnement de développement](ENVIRONNEMENT.md) : Python 3.11, dépendances verrouillées, notebooks, vérifications et Docker.
+
 Le dépôt contient des fichiers de départ à compléter, avec des consignes par équipe dans `src/`. Les responsabilités restent celles du sujet : E1 données/contexte, E2 sites connus, E3 nouveaux sites, E4 évaluation et E5 application.

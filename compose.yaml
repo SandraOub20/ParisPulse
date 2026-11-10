@@ -1,0 +1,11 @@
+services:
+  dev:
+    build: .
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    ports:
+      - "127.0.0.1:8888:8888"
+      - "127.0.0.1:8501:8501"
+    stdin_open: true
+    tty: true

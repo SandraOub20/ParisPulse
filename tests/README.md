@@ -2,6 +2,8 @@
 
 Ces scénarios sont un plan de tests ; aucun test applicatif n'est encore écrit.
 
+L'environnement fournit pytest et Ruff : lancer `./run.sh setup`, puis `./run.sh check` pour les vérifications de code, et `./run.sh test` pour les futurs tests. Tant qu'il n'existe aucun test, pytest retourne le code 5 ; cela ne constitue pas une validation applicative. Voir le [guide de développement](../doc/ENVIRONNEMENT.md).
+
 | Contrôle | Responsable / partenaire | Attendu |
 | --- | --- | --- |
 | Schémas CSV, clé compteur/heure et jointure du contexte | E1 / E2–E4 | Clés uniques, nombre de lignes expliqué et colonnes conformes |
