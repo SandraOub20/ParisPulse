@@ -9,7 +9,6 @@ Plan mis à jour le **10 novembre 2026**, après lecture intégrale de [ParisPul
 | Document | Contenu |
 | --- | --- |
 | [Plan du projet](PLAN_PROJET.md) | Exigences, priorités, cinq équipes, trois journées, architecture, backlog et risques |
-| [Plan opérationnel de l'équipe 2](docs/PLAN_EQUIPE_2.md) | Démarrage, répartition à 3–4, modèles, expériences, trois journées et livraisons |
 | [Contrats v2](docs/CONTRATS.md) | Formats communs, contexte, cas de prévision, adaptation, couverture, exports et interfaces |
 | [Protocole proposé](docs/PROTOCOLE_EVALUATION.md) | Sites connus/nouveaux, disponibilité de l'information, comparaisons, MAE et tests réservés |
 | [Suivi et remise](docs/SUIVI_ET_REMISE.md) | Livrables, barème, journal individuel et preuves d'intégration |
