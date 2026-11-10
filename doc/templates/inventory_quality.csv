@@ -1,0 +1,1 @@
+counter_id,period_start,period_end,n_expected,n_observed,n_scoreable,n_missing,n_zeros,longest_zero_run,selection_status,status_reason,snapshot_id

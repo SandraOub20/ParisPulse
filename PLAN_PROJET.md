@@ -1,10 +1,10 @@
 # ParisPulse - Plan de réalisation
 
-Version du **10 novembre 2026**, fondée sur la lecture intégrale de [ParisPulse_Sujet_etudiants.docx](ParisPulse_Sujet_etudiants.docx), y compris les tableaux, fiches des cinq équipes, livrables et barèmes. Le nouveau sujet précise le PDF initial et gouverne cette révision. Les choix de stack, de modèles et de dates ci-dessous sont des propositions ; ils ne sont pas imposés par le sujet.
+Version du **10 novembre 2026**, fondée sur la lecture intégrale de [ParisPulse_Sujet_etudiants.pdf](ParisPulse_Sujet_etudiants.pdf), y compris les tableaux, fiches des cinq équipes, livrables et barèmes. Le nouveau sujet précise le PDF initial et gouverne cette révision. Les choix de stack, de modèles et de dates ci-dessous sont des propositions ; ils ne sont pas imposés par le sujet.
 
 ## 1. Objectif et changements à intégrer
 
-Pour la mise en œuvre sur les sites connus, consulter le [plan opérationnel de l'équipe 2](docs/PLAN_EQUIPE_2.md), qui détaille le démarrage, les expériences et les livraisons aux partenaires.
+La [structure de travail](doc/ARCHITECTURE.md) et les [consignes E2](src/models/known/README.md) détaillent les fichiers à compléter et les échanges entre équipes.
 
 Livrer un outil pour un chargé d'études de mobilité : explorer le réseau parisien, comprendre les séries disponibles, prévoir **24 valeurs horaires**, rejouer une date passée, révéler les observations et identifier les limites des résultats. L'application doit traiter les sites déjà observés et l'arrivée d'un site disposant de peu de mesures.
 
@@ -23,7 +23,7 @@ Livrer un outil pour un chargé d'études de mobilité : explorer le réseau par
 | Couverture | Cas complets de 24 heures, échecs et causes | Comparaisons sur les mêmes cas complets, avec évaluation des replis |
 | Produit | Export, provenance, couverture et coût | Fonctions dédiées ; distinction carte/inventaire/prévisions réellement possibles |
 | Reproduction | Une commande prépare et lance ; un tiers recalcule un autre cas | La référence reste calculable à la demande ; les caches seuls ne suffisent pas |
-| Remise | Rapport par équipe, présentations, journal individuel | Modèles de suivi et checklist dans [SUIVI_ET_REMISE.md](docs/SUIVI_ET_REMISE.md) |
+| Remise | Rapport par équipe, présentations, journal individuel | Modèles de suivi et checklist dans [SUIVI_ET_REMISE.md](doc/SUIVI_ET_REMISE.md) |
 
 Les obligations de deep learning, de nouveaux sites et de contexte deviennent centrales. Les anciennes propositions qui les traitaient comme extensions sont remplacées par le présent plan.
 
@@ -102,7 +102,7 @@ Une mesure météo future révélée après coup peut expliquer une erreur ; ell
 
 ## 4. Architecture et exécution proposées
 
-**Stack de départ :** Python 3.11+, pandas, PyArrow/Parquet, scikit-learn, PyTorch CPU pour le réseau compact, Streamlit, Folium et Plotly. Ajouter DuckDB si les volumes le justifient. Versions figées, graines et matériel enregistrés.
+**Stack proposée :** Python 3.11+, pandas pour les échanges CSV, scikit-learn, PyTorch CPU pour le réseau compact, Streamlit, Folium et Plotly. PyArrow/Parquet ou DuckDB peuvent servir au stockage interne si les volumes le justifient. Les équipes choisissent et figent les dépendances dans requirements.txt ; aucune de ces bibliothèques n’est encore installée par le squelette.
 
 ```mermaid
 flowchart LR
@@ -127,26 +127,28 @@ Une application Python commune appelle directement les modules des équipes. E5 
 ### Organisation cible à implémenter
 
 ```text
-pyproject.toml + fichier de verrouillage
-run.sh                           # installation, ressources et lancement en une commande
-config/project.yaml              # instantané, protocole, budgets, méthodes
-src/parispulse/data/              # E1 : acquisition, inventaire, qualité, contexte
-src/parispulse/forecasting/known/ # E2 : référence et modèles sites connus
-src/parispulse/forecasting/new/   # E3 : transfert et adaptation
-src/parispulse/evaluation/       # E4 : cas, scores, contrôles et fiabilité
-src/parispulse/service.py        # E5 : orchestration sans duplication des calculs
-app/                            # carte, historique, prévision, comparaison, export
-data/raw/ + data/processed/ + data/manifests/
-artifacts/models/ + artifacts/forecasts/ + artifacts/evaluation/
+requirements.txt                # dépendances à choisir et figer
+run.sh.example                  # consignes pour le futur lanceur unique
+config/project.example.yaml     # paramètres à renseigner et adopter
+src/common/                     # E1–E5 : contrats et configuration
+src/data/                       # E1 : acquisition, inventaire, qualité, contexte
+src/models/known/               # E2 : référence et modèles sites connus
+src/models/new/                 # E3 : transfert et adaptation
+src/eval/                       # E4 : protocole, scores, backtest et fiabilité
+src/app/                        # E5 : service, interface et export
+data/history/ + data/processed/ + data/manifests/
+data/prediction_results/ + data/evaluation/
+artifacts/models/ + artifacts/cache/ + artifacts/exports/
 reports/teams/ + reports/individual/ + reports/experiments/
-tests/                          # invariants critiques et parcours intégré
+doc/templates/                  # gabarits CSV, provenance et suivi
+tests/                          # contrôles à implémenter
 ```
 
-Ces chemins et commandes sont des cibles de réalisation, pas des éléments déjà exécutables. L'environnement essentiel fonctionne sur CPU ; une méthode additionnelle peut déclarer d'autres ressources.
+Les fichiers du squelette contiennent les consignes à réaliser, sans algorithmes ni application exécutables. Le futur environnement essentiel devra fonctionner sur CPU ; une méthode additionnelle peut déclarer d'autres ressources.
 
 ### Installation et calcul
 
-Après les prérequis annoncés, une commande cible telle que `./run.sh` doit créer l'environnement, installer les dépendances verrouillées, préparer les ressources vérifiées et lancer l'application. Annoncer les systèmes pris en charge et la nécessité éventuelle d'un premier accès réseau. Aucun chemin personnel, jeton privé obligatoire ou téléchargement implicite de poids non versionnés.
+E5 complétera `run.sh.example` pour fournir un véritable `run.sh`. Après les prérequis annoncés, ce lanceur devra créer l'environnement, installer les dépendances verrouillées, préparer les ressources vérifiées et lancer l'application. Annoncer les systèmes pris en charge et la nécessité éventuelle d'un premier accès réseau. Aucun chemin personnel, jeton privé obligatoire ou téléchargement implicite de poids non versionnés.
 
 Fournir ou récupérer un instantané vérifié qui contient plusieurs cas admissibles, dont un autre que la démonstration. L'enseignant peut choisir ce second cas et **recalculer réellement la référence**. Un mode limité à des prédictions préenregistrées ne remplit pas cette exigence. Fournir également les paramètres, code et poids nécessaires aux autres calculs annoncés.
 
@@ -226,7 +228,7 @@ Présentation collective avec démonstration, puis présentations par équipe et
 
 ## 7. Méthodes et expériences proposées
 
-Les choix définitifs suivent la [bibliographie initiale](docs/BIBLIOGRAPHIE.md), les premiers essais de coût et le protocole validé. Aucune architecture n'est obligatoire ; l'expérience DL l'est.
+Les choix définitifs suivent la [bibliographie initiale](doc/BIBLIOGRAPHIE.md), les premiers essais de coût et le protocole validé. Aucune architecture n'est obligatoire ; l'expérience DL l'est.
 
 | Composant | Proposition raisonnable | Expérience à documenter |
 | --- | --- | --- |
@@ -255,7 +257,7 @@ L'adaptation exploite uniquement ce support et des paramètres donneurs figés ;
 
 ## 8. Protocole commun et critères de décision
 
-Le [protocole détaillé](docs/PROTOCOLE_EVALUATION.md) sépare le temps et les sites, définit les cas et traite le délai J−1 annoncé par le portail. Ce délai ne fournit pas une heure de publication exacte : une simulation à 24 h, et éventuellement 48 h, doit être identifiée comme hypothèse.
+Le [protocole détaillé](doc/PROTOCOLE_EVALUATION.md) sépare le temps et les sites, définit les cas et traite le délai J−1 annoncé par le portail. Ce délai ne fournit pas une heure de publication exacte : une simulation à 24 h, et éventuellement 48 h, doit être identifiée comme hypothèse.
 
 Proposition temporelle après audit : apprentissage initial d'octobre 2025 à juin 2026 ; validation juillet–août ; septembre pour diagnostics ou calibration ; octobre pour le test final. Prévoir des versions datées aux coupures, purger les labels non disponibles et ne pas appliquer rétroactivement le modèle final. Les dates ne sont pas imposées par le sujet et peuvent changer avant validation, selon la qualité réelle.
 
@@ -295,7 +297,7 @@ Changer le compteur, l'origine, le budget local ou la méthode réinitialise la 
 | Export et cache | Export traçable ; changement de version ou de support invalide le cache | E5 / E4 |
 | Installation | Copie neuve, une commande, autre cas recalculé, redémarrage et nouveau cas | E5 / autre équipe |
 
-Dossier final : application packagée, dépendances et ressources, code et paramètres, provenance et licences, périmètre et conditions de cache, résultats reproductibles, démonstration collective, rapport et présentation par équipe, journaux individuels. Le détail et les modèles de suivi figurent dans [SUIVI_ET_REMISE.md](docs/SUIVI_ET_REMISE.md).
+Dossier final : application packagée, dépendances et ressources, code et paramètres, provenance et licences, périmètre et conditions de cache, résultats reproductibles, démonstration collective, rapport et présentation par équipe, journaux individuels. Le détail et les modèles de suivi figurent dans [SUIVI_ET_REMISE.md](doc/SUIVI_ET_REMISE.md).
 
 ## 11. Backlog ordonné
 

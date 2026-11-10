@@ -1,1 +1,8 @@
-# Ajouter ici les dependances Python du projet.
+# À compléter et figer par les équipes avant une installation commune.
+# Aucun paquet n'est imposé ni installé par ce gabarit.
+# E1 : lecture CSV, données temporelles et stockage, par exemple pandas/PyArrow.
+# E2/E3 : bibliothèque des modèles choisis, par exemple scikit-learn ou PyTorch.
+# E4 : outils de vérification, par exemple pytest.
+# E5 : application et graphiques, par exemple Streamlit/Folium/Plotly.
+# Séparer si utile les dépendances essentielles et celles des modèles coûteux.
+# Documenter les versions réellement vérifiées et le fonctionnement sur CPU.

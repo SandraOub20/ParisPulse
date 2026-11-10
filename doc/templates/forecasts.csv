@@ -1,0 +1,1 @@
+case_id,method_run_id,model_run_id,counter_id,origin,scenario,horizon,target_timestamp,y_pred,variant,method_used,prediction_status,status_reason,fit_cutoff,support_id,adaptation_id,snapshot_id,context_version,protocol_id,feature_version

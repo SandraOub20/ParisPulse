@@ -1,0 +1,1 @@
+case_id,method_run_id,model_run_id,status,status_reason,preparation_seconds,inference_seconds,adaptation_seconds,wait_seconds,cache_hit,memory_mb,hardware,protocol_id,snapshot_id

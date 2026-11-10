@@ -221,3 +221,23 @@ __marimo__/
 
 # DS Store
 .DS_Store
+
+# ParisPulse : fichiers de travail générés, instructions et gabarits conservés.
+data/history/*
+!data/history/README.md
+data/processed/*
+!data/processed/README.md
+data/manifests/*
+!data/manifests/README.md
+data/prediction_results/*
+!data/prediction_results/README.md
+data/evaluation/*
+!data/evaluation/README.md
+artifacts/models/*
+!artifacts/models/README.md
+artifacts/cache/*
+!artifacts/cache/README.md
+artifacts/exports/*
+!artifacts/exports/README.md
+.env.*
+!.env.example

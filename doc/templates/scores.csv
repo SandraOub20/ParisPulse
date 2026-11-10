@@ -1,0 +1,1 @@
+experiment_id,scenario,temporal_split,method_run_id,comparison_population_id,n_expected_cases,n_complete_cases,n_compared_cases,n_compared_hours,n_evaluable_counters,mae_macro,rmse,bias,coverage_24h,n_fallback_cases,protocol_id,snapshot_id

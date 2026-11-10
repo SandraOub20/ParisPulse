@@ -1,8 +1,10 @@
 # ParisPulse - Contrats de données et interfaces v2
 
-Proposition du **10 novembre 2026**, alignée sur le sujet DOCX. Elle remplace v1 : E2 traite les sites connus, E3 les nouveaux sites, et les échanges incluent contexte, adaptation, couverture des cas complets, coût et export. Les fichiers et fonctions ci-dessous sont à implémenter, sans code de départ fourni par le sujet.
+Proposition du **10 novembre 2026**, alignée sur le sujet DOCX. Elle remplace v1 : E2 traite les sites connus, E3 les nouveaux sites, et les échanges incluent contexte, adaptation, couverture des cas complets, coût et export. Les fichiers et fonctions ci-dessous sont à implémenter. Le dépôt fournit uniquement des modules d’instructions et des [gabarits vides](templates/README.md), sans algorithmes ni application.
 
 ## 1. Conventions et identités
+
+Les échanges communs utilisent CSV UTF-8, séparateur virgule, point décimal, booléens `true`/`false`, cellules vides pour les valeurs absentes et dates UTC ISO 8601 avec fuseau. Les listes sont encodées en JSON dans leur cellule. Les gabarits sont dans `doc/templates/` ; Parquet reste une option interne.
 
 | Élément | Règle commune |
 | --- | --- |
@@ -32,15 +34,15 @@ Une origine peut être proposée à minuit local ; l'horizon reste de **24 heure
 
 ### Inventaire
 
-`counters.parquet` : `counter_id`, `site_id`, `site_group_id`, noms, latitude/longitude WGS84 nullables, direction validée ou nulle, installation, années/fichiers sources, `snapshot_id` et état des rapprochements.
+`counters.csv` : `counter_id`, `site_id`, `site_group_id`, noms, latitude/longitude WGS84 nullables, direction validée ou nulle, installation, années/fichiers sources, `snapshot_id` et état des rapprochements.
 
-`inventory_quality.parquet` : par compteur et période, nombre attendu/présent/invalide, taux de manque, suites de zéros, volumes, bornes, raisons d'exclusion et incertitudes. Ces diagnostics peuvent examiner un instantané complet pour décrire le réseau, mais les critères de sélection scientifique et variables prédictives ne consomment pas le futur du test.
+`inventory_quality.csv` : par compteur et période, nombre attendu/présent/invalide, taux de manque, suites de zéros, volumes, bornes, raisons d'exclusion et incertitudes. Ces diagnostics peuvent examiner un instantané complet pour décrire le réseau, mais les critères de sélection scientifique et variables prédictives ne consomment pas le futur du test.
 
 Un compteur sans coordonnées peut rester dans l'inventaire tabulaire. Il n'est pas placé arbitrairement sur la carte. Les compteurs inventoriés, chargés et pris en charge sont des ensembles distincts.
 
 ## 3. Comptages - E1 vers E2/E3/E4/E5
 
-`counts.parquet`, clé `(counter_id, timestamp)` :
+`data/processed/<snapshot_id>/counts.csv`, clé `(counter_id, timestamp)` :
 
 | Colonne | Type logique et règle |
 | --- | --- |
@@ -70,9 +72,9 @@ L'audit de jointure contient nombre de clés avant/après, doublons, lignes non 
 
 ## 5. Protocole, cas et support local - E4 vers les autres
 
-`protocol.json` : état de validation professorale, périodes et coupures UTC, groupes de sites, origines, disponibilité, budgets locaux, score, règle de sélection et budget de calcul. Voir [PROTOCOLE_EVALUATION.md](PROTOCOLE_EVALUATION.md).
+`config/project.yaml`, à créer depuis [project.example.yaml](../config/project.example.yaml) : état de validation professorale, périodes et coupures UTC, groupes de sites, origines, disponibilité, budgets locaux, score, règle de sélection et budget de calcul. Voir [PROTOCOLE_EVALUATION.md](PROTOCOLE_EVALUATION.md).
 
-`cases.parquet` contient `case_id`, compteur/site/groupe, `origin`, `scenario`, split temporel, rôle spatial, budget local, bornes de support, `protocol_id`, `snapshot_id`. La génération des cas ne dépend pas de la réussite future d'un modèle.
+`data/evaluation/<protocol_id>/cases.csv` contient `case_id`, compteur/site/groupe, `origin`, `scenario`, split temporel, rôle spatial, budget local, bornes de support, `protocol_id`, `snapshot_id`. La génération des cas ne dépend pas de la réussite future d'un modèle.
 
 Pour E3, `support_manifest` identifie exactement les observations locales autorisées : bornes, masque de manque, nombre de mesures, disponibilité et empreinte. Ni la méthode, ni l'adaptation, ni la normalisation ne voient les autres observations du site. Les trois variantes comparées utilisent le même support.
 
@@ -84,7 +86,7 @@ Les variables partagées portent `feature_version`, `case_id`, `target_timestamp
 
 Les transformations apprises sont figées à la coupure du modèle. Les agrégats locaux et le remplissage restent limités au support autorisé dans le scénario nouveaux sites. Les fenêtres d'apprentissage n'utilisent que des entrées disponibles à leur origine et des labels disponibles à la coupure de l'entraînement.
 
-`models/<model_run_id>/metadata.json` contient :
+`artifacts/models/<model_run_id>/metadata.json` contient :
 
 - nom, architecture/méthode, hyperparamètres, graine, versions du code et dépendances ;
 - `fit_cutoff`, intervalle des labels, liste ou empreinte des sites donneurs, exclusion des sites réservés ;
@@ -99,7 +101,7 @@ Pour une adaptation, enregistrer `adaptation_id`, modèle de base, `support_id`,
 
 ## 7. Prévisions et coût - E2/E3 vers E4/E5
 
-`forecasts.parquet`, clé `(case_id, method_run_id, horizon)` :
+`data/prediction_results/<experiment_id>/<method_run_id>.pred.csv`, clé `(case_id, method_run_id, horizon)` :
 
 | Champs | Règle |
 | --- | --- |
@@ -115,7 +117,7 @@ Pour une adaptation, enregistrer `adaptation_id`, modèle de base, `support_id`,
 
 Un cas n'est **complet** que si ses 24 horizons distincts ont une prévision valide. Les heures manquantes ne sont pas supprimées pour transformer un échec en succès. Séparer la sortie brute d'une méthode et le résultat du système après repli ; le second peut être complet quand le premier échoue.
 
-`case_runs.parquet` enregistre, une fois par exécution de cas : statut, durée de préparation/inférence/adaptation, cache utilisé ou non, temps d'attente, mémoire mesurée si disponible, matériel et message d'erreur. Le coût d'entraînement est enregistré à part ; ne pas l'additionner 24 fois parce qu'il existe 24 lignes de prévision.
+Le fichier `<method_run_id>.runs.csv`, au format du gabarit `case_runs.csv`, enregistre, une fois par exécution de cas : statut, durée de préparation/inférence/adaptation, cache utilisé ou non, temps d'attente, mémoire mesurée si disponible, matériel et message d'erreur. Le coût d'entraînement est enregistré à part ; ne pas l'additionner 24 fois parce qu'il existe 24 lignes de prévision.
 
 ## 8. Évaluation et disponibilité - E4 vers E5
 
@@ -125,7 +127,7 @@ Les observations cibles proviennent d'un accès séparé aux comptages et sont a
 
 La comparaison principale porte sur l'intersection des **cas complets de 24 heures** des méthodes, avec le même masque d'observations réellement mesurées. Rapporter séparément couverture individuelle et système après repli. Aucune heure manquante ne devient une erreur zéro ; si aucun score n'est calculable, valeur `null` et raison.
 
-`coverage.parquet` croise inventaire, scénario, méthode, origine et budget local. Il distingue `inventory_only`, `data_unavailable`, `insufficient_history`, `supported`, `complete`, `partial`, `error` et `fallback_complete`. Les conditions sont explicables à l'utilisateur ; seule la sélection de dates admissibles peut être filtrée sans masquer les lieux inventoriés.
+`coverage.csv` croise inventaire, scénario, méthode, origine et budget local. Il distingue `inventory_only`, `data_unavailable`, `insufficient_history`, `supported`, `complete`, `partial`, `error` et `fallback_complete`. Les conditions sont explicables à l'utilisateur ; seule la sélection de dates admissibles peut être filtrée sans masquer les lieux inventoriés.
 
 Si des intervalles sont étudiés, ajouter bornes, niveau, calibration et coupure. Évaluer couverture effective, largeur et effectif ; ne pas appliquer une calibration aux dates antérieures à sa disponibilité.
 

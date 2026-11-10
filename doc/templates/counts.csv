@@ -1,0 +1,1 @@
+counter_id,timestamp,interval_end,count_raw,count,is_observed,is_scoreable,quality_flags,source_file_id,snapshot_id

@@ -1,0 +1,9 @@
+#!/bin/sh
+# GABARIT E5 : instructions uniquement, aucun lancement implémenté.
+# À compléter avant de créer le véritable run.sh :
+# 1. Déterminer la racine du projet sans chemin personnel.
+# 2. Vérifier les prérequis Python et préparer l'environnement commun.
+# 3. Installer les dépendances figées dans requirements.txt.
+# 4. Préparer ou récupérer l'instantané, les paramètres et poids nécessaires.
+# 5. Vérifier versions et empreintes, puis lancer l'application.
+# 6. Faire tester une copie neuve, un autre cas et un redémarrage par une autre équipe.

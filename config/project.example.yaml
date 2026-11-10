@@ -1,0 +1,34 @@
+# Gabarit à compléter : aucune extraction ni exécution n'est déclenchée.
+project: ParisPulse
+timezone: Europe/Paris
+paths:
+  history: data/history
+  processed: data/processed
+  manifests: data/manifests
+  predictions: data/prediction_results
+  evaluation: data/evaluation
+  models: artifacts/models
+  cache: artifacts/cache
+  exports: artifacts/exports
+snapshot_id: null
+context_source: null
+protocol:
+  id: null
+  status: proposed
+  validated_at: null
+  horizon_hours: 24
+  # Hypothèse simulée à discuter ; J−1 ne prouve pas une latence fixe exacte.
+  publication_lag_hours: 24
+  train_until: null
+  validation_until: null
+  test_start: null
+  test_end: null
+  site_groups:
+    train: []
+    dev_new: []
+    test_new: []
+  local_budget_hours: [24, 72, 168]
+methods: []
+compute_budget:
+  hardware: null
+  maximum_training_minutes: null

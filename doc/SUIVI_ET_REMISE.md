@@ -1,6 +1,6 @@
 # ParisPulse - Suivi, contributions et remise
 
-Version du **10 novembre 2026**. Les exigences et barèmes viennent de « Déroulement et livrables » et « Évaluation du projet » du [sujet étudiants](../ParisPulse_Sujet_etudiants.docx). Les formats de suivi ci-dessous sont des propositions pratiques.
+Version du **10 novembre 2026**. Les exigences et barèmes viennent de « Déroulement et livrables » et « Évaluation du projet » du [sujet étudiants](../ParisPulse_Sujet_etudiants.pdf). Les formats de suivi ci-dessous sont des propositions pratiques.
 
 ## 1. Ce qui est évalué
 

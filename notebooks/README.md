@@ -11,3 +11,5 @@ Les équipes 1 à 4 utilisent ce dossier pour leurs expérimentations :
 
 Les notebooks servent aux expérimentations ; le code réutilisable est destiné
 à `src/`.
+
+Référencer instantané, protocole, paramètres et résultats dans une fiche de `reports/experiments/`. Les expériences sont tracées par les gabarits de `doc/templates/` ; les modules réutilisables restent dans `src/`.

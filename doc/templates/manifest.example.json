@@ -1,0 +1,12 @@
+{
+  "template": true,
+  "schema_version": 2,
+  "snapshot_id": null,
+  "retrieved_at": null,
+  "sources": [{"url": null, "filters": null, "license": null, "attribution": null}],
+  "files": [{"path": null, "sha256": null, "n_rows": null, "first_timestamp": null, "last_timestamp": null}],
+  "source_time_semantics": null,
+  "normalization_version": null,
+  "duplicate_resolution": null,
+  "known_limitations": []
+}

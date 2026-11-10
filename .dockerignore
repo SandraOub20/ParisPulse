@@ -5,3 +5,13 @@ __pycache__
 *.py[cod]
 *.pdf
 .ipynb_checkpoints
+
+# E5 définit comment fournir ou récupérer ces ressources à l'exécution.
+data/
+artifacts/
+notebooks/
+reports/
+.DS_Store
+.env
+.env.*
+.streamlit/secrets.toml
