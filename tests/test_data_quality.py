@@ -219,3 +219,30 @@ def test_jour_changement_heure_incomplet_signale():
     m = q.counter_metrics(s, grid)
     assert m["n_dst_days_incomplete"] == 1
     assert m["n_missing"] == 1
+
+
+def test_deux_sens_a_80_m_restent_ensemble():
+    """Cas réel du Pont National : deux site_id à 57 m pour les deux sens."""
+    counters = pd.DataFrame(
+        [
+            counter_row("p1", "P1", 48.8300, 2.3800),
+            counter_row("p2", "P2", 48.8300, 2.3811),  # ~80 m plus à l'est
+            counter_row("far", "F", 48.8400, 2.3800),  # ~1,1 km
+        ]
+    )
+    groups = q.candidate_groups(counters, q.SelectionCriteria().alias_distance_m)
+    cand = groups.set_index("site_group_id")["candidate_group_id"]
+    assert cand["P1"] == cand["P2"] != cand["F"]
+
+
+def test_trou_commun_au_reseau_detecte(network):
+    counts, _ = network
+    day = (counts["ts"] >= START + pd.Timedelta(days=30)) & (
+        counts["ts"] < START + pd.Timedelta(days=31)
+    )
+    holed = counts.copy()
+    holed.loc[day, "is_observed"] = False
+    gaps = q.network_gaps(holed)
+    assert [g["hours"] for g in gaps] == [24]
+    assert gaps[0]["start"] == q._iso(START + pd.Timedelta(days=30))
+    assert q.network_gaps(counts) == []

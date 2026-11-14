@@ -6,7 +6,8 @@ Lit les sorties de `prepare.py` dans `data/processed/<snapshot_id>/` :
 - `inventory_quality.csv` : une ligne par compteur et par période (colonnes du
   gabarit, puis colonnes descriptives) ;
 - `selection_summary.json` : critères, effectifs, listes de groupes de sites
-  à recopier dans `config/project.yaml` (`protocol.site_groups`).
+  à recopier dans `config/project.yaml` (`protocol.site_groups`), et trous
+  communs au réseau (`network_gaps`).
 
 Deux périodes par compteur (`period_role`) :
 - `selection` : du début de l'instantané au début du test (exclu). Les
@@ -136,8 +137,12 @@ class SelectionCriteria:
     reserve_dev_fraction: float = 0.10
     reserve_test_fraction: float = 0.15
     min_reserved_groups: int = 2
-    # Deux groupes de sites à moins de 50 m : alias possible, gardés ensemble.
-    alias_distance_m: float = 50.0
+    # Deux groupes de sites à moins de 100 m : même lieu possible, gardés ensemble.
+    # Sur flux-20261114, les deux sens d'un même lieu ont souvent deux site_id
+    # distants de 0 à 93 m (Pont National : 57 m) ; la paire suivante est à 113 m.
+    alias_distance_m: float = 100.0
+    # Heure « trou du réseau » si au moins 90 % des compteurs actifs sont sans mesure.
+    network_gap_share: float = 0.90
     seed: str = "parispulse-e1"
 
     @classmethod
@@ -566,7 +571,37 @@ def build_inventory(
     inv = inv.sort_values(["counter_id", "period_role"], ascending=[True, False], kind="stable")
     inv = inv[INVENTORY_COLUMNS].reset_index(drop=True)
     summary = selection_summary(inv, snapshot_id, c, thresholds)
+    summary["network_gaps"] = network_gaps(counts, c.network_gap_share)
     return inv, summary
+
+
+def network_gaps(counts: pd.DataFrame, share: float = 0.90) -> list[dict]:
+    """Périodes où presque tout le réseau est sans mesure (panne ou publication).
+
+    Un compteur est « actif » à une heure si counts.csv contient une ligne pour
+    cette heure (entre sa première et sa dernière mesure). Descriptif, sur tout
+    l'instantané : sert à E4 (cas sans cible) et E5 (message), pas à la sélection.
+    """
+    per_hour = counts.groupby("ts")["is_observed"].agg(["size", "sum"])
+    per_hour = per_hour[per_hour["size"] >= 10]
+    missing = per_hour[(1 - per_hour["sum"] / per_hour["size"]) >= share]
+    if missing.empty:
+        return []
+    ts = missing.index.to_series()
+    run = (ts.diff() != pd.Timedelta(hours=1)).cumsum()
+    out = []
+    for _, block in missing.groupby(run.to_numpy()):
+        start, end = block.index[0], block.index[-1] + pd.Timedelta(hours=1)
+        out.append(
+            {
+                "start": _iso(start),
+                "end_exclusive": _iso(end),
+                "start_local": start.tz_convert(TZ_LOCAL).isoformat(),
+                "hours": int(len(block)),
+                "min_share_missing": round(float(1 - (block["sum"] / block["size"]).max()), 3),
+            }
+        )
+    return out
 
 
 def selection_summary(inv: pd.DataFrame, snapshot_id: str, c: SelectionCriteria, thr) -> dict:
@@ -731,6 +766,9 @@ def print_summary(summary: dict) -> None:
     print("Sites réservés E3 - test :", summary["site_groups"]["test_new"])
     if summary["possible_alias_groups"]:
         print("Groupes candidats à alias (gardés ensemble) :", summary["possible_alias_groups"])
+    print("Trous communs au réseau (heure de Paris) :")
+    for gap in summary.get("network_gaps", []):
+        print(f"  {gap['start_local']}  {gap['hours']} h")
     for col, table in summary["diversity"].items():
         print(f"Diversité par {col} :")
         print(pd.DataFrame(table).T.fillna(0).astype(int).to_string())
