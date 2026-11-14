@@ -7,7 +7,7 @@ Les modules contiennent des instructions à implémenter :
 | `acquire.py` | Sources, extraction, archives/flux et provenance |
 | `prepare.py` | UTC, identifiants, grille horaire et résolution des doublons |
 | `context.py` | Source complémentaire, disponibilité et cardinalité des jointures |
-| `quality.py` | Inventaire, distribution, manques, zéros et choix d'échantillon |
+| `quality.py` | Inventaire, distribution, manques, zéros et choix d'échantillon ; écrit `inventory_quality.csv` et `selection_summary.json` (sites réservés E3). Critères : [fiche](../../reports/experiments/E1-inventaire-selection.md) |
 
 **Commencer :** transmettre rapidement une série réelle avec sa localisation et ses problèmes à E2/E4/E5, sans attendre l'inventaire complet.
 

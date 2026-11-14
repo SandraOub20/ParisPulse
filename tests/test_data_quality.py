@@ -1,0 +1,221 @@
+"""Tests E1 de l'inventaire sur un petit réseau synthétique construit à la main.
+
+Les données synthétiques vérifient le code ; elles ne mesurent rien sur Paris.
+"""
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from src.data import quality as q
+
+START = pd.Timestamp("2026-01-05T00:00:00+00:00")  # lundi
+N_DAYS = 70
+SEL_END = START + pd.Timedelta(days=56)  # 8 semaines de sélection, 2 de « test »
+
+
+def daily_pattern(n_hours: int, level: float) -> np.ndarray:
+    """Profil pendulaire simple : pointes à 8 h et 18 h UTC, moins le week-end."""
+    ts = pd.date_range(START, periods=n_hours, freq="h", tz="UTC")
+    hour = ts.tz_convert(q.TZ_LOCAL).hour
+    base = np.where(np.isin(hour, [7, 8, 9, 17, 18, 19]), 3 * level, level)
+    weekend = np.asarray(ts.tz_convert(q.TZ_LOCAL).dayofweek >= 5)
+    return np.where(weekend, base * 0.5, base).astype(float)
+
+
+def series(cid: str, values: np.ndarray, start: pd.Timestamp = START) -> pd.DataFrame:
+    """Lignes au format texte de counts.csv ; NaN = heure absente (is_observed=false)."""
+    ts = pd.date_range(start, periods=len(values), freq="h", tz="UTC")
+    observed = ~np.isnan(values)
+    return pd.DataFrame(
+        {
+            "counter_id": cid,
+            "timestamp": ts.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+            "count": values,
+            "is_observed": np.where(observed, "true", "false"),
+            "is_scoreable": np.where(observed, "true", "false"),
+        }
+    )
+
+
+def counter_row(cid, site, lat, lon, direction="N-S"):
+    return {
+        "counter_id": cid,
+        "site_id": site,
+        "site_group_id": site,
+        "counter_name": f"Compteur {cid}",
+        "site_name": f"Site {site}",
+        "latitude": lat,
+        "longitude": lon,
+        "direction": direction,
+        "installation_date": "2020-01-01",
+        "snapshot_id": "test",
+    }
+
+
+@pytest.fixture
+def network():
+    n = N_DAYS * 24
+    frames, rows = [], []
+    # 8 sites sains à 2 directions, répartis entre centre et périphérie
+    for k in range(8):
+        lat = 48.8566 + (0.005 if k % 2 else 0.06) * (1 + k % 3)
+        for d in ("a", "b"):
+            cid = f"ok{k}{d}"
+            frames.append(series(cid, daily_pattern(n, 10 + 15 * k)))
+            rows.append(counter_row(cid, f"S{k}", lat, 2.3522 + 0.01 * k))
+    # Manques : 30 % d'heures absentes dispersées -> robustesse
+    v = daily_pattern(n, 20)
+    v[np.arange(n) % 10 < 3] = np.nan
+    frames.append(series("gappy", v))
+    rows.append(counter_row("gappy", "G", 48.87, 2.30))
+    # Suite de zéros de 72 h -> robustesse ; zéros conservés, pas transformés en manques
+    v = daily_pattern(n, 20)
+    v[24 * 10 : 24 * 13] = 0.0
+    frames.append(series("zeros", v))
+    rows.append(counter_row("zeros", "Z", 48.83, 2.40))
+    # Série presque entièrement à zéro -> exclue
+    v = np.zeros(n)
+    v[:24] = 5.0
+    frames.append(series("dead", v))
+    rows.append(counter_row("dead", "D", 48.84, 2.33))
+    # Installé tard : 20 jours d'historique avant la fin de sélection -> exclu
+    late_start = SEL_END - pd.Timedelta(days=20)
+    frames.append(series("late", daily_pattern(24 * 34, 30), start=late_start))
+    rows.append(counter_row("late", "L", 48.88, 2.36))
+    # Alias possible : deux site_id différents au même endroit
+    frames.append(series("alias1", daily_pattern(n, 40)))
+    rows.append(counter_row("alias1", "A1", 48.8600, 2.3400))
+    frames.append(series("alias2", daily_pattern(n, 40)))
+    rows.append(counter_row("alias2", "A2", 48.86001, 2.34001))
+    # Sans coordonnées : reste inventorié
+    frames.append(series("nocoord", daily_pattern(n, 25)))
+    rows.append(counter_row("nocoord", "N", np.nan, np.nan))
+
+    counts = q.normalize_counts(pd.concat(frames, ignore_index=True))
+    counters = pd.DataFrame(rows)
+    return counts, counters
+
+
+def build(network, **kw):
+    counts, counters = network
+    return q.build_inventory(counts, counters, "test", SEL_END, q.SelectionCriteria(**kw))
+
+
+def sel_rows(inv):
+    return inv[inv["period_role"] == q.PERIOD_SELECTION].set_index("counter_id")
+
+
+def test_colonnes_du_gabarit_en_tete(network):
+    inv, _ = build(network)
+    assert list(inv.columns[: len(q.TEMPLATE_COLUMNS)]) == q.TEMPLATE_COLUMNS
+    assert set(inv["period_role"]) == {q.PERIOD_SELECTION, q.PERIOD_FULL}
+    assert len(inv) == 2 * len(network[1])
+
+
+def test_comptes_sur_la_grille_de_selection(network):
+    s = sel_rows(build(network)[0])
+    assert s.loc["ok0a", "n_expected"] == 56 * 24
+    assert s.loc["ok0a", "n_missing"] == 0
+    assert s.loc["gappy", "n_missing"] == pytest.approx(0.3 * 56 * 24, abs=3)
+    # Installé tard : les heures avant la première mesure sont manquantes sur la période
+    assert s.loc["late", "n_observed"] == 20 * 24
+    assert s.loc["late", "missing_rate_in_span"] == 0
+
+
+def test_suite_de_zeros_mesuree_et_conservee(network):
+    s = sel_rows(build(network)[0])
+    assert s.loc["zeros", "longest_zero_run"] == 72
+    assert s.loc["zeros", "n_long_zero_runs"] == 1
+    assert s.loc["zeros", "n_missing"] == 0  # zéros != manques
+    assert s.loc["zeros", "n_zeros"] >= 72
+
+
+def test_statuts_et_raisons(network):
+    s = sel_rows(build(network, full_history_days=50)[0])
+    assert s.loc["dead", "selection_status"] == q.STATUS_EXCLUDED
+    assert "suites de zéros" in s.loc["dead", "status_reason"]
+    assert s.loc["late", "selection_status"] == q.STATUS_EXCLUDED
+    assert "historique observé" in s.loc["late", "status_reason"]
+    assert s.loc["gappy", "selection_status"] == q.STATUS_ROBUSTNESS
+    assert "manques" in s.loc["gappy", "status_reason"]
+    assert s.loc["zeros", "selection_status"] == q.STATUS_ROBUSTNESS
+    assert s.loc["nocoord", "selection_status"] in {
+        q.STATUS_RETAINED,
+        q.STATUS_DEV_NEW,
+        q.STATUS_TEST_NEW,
+    }
+    assert any("coordonnées absentes" in u for u in s.loc["nocoord", "uncertainties"])
+
+
+def test_directions_et_alias_restent_ensemble(network):
+    inv, summary = build(network, full_history_days=50)
+    s = sel_rows(inv)
+    for k in range(8):
+        assert s.loc[f"ok{k}a", "site_role"] == s.loc[f"ok{k}b", "site_role"]
+    assert s.loc["alias1", "candidate_group_id"] == s.loc["alias2", "candidate_group_id"]
+    assert s.loc["alias1", "site_role"] == s.loc["alias2", "site_role"]
+    assert summary["possible_alias_groups"] == [s.loc["alias1", "candidate_group_id"]]
+    groups = summary["site_groups"]
+    assert groups["test_new"] and groups["dev_new"]
+    assert not set(groups["train"]) & (set(groups["test_new"]) | set(groups["dev_new"]))
+    assert not set(groups["test_new"]) & set(groups["dev_new"])
+
+
+def test_reservation_deterministe(network):
+    a = build(network, full_history_days=50)[1]["site_groups"]
+    b = build(network, full_history_days=50)[1]["site_groups"]
+    assert a == b
+
+
+def test_statut_independant_du_futur_du_test(network):
+    """Modifier les heures après la fin de sélection ne change aucun statut."""
+    counts, counters = network
+    base = sel_rows(q.build_inventory(counts, counters, "t", SEL_END)[0])
+    changed = counts.copy()
+    future = changed["ts"] >= SEL_END
+    changed.loc[future, "count"] = 0.0
+    changed.loc[future & (changed["counter_id"] == "ok0a"), "is_observed"] = False
+    other = sel_rows(q.build_inventory(changed, counters, "t", SEL_END)[0])
+    cols = ["selection_status", "status_reason", "site_role", "n_observed", "mean_count"]
+    pd.testing.assert_frame_equal(base[cols], other[cols])
+
+
+def test_statut_recopie_sur_la_periode_complete(network):
+    inv, _ = build(network)
+    full = inv[inv["period_role"] == q.PERIOD_FULL].set_index("counter_id")
+    s = sel_rows(inv)
+    assert (full["selection_status"] == s["selection_status"]).all()
+    assert (full["n_expected"] > s["n_expected"]).all()
+
+
+def test_cle_dupliquee_refusee(network):
+    counts, _ = network
+    raw = pd.DataFrame(
+        {
+            "counter_id": ["x", "x"],
+            "timestamp": ["2026-01-05T00:00:00+00:00"] * 2,
+            "count": [1.0, 2.0],
+            "is_observed": ["true", "true"],
+            "is_scoreable": ["true", "true"],
+        }
+    )
+    with pytest.raises(ValueError, match="dupliquées"):
+        q.normalize_counts(raw)
+
+
+def test_true_runs():
+    assert q.true_runs(np.array([1, 1, 0, 1, 0, 0, 1, 1, 1], bool)).tolist() == [2, 1, 3]
+    assert q.true_runs(np.array([], bool)).tolist() == []
+
+
+def test_jour_changement_heure_incomplet_signale():
+    """Le 25/10/2026 compte 25 h locales ; une heure absente est signalée, pas supprimée."""
+    start = pd.Timestamp("2026-10-23T22:00:00+00:00")
+    grid = q.hour_grid(start, start + pd.Timedelta(days=4))
+    values = np.full(len(grid), 10.0)
+    values[grid.get_loc(pd.Timestamp("2026-10-25T01:00:00+00:00"))] = np.nan
+    s = q.normalize_counts(series("dst", values, start=start))
+    m = q.counter_metrics(s, grid)
+    assert m["n_dst_days_incomplete"] == 1
+    assert m["n_missing"] == 1
