@@ -105,9 +105,18 @@ Limites de cette règle :
 - la moyenne sur 9 compteurs est fragile : Jourdan E-O peut à lui seul faire passer ou échouer le seuil de 5 %. C'est pourquoi la MAE par compteur et le nombre de compteurs améliorés ou dégradés sont rapportés, et que le point 3 de la règle prévoit ce cas ;
 - d'autres valeurs seraient défendables (3 % ou 10 % de gain, par exemple). Elles sont soumises à E4 et peuvent être ajustées **tant qu'aucun résultat n'existe** ; après, elles ne changent plus.
 
+## Analyses complémentaires (fixées avant les résultats, elles ne décident rien)
+
+Ajoutées le 15/11/2026 au soir, avant toute comparaison. Elles servent à **comprendre** le résultat principal, jamais à changer la décision prise à 24 h.
+
+1. **Sans Jourdan E-O.** Jourdan représente 3 853 des 5 822 heures retirées (66 %). La MAE macro des concernés sera aussi calculée sur les **8 autres compteurs**. Si l'effet de B disparaît sans Jourdan, la conclusion le dira : B aide un compteur très atypique, pas les suites de zéros en général.
+2. **Compteur par compteur.** MAE de A et de B pour chacun des 9 concernés, et nombre de compteurs améliorés / dégradés (déjà dans la sortie du script).
+3. **Effet sur les témoins.** Variation de la MAE des 74 `retained`, pour voir si retirer des zéros chez quelques compteurs change le modèle pour tout le réseau (cas d'un modèle global).
+4. **Seuil de longueur des suites : 48 h et 72 h** (option `--seuil` du script). Mesure descriptive faite avant les résultats : à 48 h comme à 72 h, B retire 5 797 heures sur 8 compteurs ; seul le quai de l'Hôtel de Ville (suite de 25 h) sort. Sur cet instantané, le seuil change donc très peu de chose : cette analyse sera rapportée brièvement, l'analyse « sans Jourdan » est la plus informative. Les groupes de comparaison restent ceux de la règle à 24 h.
+
 ## Contrôles réalisés
 
-Tests automatiques sur un petit jeu synthétique (`tests/test_data_zeros.py`, 14 tests, verts le 15/11/2026) :
+Tests automatiques sur un petit jeu synthétique (`tests/test_data_zeros.py`, 15 tests, verts le 15/11/2026 ; 60 tests au total) :
 
 - une suite de 24 h de zéros est écartée, une suite de 23 h ne l'est pas ;
 - une heure absente au milieu de zéros coupe la suite (case vide ou ligne manquante) ;
@@ -120,6 +129,7 @@ Tests automatiques sur un petit jeu synthétique (`tests/test_data_zeros.py`, 14
 - un zéro observé reste une cible évaluable ;
 - un cas sans aucune mesure reste compté, et un compteur sans heure évaluable n'a pas de MAE (jamais zéro) ;
 - la règle de décision applique les trois conditions ; les sites réservés à E3 n'entrent pas dans l'expérience.
+- à 48 h et 72 h, B retire moins d'heures mais les groupes restent ceux de la règle à 24 h.
 
 Sur données réelles, **sans modèle ni calcul d'erreur** (15/11/2026) : 91 compteurs répartis en 9 concernés, 74 témoins et 8 autres ; B retire 5 822 cibles d'apprentissage, toutes des zéros, sur ces 9 compteurs seulement ; historique identique pour A et B ; 5 642 cas attendus.
 

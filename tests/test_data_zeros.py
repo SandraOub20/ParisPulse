@@ -220,3 +220,31 @@ def test_experience_complete_sur_reseau_synthetique():
     assert res["groups"]["control"]["n_counters"] == 1
     assert res["groups"]["other_robustness"]["n_counters"] == 1
     assert res["n_compared_cases"] == res["n_expected_cases"]
+
+
+def test_sensibilite_au_seuil_memes_groupes_moins_d_heures_retirees():
+    n = 24 * 70
+    base = np.random.default_rng(1).poisson(20, n).astype(float)
+    z = base.copy()
+    z[24 * 5 : 24 * 5 + 30] = 0.0  # suite de 30 h : retirée à 24 h, gardée à 48 h
+    z[24 * 15 : 24 * 15 + 80] = 0.0  # suite de 80 h : retirée à 24, 48 et 72 h
+    counts = pd.concat([frame("z", z), frame("t", base)], ignore_index=True)
+    inventory = pd.DataFrame(
+        {
+            "counter_id": ["z", "t"],
+            "period_role": "selection",
+            "site_role": "S_train",
+            "selection_status": ["robustness", "retained"],
+        }
+    )
+    cutoff = zeros.local_midnight("2026-02-20")
+    dropped = {}
+    for seuil in (24, 48, 72):
+        b = ze.training_frame(counts, {"z", "t"}, cutoff, "drop", LAG, seuil)
+        dropped[seuil] = int((~b["is_target"]).sum())
+        res = ze.run_experiment(
+            counts, inventory, ze.ProfileModel, cutoff, "2026-02-21", "2026-02-24", LAG, seuil
+        )
+        assert res["groups"]["concerned"]["n_counters"] == 1  # groupes fixés à 24 h
+        assert res["min_run_hours"] == seuil
+    assert dropped == {24: 110, 48: 80, 72: 80}

@@ -107,13 +107,14 @@ def training_frame(
     cutoff: pd.Timestamp,
     treatment: str,
     lag_hours: int | None = None,
+    min_run: int = zeros.MIN_RUN_HOURS,
 ) -> pd.DataFrame:
     """Historique publié à la coupure (identique pour A et B) et drapeau `is_target`."""
     lag = zeros.publication_lag_hours() if lag_hours is None else lag_hours
     avail = counts["counter_id"].isin(train_ids)
     avail &= zeros.available_at_cutoff(counts["ts"], cutoff, lag)
     train = counts.loc[avail, ["counter_id", "ts", "count"]].copy()
-    train["is_target"] = zeros.training_mask(counts, cutoff, treatment, lag)[avail]
+    train["is_target"] = zeros.training_mask(counts, cutoff, treatment, lag, min_run)[avail]
     return train
 
 
@@ -125,12 +126,13 @@ def run_variant(
     cutoff: pd.Timestamp,
     treatment: str,
     lag_hours: int | None = None,
+    min_run: int = zeros.MIN_RUN_HOURS,
 ) -> tuple[pd.DataFrame, pd.Series]:
     """Apprend avec le traitement donné, prévoit les cibles.
 
     Renvoie les prévisions et, par compteur, les jours d'apprentissage (heures cibles / 24).
     """
-    train = training_frame(counts, train_ids, cutoff, treatment, lag_hours)
+    train = training_frame(counts, train_ids, cutoff, treatment, lag_hours, min_run)
     model.fit(train)
     preds = targets[["case_id", "counter_id", "horizon"]].copy()
     preds["y_pred"] = model.predict(targets)
@@ -251,15 +253,24 @@ def run_experiment(
     start_day: str,
     end_day: str,
     lag_hours: int | None = None,
+    min_run: int = zeros.MIN_RUN_HOURS,
 ) -> dict:
-    """A et B avec deux instances neuves du même modèle, mêmes cas et mêmes cibles."""
-    dropped = set(counts.loc[zeros.long_zero_mask(counts, cutoff, lag_hours), "counter_id"])
-    groups = comparison_groups(inventory, dropped)
+    """A et B avec deux instances neuves du même modèle, mêmes cas et mêmes cibles.
+
+    Les groupes (concernés, témoins, autres) sont TOUJOURS définis avec la règle
+    principale de 24 h, pour que les variantes de sensibilité (`min_run` = 48 ou 72 h,
+    qui ne change que ce que B retire) soient comparées sur les mêmes compteurs.
+    """
+    main_rule = zeros.long_zero_mask(counts, cutoff, lag_hours, zeros.MIN_RUN_HOURS)
+    groups = comparison_groups(inventory, set(counts.loc[main_rule, "counter_id"]))
     targets = case_targets(expected_cases(groups, start_day, end_day), counts)
     ids = set(groups)
-    preds_a, days_a = run_variant(model_factory(), counts, ids, targets, cutoff, "keep", lag_hours)
-    preds_b, days_b = run_variant(model_factory(), counts, ids, targets, cutoff, "drop", lag_hours)
-    return compare(targets, preds_a, preds_b, groups, days_a, days_b)
+    args = (counts, ids, targets, cutoff)
+    preds_a, days_a = run_variant(model_factory(), *args, "keep", lag_hours, min_run)
+    preds_b, days_b = run_variant(model_factory(), *args, "drop", lag_hours, min_run)
+    result = compare(targets, preds_a, preds_b, groups, days_a, days_b)
+    result["min_run_hours"] = min_run
+    return result
 
 
 MODELS = {"profil": ProfileModel}
@@ -272,6 +283,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--debut", required=True, help="première origine, AAAA-MM-JJ")
     ap.add_argument("--fin", required=True, help="fin des origines (exclue), AAAA-MM-JJ")
     ap.add_argument("--modele", choices=sorted(MODELS), default="profil")
+    ap.add_argument(
+        "--seuil",
+        type=int,
+        default=zeros.MIN_RUN_HOURS,
+        help="longueur minimale (h) des suites retirées par B : 24 (décision), 48 ou 72 "
+        "(sensibilité, ne décide rien)",
+    )
     args = ap.parse_args(argv)
     folder = data_path("processed") / args.snapshot
     counts = load_counts(folder / "counts.csv")
@@ -283,9 +301,12 @@ def main(argv: list[str] | None = None) -> int:
         zeros.local_midnight(args.coupure),
         args.debut,
         args.fin,
+        min_run=args.seuil,
     )
     if args.modele == "profil":
         print("TEST TECHNIQUE (ProfileModel) : chiffres non utilisables pour décider.")
+    if args.seuil != zeros.MIN_RUN_HOURS:
+        print(f"SENSIBILITÉ (suites >= {args.seuil} h) : la décision se prend à 24 h seulement.")
     for k, v in res.items():
         if k not in ("groups", "per_counter"):
             print(f"{k} : {v}")
