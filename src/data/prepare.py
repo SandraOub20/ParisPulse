@@ -44,11 +44,18 @@ import pandas as pd
 
 from src.common.config import data_path, relative_to_root
 from src.data import acquire
+from src.data.quality import (
+    SITE_GROUP_RULE,
+    SelectionCriteria,
+    candidate_site_groups,
+    network_gap_hours,
+)
 
 TZ_LOCAL = "Europe/Paris"
 LONG_ZERO_RUN_HOURS = 24  # seuil d'une suite de zéros « longue » (heures consécutives)
 NORMALIZATION_VERSION = "e1-prepare/0.2.0"
-NETWORK_GAP_SHARE = 0.90  # même seuil que quality.SelectionCriteria.network_gap_share
+# Seuil défini une seule fois, dans quality.SelectionCriteria
+NETWORK_GAP_SHARE = SelectionCriteria.network_gap_share
 
 COUNTS_COLUMNS = [
     "counter_id",
@@ -574,8 +581,12 @@ def update_manifest(
     written: dict,
     peaks_ok: bool | str,
     extra: dict | None = None,
+    raw_used: str | None = None,
 ) -> Path:
     """Complète le manifeste ; `prepared` = un compteur ou tous (--tout).
+
+    `raw_used` : brut lu par la préparation ; les autres bruts de l'instantané sont
+    marqués comme non utilisés (ex. un premier essai sur un seul compteur).
 
     `peaks_ok` : booléen (un compteur) ou texte déjà rédigé (tout le flux).
     """
@@ -634,6 +645,11 @@ def update_manifest(
             "alerts": item.alerts,
         }
     manifest.update(extra or {})
+    if raw_used is not None:
+        manifest["raw_used_by_prepare"] = raw_used
+        for f in manifest.get("files", []):
+            if f.get("role") == "raw":
+                f["used_by_prepare"] = f.get("path") == raw_used
     return acquire.write_manifest(manifest)
 
 
@@ -698,8 +714,6 @@ def split_by_counter(raw: pd.DataFrame) -> dict[str, pd.DataFrame]:
 
 def mark_network_gaps(items: list[Prepared], share: float = NETWORK_GAP_SHARE) -> pd.DatetimeIndex:
     """Ajoute `network_gap` aux heures non observées où presque tout le réseau manque."""
-    from src.data.quality import network_gap_hours
-
     frame = pd.concat(
         [p.counts[["ts", "is_observed"]].assign(counter_id=p.counter["counter_id"]) for p in items],
         ignore_index=True,
@@ -737,7 +751,9 @@ def direction_checks(items: list[Prepared]) -> dict:
     }
 
 
-def add_controls(prepared: Prepared) -> tuple[pd.DataFrame, dict, pd.DataFrame, str | None]:
+def add_controls(
+    prepared: Prepared, site_group_alert: bool = True
+) -> tuple[pd.DataFrame, dict, pd.DataFrame, str | None]:
     """Profil horaire, jours de changement d'heure et trous ; complète le rapport."""
     profile = hourly_profile(prepared.counts)
     morning, evening, peak_alert = check_peaks(profile)
@@ -756,9 +772,10 @@ def add_controls(prepared: Prepared) -> tuple[pd.DataFrame, dict, pd.DataFrame, 
             )
     holes = gaps(prepared.counts)
     prepared.report["n_gaps"] = int(len(holes))
-    prepared.alerts.append(
-        "site_group_id = site_id ici : relancer quality.py pour écrire les groupes candidats."
-    )
+    if site_group_alert:  # compteur par compteur : groupes écrits ensuite par quality.py
+        prepared.alerts.append(
+            "site_group_id = site_id ici : relancer quality.py pour écrire les groupes candidats."
+        )
     return profile, dst, holes, peak_alert
 
 
@@ -816,10 +833,15 @@ def prepare_all(snapshot_id: str) -> list[Prepared]:
     items, peaks_ok = [], 0
     for cid, part in split_by_counter(raw).items():
         p = normalize(part, cid, grid_range)
-        peaks_ok += add_controls(p)[3] is None
+        peaks_ok += add_controls(p, site_group_alert=False)[3] is None
         items.append(p)
     gap_hours = mark_network_gaps(items)
     checks = direction_checks(items)
+    # Groupes candidats écrits dès ici (même règle que quality.py) : counters.csv ne
+    # dépend plus de l'ordre des commandes.
+    groups = candidate_site_groups(pd.DataFrame([p.counter for p in items]))
+    for p in items:
+        p.counter["site_group_id"] = groups[str(p.counter["counter_id"])]
 
     out_dir = data_path("processed") / snapshot_id
     written = write_all(items, snapshot_id, acquire.source_file_id(raw_path), out_dir)
@@ -840,8 +862,15 @@ def prepare_all(snapshot_id: str) -> list[Prepared]:
             "rule": FLAG_DEFINITIONS[FLAG_NETWORK_GAP],
         },
         "direction_checks": checks,
+        "site_groups": {"rule": SITE_GROUP_RULE, "n_groups": int(groups.nunique())},
+        "known_limitations": [
+            SITE_GROUP_RULE if x.startswith("site_group_id = site_id") else x
+            for x in KNOWN_LIMITATIONS
+        ],
     }
-    manifest = update_manifest(snapshot_id, items, written, status, extra)
+    manifest = update_manifest(
+        snapshot_id, items, written, status, extra, raw_used=relative_to_root(raw_path)
+    )
     print_all_report(snapshot_id, items, extra, written, manifest)
     return items
 
@@ -859,6 +888,7 @@ def print_all_report(snapshot_id, items, extra, written, manifest) -> None:
     )
     print(f"Heures observées : {observed}/{total} ({observed / total:.1%})")
     print(f"Heures 'network_gap' : {extra['network_gap']['n_hours']}")
+    print(f"Groupes de sites (candidats, à moins de 100 m) : {extra['site_groups']['n_groups']}")
     print(
         f"Direction : {d['n_with_direction']}/{d['n_counters']} compteurs ; "
         f"sites à plusieurs compteurs : {d['n_sites_with_several_counters']} ; "
@@ -868,14 +898,14 @@ def print_all_report(snapshot_id, items, extra, written, manifest) -> None:
         print(f"  - site {s['site_id']} : {s['directions']}")
     if d["without_direction"]:
         print("  Sans direction :", ", ".join(d["without_direction"]))
-    n_alerts = sum(len(p.alerts) - 1 for p in items)
+    n_alerts = sum(len(p.alerts) for p in items)
     print(f"Alertes par compteur : {n_alerts} (détail dans le manifeste, « counters »)")
     print("\nFichiers :")
     for p in [*written["paths"].values(), manifest]:
         print(f"- {relative_to_root(p)}")
     print(
         "\nÉtape suivante : uv run python -m src.data.quality --snapshot "
-        f"{snapshot_id}  (écrit les groupes de sites dans counters.csv)"
+        f"{snapshot_id}  (inventaire et sélection ; groupes déjà écrits)"
     )
 
 

@@ -384,6 +384,25 @@ def candidate_groups(counters: pd.DataFrame, alias_distance_m: float) -> pd.Data
     )
 
 
+def candidate_site_groups(
+    counters: pd.DataFrame, alias_distance_m: float = SelectionCriteria.alias_distance_m
+) -> pd.Series:
+    """`counter_id` -> groupe candidat, avec la règle de `build_inventory`.
+
+    Utilisé aussi par `prepare.py --tout`, pour que `counters.csv` contienne les
+    groupes dès la préparation (même résultat que la réécriture de `run`).
+    """
+    c = counters[["counter_id", "site_id", "latitude", "longitude"]].copy()
+    c["counter_id"] = c["counter_id"].astype(str)
+    c["site_id"] = c["site_id"].fillna("").astype(str)
+    for col in ("latitude", "longitude"):
+        c[col] = pd.to_numeric(c[col].replace("", np.nan), errors="coerce")
+    c["site_group_id"] = site_group_key(c)
+    groups = candidate_groups(c, alias_distance_m)
+    out = c.merge(groups, on="site_group_id").set_index("counter_id")
+    return out["candidate_group_id"].astype(str)
+
+
 def _stable_rank(value: str, seed: str) -> str:
     return hashlib.sha256(f"{seed}:{value}".encode()).hexdigest()
 
@@ -596,7 +615,9 @@ def build_inventory(
     return inv, summary
 
 
-def network_gap_hours(counts: pd.DataFrame, share: float = 0.90) -> pd.DataFrame:
+def network_gap_hours(
+    counts: pd.DataFrame, share: float = SelectionCriteria.network_gap_share
+) -> pd.DataFrame:
     """Heures où au moins `share` des compteurs actifs sont sans mesure.
 
     Un compteur est « actif » entre sa première et sa dernière heure observée.
@@ -612,7 +633,9 @@ def network_gap_hours(counts: pd.DataFrame, share: float = 0.90) -> pd.DataFrame
     return per_hour[(1 - per_hour["sum"] / per_hour["size"]) >= share]
 
 
-def network_gaps(counts: pd.DataFrame, share: float = 0.90) -> list[dict]:
+def network_gaps(
+    counts: pd.DataFrame, share: float = SelectionCriteria.network_gap_share
+) -> list[dict]:
     """Périodes où presque tout le réseau est sans mesure (panne ou publication).
 
     Voir `network_gap_hours` pour la définition d'un compteur actif. Descriptif,
