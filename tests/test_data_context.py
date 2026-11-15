@@ -274,3 +274,41 @@ def test_build_context_hors_ligne(monkeypatch, tmp_path):
     assert ctx.loc[ctx["variable"] == "is_holiday", "local_date"].nunique() == 3
     weather = pd.to_datetime(ctx.loc[ctx["valid_time"] != "", "valid_time"], utc=True)
     assert weather.min() >= start and weather.max() <= end + pd.Timedelta(hours=1)
+
+
+# ----------------------------------------------------------------- hypothèses de disponibilité
+def test_hypotheses_lues_dans_la_configuration(monkeypatch):
+    monkeypatch.setattr(
+        c,
+        "load_config",
+        lambda: {
+            "context": {
+                "forecast_lead_days": 3,
+                "run_publication_delay_hours": 12,
+                "obs_publication_lag_hours": 48,
+            }
+        },
+    )
+    s = c.availability_settings()
+    assert (
+        s["forecast_lead_days"],
+        s["run_publication_delay_hours"],
+        s["obs_publication_lag_hours"],
+    ) == (3, 12, 48)
+    assert "12 h" in c.availability_text(c.SRC_FORECAST, s)
+
+
+def test_hypotheses_par_defaut_sans_section_context(monkeypatch):
+    monkeypatch.setattr(c, "load_config", lambda: {})
+    s = c.availability_settings()
+    assert (s["forecast_lead_days"], s["run_publication_delay_hours"]) == (2, 6)
+    assert s["obs_publication_lag_hours"] == 24
+
+
+def test_delai_de_publication_applique():
+    rows, _, _ = c.parse_forecast(forecast_json("2026-06-10", 24, 2), 2, run_delay_h=12)
+    first = c._frame(rows).iloc[0]
+    assert first["valid_time"] == "2026-06-10T00:00:00+00:00"
+    assert first["available_at"] == "2026-06-08T12:00:00+00:00"  # -48 h + 12 h
+    obs, _ = c.parse_observed(meteofrance_gz("2026-06-10", 1), lag_h=48)
+    assert c._frame(obs).iloc[0]["available_at"] == "2026-06-12T00:00:00+00:00"

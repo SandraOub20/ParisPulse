@@ -29,6 +29,8 @@ Règles de temps
     Avec N = 2, toute l'heure J+1 23:00 est disponible avant une origine J 00:00 ;
     avec N = 1, les dernières heures ne le sont pas (test automatique).
   * observation Météo-France : `available_at = valid_time + OBS_PUBLICATION_LAG_H`.
+- Les trois hypothèses (J-N, délai de publication d'un run, latence des observations) se
+  règlent dans la section `context` de config/project.yaml ; valeurs par défaut ci-dessus.
 - Une entrée n'est admissible pour une origine que si `available_at <= origin`
   (`admissible_context`). Les observations futures servent à l'analyse seulement.
 
@@ -53,7 +55,7 @@ import httpx
 import numpy as np
 import pandas as pd
 
-from src.common.config import data_path, relative_to_root
+from src.common.config import data_path, load_config, relative_to_root
 from src.data import acquire
 
 TZ_LOCAL = "Europe/Paris"
@@ -92,7 +94,8 @@ LOC_FORECAST = "openmeteo-48.8566-2.3522"
 STATION_MONTSOURIS = "75114001"
 LOC_OBSERVED = f"meteofrance-{STATION_MONTSOURIS}"
 
-# Hypothèses de disponibilité (à valider avec E4)
+# Hypothèses de disponibilité : valeurs par défaut. Les valeurs utilisées sont lues dans
+# la section `context` de config/project.yaml (à valider avec E4), voir availability_settings().
 FORECAST_LEAD_DAYS = 2
 RUN_PUBLICATION_DELAY_H = 6
 OBS_PUBLICATION_LAG_H = 24
@@ -151,19 +154,39 @@ SOURCES = {
     },
 }
 
-AVAILABILITY = {
-    SRC_HOLIDAYS: "Connu à l'avance (fixé par la loi) : admissible pour toute origine.",
-    SRC_SCHOOL: "Connu à l'avance (arrêté publié plus d'un an avant) : admissible.",
-    SRC_FORECAST: (
-        "Hypothèse : available_at = valid_time - lead_days×24 h + "
-        f"{RUN_PUBLICATION_DELAY_H} h (délai de publication d'un run). L'heure exacte "
-        "d'émission n'est pas fournie par l'API ; issued_at laissé vide."
-    ),
-    SRC_OBSERVED: (
-        f"Hypothèse : available_at = valid_time + {OBS_PUBLICATION_LAG_H} h "
-        "(publication quotidienne des données horaires)."
-    ),
-}
+
+def availability_settings() -> dict:
+    """Hypothèses de disponibilité lues dans `context` de config/project.yaml (défauts sinon)."""
+    cfg = load_config().get("context") or {}
+    return {
+        "forecast_lead_days": int(cfg.get("forecast_lead_days") or FORECAST_LEAD_DAYS),
+        "run_publication_delay_hours": int(
+            cfg.get("run_publication_delay_hours", RUN_PUBLICATION_DELAY_H)
+        ),
+        "obs_publication_lag_hours": int(
+            cfg.get("obs_publication_lag_hours", OBS_PUBLICATION_LAG_H)
+        ),
+        "source": "config/project.yaml (context)" if cfg else "valeurs par défaut de context.py",
+    }
+
+
+def availability_text(source_id: str, s: dict) -> str:
+    """Règle de disponibilité d'une source, écrite avec les hypothèses en vigueur."""
+    texts = {
+        SRC_HOLIDAYS: "Connu à l'avance (fixé par la loi) : admissible pour toute origine.",
+        SRC_SCHOOL: "Connu à l'avance (arrêté publié plus d'un an avant) : admissible.",
+        SRC_FORECAST: (
+            f"Hypothèse : prévision de J-{s['forecast_lead_days']} ; available_at = valid_time - "
+            f"{s['forecast_lead_days']}×24 h + {s['run_publication_delay_hours']} h (délai de "
+            "publication d'un run). L'heure exacte d'émission n'est pas fournie par l'API ; "
+            "issued_at laissé vide."
+        ),
+        SRC_OBSERVED: (
+            f"Hypothèse : available_at = valid_time + {s['obs_publication_lag_hours']} h "
+            "(publication quotidienne des données horaires)."
+        ),
+    }
+    return texts[source_id]
 
 
 # ----------------------------------------------------------------- formats
@@ -298,7 +321,9 @@ def forecast_params(start: dt.date, end: dt.date, lead_days: int) -> dict:
     }
 
 
-def parse_forecast(raw: bytes, lead_days: int) -> tuple[list[dict], dict, list[str]]:
+def parse_forecast(
+    raw: bytes, lead_days: int, run_delay_h: int = RUN_PUBLICATION_DELAY_H
+) -> tuple[list[dict], dict, list[str]]:
     data = json.loads(raw.decode("utf-8"))
     hourly, units = data["hourly"], data.get("hourly_units", {})
     alerts: list[str] = []
@@ -306,7 +331,7 @@ def parse_forecast(raw: bytes, lead_days: int) -> tuple[list[dict], dict, list[s
     if units.get(wind_key) not in (None, "m/s"):
         raise ValueError(f"Unité du vent inattendue : {units.get(wind_key)} (m/s attendu)")
     time = pd.to_datetime(pd.Series(hourly["time"]), utc=True)
-    available = time - pd.Timedelta(hours=24 * lead_days - RUN_PUBLICATION_DELAY_H)
+    available = time - pd.Timedelta(hours=24 * lead_days - run_delay_h)
     mapping = {
         "temp_prev": (f"temperature_2m_previous_day{lead_days}", "degC"),
         "rain_prev": (f"precipitation_previous_day{lead_days}", "mm"),
@@ -358,13 +383,15 @@ def meteofrance_resources(dataset_json: dict, start: dt.date, end: dt.date) -> l
     return out
 
 
-def parse_observed(raw: bytes, station: str = STATION_MONTSOURIS) -> tuple[list[dict], dict]:
+def parse_observed(
+    raw: bytes, station: str = STATION_MONTSOURIS, lag_h: int = OBS_PUBLICATION_LAG_H
+) -> tuple[list[dict], dict]:
     text = gzip.decompress(raw) if raw[:2] == b"\x1f\x8b" else raw
     df = pd.read_csv(io.BytesIO(text), sep=";", dtype=str, keep_default_na=False)
     df.columns = [c.strip() for c in df.columns]
     df = df[df["NUM_POSTE"].str.strip() == station]
     time = pd.to_datetime(df["AAAAMMJJHH"].str.strip(), format="%Y%m%d%H", utc=True)
-    available = time + pd.Timedelta(hours=OBS_PUBLICATION_LAG_H)
+    available = time + pd.Timedelta(hours=lag_h)
     mapping = {"temp_obs": ("T", "degC"), "rain_obs": ("RR1", "mm"), "wind_obs": ("FF", "m/s")}
     fill, rows = {}, []
     for variable, (col, unit) in mapping.items():
@@ -506,9 +533,14 @@ def build_context(
     start: pd.Timestamp,
     end: pd.Timestamp,
     meteo: bool = True,
-    lead_days: int = FORECAST_LEAD_DAYS,
+    lead_days: int | None = None,
     force: bool = False,
 ) -> tuple[pd.DataFrame, dict, list[Path]]:
+    settings = availability_settings()
+    if lead_days is not None:
+        settings["forecast_lead_days"] = lead_days
+        settings["source"] += " ; J-N remplacé par --lead"
+    lead_days = settings["forecast_lead_days"]
     raw_dir = context_dir(snapshot_id)
     first_day = start.tz_convert(TZ_LOCAL).date()
     last_day = end.tz_convert(TZ_LOCAL).date()
@@ -540,7 +572,9 @@ def build_context(
         params = forecast_params(first_day - dt.timedelta(days=1), last_day, lead_days)
         path = raw_dir / f"openmeteo_previous_day{lead_days}.json"
         f_rows, f_info, f_alerts = parse_forecast(
-            fetch(URL_FORECAST, path, params=params, force=force), lead_days
+            fetch(URL_FORECAST, path, params=params, force=force),
+            lead_days,
+            settings["run_publication_delay_hours"],
         )
         rows += keep_period(f_rows, start, end + pd.Timedelta(hours=1))
         raw_files.append(path)
@@ -559,7 +593,10 @@ def build_context(
         for r in resources:
             name = re.sub(r"[^\w.-]", "_", r.get("title") or Path(r["url"]).name)
             path = raw_dir / f"{name}.csv.gz"
-            part, o_info = parse_observed(fetch(r["url"], path, force=force))
+            part, o_info = parse_observed(
+                fetch(r["url"], path, force=force),
+                lag_h=settings["obs_publication_lag_hours"],
+            )
             o_rows += part
             raw_files.append(path)
         obs = pd.DataFrame(o_rows).drop_duplicates(["valid_time", "variable"]).to_dict("records")
@@ -572,7 +609,8 @@ def build_context(
                 **SOURCES[sid],
                 "context_source_id": sid,
                 "retrieved_at": retrieved,
-                "availability": AVAILABILITY[sid],
+                "availability": availability_text(sid, settings),
+                "assumptions": settings,
                 "context_version": CONTEXT_VERSION,
             }
         )
@@ -600,6 +638,8 @@ def update_manifest(
         }
         acquire.upsert(manifest["sources"], source, "source_id")
     manifest["context_version"] = CONTEXT_VERSION
+    first = next(iter(sheets.values()), {})
+    manifest["context_assumptions"] = first.get("assumptions")
     return acquire.write_manifest(manifest)
 
 
@@ -608,7 +648,7 @@ def run(
     debut: str | None = None,
     fin: str | None = None,
     meteo: bool = True,
-    lead_days: int = FORECAST_LEAD_DAYS,
+    lead_days: int | None = None,
     force: bool = False,
 ) -> dict:
     period = period_from_counts(snapshot_id)
@@ -650,6 +690,7 @@ def run(
     manifest = update_manifest(snapshot_id, paths, raw_files, sheets)
 
     print(f"Contexte {CONTEXT_VERSION} : {len(ctx)} lignes")
+    print(f"Hypothèses de disponibilité : {next(iter(sheets.values()))['assumptions']}")
     print(ctx.groupby(["context_source_id", "variable"]).size().to_string())
     print("\nAudit de jointure :")
     print(json.dumps(audit, ensure_ascii=False, indent=2))
@@ -671,8 +712,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--lead",
         type=int,
-        default=FORECAST_LEAD_DAYS,
-        help="prévision de J-N (défaut 2, voir la règle de disponibilité)",
+        default=None,
+        help="prévision de J-N (défaut : config/project.yaml, sinon 2)",
     )
     ap.add_argument("--force", action="store_true", help="retélécharger les bruts")
     args = ap.parse_args(argv)
