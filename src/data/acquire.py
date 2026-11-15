@@ -1,7 +1,7 @@
 """Extraction des sources et provenance - E1.
 
-Télécharge un compteur du flux courant Open Data Paris
-(`comptage-velo-donnees-compteurs`), dépose le CSV brut intact dans
+Télécharge le flux courant Open Data Paris (`comptage-velo-donnees-compteurs`),
+en entier (`--tout`, un seul export) ou pour un compteur, dépose le CSV brut intact dans
 `data/history/<snapshot_id>/` et décrit l'extraction dans
 `data/manifests/<snapshot_id>.json`. Enchaîne ensuite la préparation
 (`src/data/prepare.py`), sauf `--sans-preparation`.
@@ -16,6 +16,7 @@ Un fichier déjà présent dans l'instantané n'est jamais retéléchargé sans
 `--force`, pour que l'instantané reste stable.
 
 Usage, depuis la racine du dépôt :
+  uv run python -m src.data.acquire --tout --snapshot flux-20261115
   uv run python -m src.data.acquire --lister
   uv run python -m src.data.acquire --compteur 100057445-104057445
   uv run python -m src.data.acquire --compteur ID --fichier export_manuel.csv
@@ -71,18 +72,39 @@ def raw_filename(counter_id: str) -> str:
     return f"{DATASET_FLUX}__{safe_name(counter_id)}.csv"
 
 
+RAW_ALL_FILENAME = f"{DATASET_FLUX}__complet.csv"  # tout le flux, un seul export
+
+
 def source_file_id(raw_path: Path) -> str:
     """Identifiant de fichier source repris dans counts.csv."""
     return raw_path.stem
 
 
-def export_url(counter_id: str) -> tuple[str, dict]:
-    """URL exacte de l'export CSV filtré, et ses paramètres."""
-    params = {
-        "where": f'id_compteur="{counter_id}"',
-        "delimiter": RAW_SEPARATOR,
-        "timezone": "UTC",
-    }
+# Colonnes utiles du flux (celles que lit prepare.COLUMN_MAP). Sans `select`, l'export
+# complet envoie aussi les photos et champs techniques : plus de 1 Go au lieu de ~150 Mo.
+EXPORT_COLUMNS = [
+    "id_compteur",
+    "nom_compteur",
+    "id",
+    "name",
+    "sum_counts",
+    "date",
+    "installation_date",
+    "coordinates",
+]
+
+
+def export_url(counter_id: str | None = None) -> tuple[str, dict]:
+    """URL exacte de l'export CSV, et ses paramètres.
+
+    Un compteur : filtre `where`, toutes les colonnes (comportement d'origine).
+    Tout le flux : pas de filtre, seulement les colonnes utiles (`select`).
+    """
+    params = {"delimiter": RAW_SEPARATOR, "timezone": "UTC"}
+    if counter_id is not None:
+        params = {"where": f'id_compteur="{counter_id}"', **params}
+    else:
+        params = {"select": ",".join(EXPORT_COLUMNS), **params}
     return f"{API_BASE}/{DATASET_FLUX}/exports/csv?{urllib.parse.urlencode(params)}", params
 
 
@@ -106,6 +128,8 @@ def raw_stats(path: Path) -> dict:
     """Effectif et bornes temporelles (UTC) d'un brut du flux."""
     raw = read_raw(path)
     stats = {"n_rows": int(len(raw)), "first_timestamp": None, "last_timestamp": None}
+    if "id_compteur" in raw.columns:
+        stats["n_counters"] = int(raw["id_compteur"].nunique())
     if "date" in raw.columns and len(raw):
         ts = pd.to_datetime(raw["date"], utc=True, format="ISO8601", errors="coerce")
         if ts.notna().any():
@@ -196,9 +220,26 @@ def acquire_counter(
     force: bool = False,
 ) -> tuple[str, Path]:
     """Dépose le brut d'un compteur et met à jour le manifeste."""
+    return _acquire(raw_filename(counter_id), counter_id, snapshot_id, fichier, force)
+
+
+def acquire_all(
+    snapshot_id: str | None = None, fichier: Path | None = None, force: bool = False
+) -> tuple[str, Path]:
+    """Dépose tout le flux en un seul export : toutes les séries prises au même instant."""
+    return _acquire(RAW_ALL_FILENAME, None, snapshot_id, fichier, force)
+
+
+def _acquire(
+    filename: str,
+    counter_id: str | None,
+    snapshot_id: str | None,
+    fichier: Path | None,
+    force: bool,
+) -> tuple[str, Path]:
     now = dt.datetime.now(dt.timezone.utc)
     snapshot_id = snapshot_id or snapshot_id_for(now)
-    dest = data_path("history") / snapshot_id / raw_filename(counter_id)
+    dest = data_path("history") / snapshot_id / filename
     url, params = export_url(counter_id)
 
     manifest = load_manifest(snapshot_id)
@@ -214,9 +255,18 @@ def acquire_counter(
             "url": None,
             "manual_file": Path(fichier).name,
             "dataset_page": DATASET_PAGE,
-            "filters": {"id_compteur": counter_id, "note": "export manuel, filtre à vérifier"},
+            "filters": {
+                "id_compteur": counter_id or "tous",
+                "note": "export manuel, filtre à vérifier",
+            },
         }
     else:
+        if snapshot_id.startswith(f"{SNAPSHOT_PREFIX}-") and snapshot_id != snapshot_id_for(now):
+            print(
+                f"ATTENTION : instantané {snapshot_id}, mais nous sommes le "
+                f"{snapshot_id_for(now)} (UTC) : le nom ne correspondra pas au contenu. "
+                "L'annoncer à l'équipe."
+            )
         print(f"Téléchargement : {url}")
         download(url, dest)
         source = {
@@ -264,6 +314,7 @@ def list_counters(n: int = 30) -> pd.DataFrame:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--compteur", help="id_compteur à extraire")
+    ap.add_argument("--tout", action="store_true", help="tout le flux en un seul export")
     ap.add_argument("--lister", action="store_true", help="classer les compteurs par volume")
     ap.add_argument("--snapshot", help="identifiant d'instantané (défaut : flux-<date UTC>)")
     ap.add_argument("--fichier", type=Path, help="CSV exporté à la main si l'API ne répond pas")
@@ -275,8 +326,17 @@ def main(argv: list[str] | None = None) -> int:
         print(list_counters().to_string(index=False))
         print("\nChoisir un compteur à fort volume et n_heures proche du maximum.")
         return 0
+    if args.tout:
+        if args.compteur:
+            ap.error("--tout et --compteur sont incompatibles")
+        snapshot_id, _ = acquire_all(args.snapshot, args.fichier, args.force)
+        if not args.sans_preparation:
+            from src.data.prepare import prepare_all
+
+            prepare_all(snapshot_id)
+        return 0
     if not args.compteur:
-        ap.error("--compteur est obligatoire (ou --lister)")
+        ap.error("--compteur ou --tout est obligatoire (ou --lister)")
 
     snapshot_id, _ = acquire_counter(args.compteur, args.snapshot, args.fichier, args.force)
     if not args.sans_preparation:

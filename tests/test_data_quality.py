@@ -246,3 +246,37 @@ def test_trou_commun_au_reseau_detecte(network):
     assert [g["hours"] for g in gaps] == [24]
     assert gaps[0]["start"] == q._iso(START + pd.Timedelta(days=30))
     assert q.network_gaps(counts) == []
+
+
+def test_counters_csv_recoit_les_groupes_candidats(network):
+    """Étape 3 : site_group_id de counters.csv = groupe candidat, seule colonne modifiée."""
+    inv, summary = build(network)
+    raw = network[1].astype(str)
+    new = q.counters_with_groups(raw, inv).set_index("counter_id")
+    assert new.loc["alias1", "site_group_id"] == new.loc["alias2", "site_group_id"] == "A1"
+    for k in range(8):
+        assert new.loc[f"ok{k}a", "site_group_id"] == new.loc[f"ok{k}b", "site_group_id"]
+    assert new.loc["gappy", "site_group_id"] == "G"
+    others = [c for c in raw.columns if c != "site_group_id"]
+    pd.testing.assert_frame_equal(new.reset_index()[raw.columns][others], raw[others])
+    assert summary["n_site_groups"] == new["site_group_id"].nunique()
+    sel = sel_rows(inv)
+    assert (sel["site_group_id"] == sel["candidate_group_id"]).all()
+
+
+def test_relancer_donne_le_meme_resultat(network, tmp_path):
+    """Après réécriture de counters.csv, une 2e exécution ne change plus rien."""
+    counts, counters = network
+    path = tmp_path / "counters.csv"
+    counters.to_csv(path, index=False)
+
+    def once():
+        inv, summary = q.build_inventory(counts, q.load_counters(path), "t", SEL_END)
+        return inv, summary, q.write_site_groups(path, inv), path.read_bytes()
+
+    inv1, sum1, changed1, bytes1 = once()
+    inv2, sum2, changed2, bytes2 = once()
+    assert changed1 and not changed2
+    assert bytes1 == bytes2
+    pd.testing.assert_frame_equal(q.inventory_table(inv1), q.inventory_table(inv2))
+    assert sum1 == sum2

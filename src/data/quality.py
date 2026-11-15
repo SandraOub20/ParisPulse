@@ -7,7 +7,13 @@ Lit les sorties de `prepare.py` dans `data/processed/<snapshot_id>/` :
   gabarit, puis colonnes descriptives) ;
 - `selection_summary.json` : critères, effectifs, listes de groupes de sites
   à recopier dans `config/project.yaml` (`protocol.site_groups`), et trous
-  communs au réseau (`network_gaps`).
+  communs au réseau (`network_gaps`) ;
+- la colonne `site_group_id` de `counters.csv`, réécrite avec les groupes
+  candidats (sites à moins de `alias_distance_m`), seule colonne modifiée.
+
+Groupes de sites : toujours recalculés à partir de `site_id` (jamais modifié),
+pour que relancer le script donne exactement le même résultat. Ils sont
+CANDIDATS : déduits de la distance, non vérifiés sur place.
 
 Deux périodes par compteur (`period_role`) :
 - `selection` : du début de l'instantané au début du test (exclu). Les
@@ -472,8 +478,21 @@ def site_role(status: str) -> str:
     }.get(status, "none")
 
 
+SITE_GROUP_RULE = (
+    "site_group_id candidat : sites (site_id) à moins de alias_distance_m réunis par "
+    "chaînage ; identifiant = plus petit site_id du groupe ; déduit de la distance, "
+    "non vérifié sur place (E1, quality.py)."
+)
+
+
+def site_group_key(counters: pd.DataFrame) -> pd.Series:
+    """Clé de regroupement : `site_id`, ou `counter_id` si le site est inconnu."""
+    site = counters["site_id"].astype(str).str.strip()
+    return site.where(site != "", counters["counter_id"].astype(str))
+
+
 def uncertainties(row: pd.Series) -> list[str]:
-    out = ["site_group_id = site_id par défaut, regroupement physique à vérifier"]
+    out = ["site_group_id candidat (sites proches réunis), non vérifié sur place"]
     if not row["has_coordinates"]:
         out.append("coordonnées absentes : non placé sur la carte")
     if row["alias_candidates"]:
@@ -515,9 +534,9 @@ def build_inventory(
     unknown = sorted(set(counts["counter_id"]) - set(counters["counter_id"]))
     if unknown:
         raise ValueError(f"Compteurs absents de counters.csv : {unknown[:5]}")
-    if counters["site_group_id"].replace("", np.nan).isna().any():
-        counters["site_group_id"] = counters["site_group_id"].replace("", np.nan)
-        counters["site_group_id"] = counters["site_group_id"].fillna(counters["site_id"])
+    # Groupes recalculés depuis site_id, jamais depuis un site_group_id déjà réécrit :
+    # relancer après la réécriture de counters.csv redonne les mêmes groupes.
+    counters["site_group_id"] = site_group_key(counters)
 
     start = counts["ts"].min().floor("h")
     full_end = counts["ts"].max().floor("h") + pd.Timedelta(hours=1)
@@ -540,6 +559,8 @@ def build_inventory(
     )
     meta["zone"] = meta["dist_center_km"].map(zone_of)
     meta = meta.merge(candidate_groups(counters, c.alias_distance_m), on="site_group_id")
+    # La décision de l'étape 3 : le groupe utilisé partout est le groupe candidat.
+    meta["site_group_id"] = meta["candidate_group_id"]
 
     thresholds = {}
     for name, df in (("selection", sel), ("full", full)):
@@ -613,7 +634,7 @@ def selection_summary(inv: pd.DataFrame, snapshot_id: str, c: SelectionCriteria,
     def counters_of(status: str) -> list[str]:
         return sorted(sel.loc[sel["selection_status"] == status, "counter_id"].tolist())
 
-    alias = sel.groupby("candidate_group_id")["site_group_id"].nunique()
+    alias = sel.groupby("candidate_group_id")["site_id"].nunique()
     return {
         "quality_version": QUALITY_VERSION,
         "snapshot_id": snapshot_id,
@@ -679,6 +700,35 @@ def inventory_table(inv: pd.DataFrame) -> pd.DataFrame:
     return out.round(rounding)
 
 
+def counters_with_groups(counters_raw: pd.DataFrame, inv: pd.DataFrame) -> pd.DataFrame:
+    """`counters.csv` (lu en texte) avec `site_group_id` = groupe candidat.
+
+    Seule cette colonne change ; ordre des lignes et des colonnes conservé.
+    """
+    groups = (
+        inv[inv["period_role"] == PERIOD_SELECTION]
+        .set_index("counter_id")["site_group_id"]
+        .astype(str)
+    )
+    out = counters_raw.copy()
+    mapped = out["counter_id"].astype(str).map(groups)
+    if mapped.isna().any():
+        missing = out.loc[mapped.isna(), "counter_id"].tolist()[:5]
+        raise ValueError(f"Compteurs sans groupe calculé : {missing}")
+    out["site_group_id"] = mapped
+    return out
+
+
+def write_site_groups(counters_path: Path, inv: pd.DataFrame) -> bool:
+    """Réécrit `site_group_id` dans counters.csv ; True si le fichier a changé."""
+    raw = pd.read_csv(counters_path, dtype=str, keep_default_na=False)
+    new = counters_with_groups(raw, inv)
+    if new.equals(raw):
+        return False
+    new.to_csv(counters_path, index=False)
+    return True
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as fh:
@@ -687,8 +737,14 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def update_manifest(snapshot_id: str, paths: dict[str, Path], summary: dict) -> Path | None:
-    """Ajoute les sorties au manifeste de l'instantané s'il existe (créé par acquire)."""
+def update_manifest(
+    snapshot_id: str, paths: dict[str, Path], summary: dict, counters_path: Path | None = None
+) -> Path | None:
+    """Ajoute les sorties au manifeste de l'instantané s'il existe (créé par acquire).
+
+    `counters_path` : counters.csv réécrit (site_group_id) ; son empreinte et la
+    limite connue correspondante sont mises à jour.
+    """
     path = data_path("manifests") / f"{snapshot_id}.json"
     if not path.exists():
         return None
@@ -696,12 +752,27 @@ def update_manifest(snapshot_id: str, paths: dict[str, Path], summary: dict) -> 
     files = [f for f in manifest.get("files", []) if f.get("role") not in paths]
     for role, p in paths.items():
         files.append({"path": relative_to_root(p), "role": role, "sha256": _sha256(p)})
+    if counters_path is not None:
+        rel = relative_to_root(counters_path)
+        for f in files:
+            if f.get("path") == rel:
+                f["sha256"] = _sha256(counters_path)
+                f["site_group_id"] = "candidat, réécrit par quality.py"
+        manifest["known_limitations"] = [
+            SITE_GROUP_RULE if str(x).startswith("site_group_id = site_id") else x
+            for x in manifest.get("known_limitations", [])
+        ]
+        for report in (manifest.get("counters") or {}).values():
+            if isinstance(report, dict) and "site_group_id_status" in report:
+                report["site_group_id_status"] = "candidat, voir quality.site_group_rule"
     manifest["files"] = files
     manifest["quality"] = {
         "quality_version": QUALITY_VERSION,
         "selection_period": summary["selection_period"],
         "criteria": summary["criteria"],
         "counters_by_status": summary["counters_by_status"],
+        "site_group_rule": SITE_GROUP_RULE,
+        "n_site_groups": summary["n_site_groups"],
     }
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return path
@@ -796,6 +867,10 @@ def run(snapshot_id: str, fin_selection: str | None = None, figures: bool = Fals
         selection_end_from_config(fin_selection),
         criteria,
     )
+    # Avant les empreintes : à la 2e exécution, counters.csv est déjà à jour et
+    # les empreintes ne changent plus (même résultat à chaque relance).
+    changed = write_site_groups(counters_path, inv)
+    summary["site_group_rule"] = SITE_GROUP_RULE
     summary["inputs"] = {relative_to_root(p): _sha256(p) for p in (counts_path, counters_path)}
     paths = {
         "inventory_quality": out_dir / "inventory_quality.csv",
@@ -805,9 +880,13 @@ def run(snapshot_id: str, fin_selection: str | None = None, figures: bool = Fals
     paths["selection_summary"].write_text(
         json.dumps(summary, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8"
     )
-    manifest = update_manifest(snapshot_id, paths, summary)
+    manifest = update_manifest(snapshot_id, paths, summary, counters_path)
     print_summary(summary)
-    written = list(paths.values()) + ([manifest] if manifest else [])
+    print(
+        f"\ncounters.csv : site_group_id {'réécrit' if changed else 'déjà à jour'} "
+        f"({summary['n_site_groups']} groupes candidats)"
+    )
+    written = list(paths.values()) + [counters_path] + ([manifest] if manifest else [])
     if figures:
         written += save_figures(inv, out_dir / "figures")
     print("\nFichiers :", *(f"- {relative_to_root(p)}" for p in written), sep="\n")

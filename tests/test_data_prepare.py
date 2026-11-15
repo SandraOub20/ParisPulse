@@ -200,3 +200,42 @@ def test_acquire_identifiants_et_bom(tmp_path):
     assert df["sum_counts"].iloc[0] == "0.0"
     assert acquire.raw_stats(raw)["n_rows"] == 1
     assert len(acquire.sha256_file(raw)) == 64
+
+
+# ----------------------------------------------------------------- boucle sur tout le flux
+def test_acquire_export_complet_sans_filtre():
+    url, params = acquire.export_url()
+    assert "where" not in params and "where" not in url
+    assert params["timezone"] == "UTC"
+    assert params["select"].split(",") == acquire.EXPORT_COLUMNS
+    assert {prepare.COLUMN_MAP[c] for c in acquire.EXPORT_COLUMNS} >= prepare.REQUIRED_COLUMNS
+
+
+def test_preparation_de_tous_les_compteurs(tmp_path, monkeypatch):
+    """Un brut complet à 3 compteurs donne 3 compteurs, comme 3 préparations séparées."""
+    frames = []
+    for cid, n in (("a-1", 5), ("b-2", 3), ("c-3", 4)):
+        f = raw_frame([(f"2026-03-02T0{h}:00:00+00:00", "2.0") for h in range(n)])
+        frames.append(f.assign(id_compteur=cid, id=cid.split("-")[1]))
+    raw = pd.concat(frames, ignore_index=True)
+    for mod in (prepare, acquire):
+        monkeypatch.setattr(mod, "data_path", lambda key: tmp_path / key)
+        monkeypatch.setattr(mod, "relative_to_root", lambda p: str(p))
+    snap = tmp_path / "history" / "flux-test"
+    snap.mkdir(parents=True)
+    raw.to_csv(snap / acquire.RAW_ALL_FILENAME, sep=";", index=False, encoding="utf-8-sig")
+
+    items = prepare.prepare_all("flux-test")
+    out = tmp_path / "processed" / "flux-test"
+    c = pd.read_csv(out / "counts.csv", dtype=str)
+    k = pd.read_csv(out / "counters.csv", dtype=str)
+    assert len(items) == 3 and len(k) == 3
+    assert c["counter_id"].value_counts().to_dict() == {"a-1": 5, "c-3": 4, "b-2": 3}
+    assert c[["counter_id", "timestamp"]].duplicated().sum() == 0
+    assert (out / "counts.csv").read_text().splitlines()[0] == _template_header("counts.csv")
+    alone = prepare.normalize(frames[1], "b-2").counts
+    assert (c[c["counter_id"] == "b-2"]["count"].astype(float).to_numpy() == alone["count"]).all()
+    manifest = json.loads((tmp_path / "manifests" / "flux-test.json").read_text())
+    entry = next(f for f in manifest["files"] if f["role"] == "counts")
+    assert entry["n_rows"] == 12 and entry["n_counters"] == 3
+    assert set(manifest["counters"]) == {"a-1", "b-2", "c-3"}

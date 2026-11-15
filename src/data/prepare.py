@@ -14,7 +14,11 @@ Conventions (doc/CONTRATS.md §1 et §3) :
   évaluable.
 
 Usage, depuis la racine du dépôt (normalement enchaîné par acquire) :
+  uv run python -m src.data.prepare --snapshot flux-20261115 --tout
   uv run python -m src.data.prepare --snapshot flux-20261112 --compteur ID
+
+`--tout` prépare chaque compteur du brut complet (`acquire --tout`) avec la même
+normalisation que `--compteur`, et écrit les fichiers de l'instantané en une fois.
 
 Logique reprise de l'ancien script de l'équipe (parispulse-equipe01,
 commit 5488590, src/phase0.py), avec trois corrections : heures ambiguës du
@@ -403,8 +407,11 @@ def check_peaks(profile: pd.DataFrame) -> tuple[int | None, int | None, str | No
     if "semaine" not in profile or profile["semaine"].dropna().empty:
         return None, None, "Profil de semaine indisponible : convention horaire non contrôlée."
     week = profile["semaine"]
-    morning = int(week.loc[5:12].idxmax())
-    evening = int(week.loc[14:21].idxmax())
+    am, pm = week.loc[5:12].dropna(), week.loc[14:21].dropna()
+    if am.empty or pm.empty:  # compteur avec très peu d'heures (arrêté tôt, installé tard)
+        return None, None, "Trop peu d'heures de semaine : convention horaire non contrôlée."
+    morning = int(am.idxmax())
+    evening = int(pm.idxmax())
     if 7 <= morning <= 9 and 16 <= evening <= 19:
         return morning, evening, None
     return (
@@ -517,7 +524,17 @@ KNOWN_LIMITATIONS = [
 ]
 
 
-def update_manifest(snapshot_id: str, prepared: Prepared, written: dict, peaks_ok: bool) -> Path:
+def update_manifest(
+    snapshot_id: str,
+    prepared: Prepared | list[Prepared],
+    written: dict,
+    peaks_ok: bool | str,
+) -> Path:
+    """Complète le manifeste ; `prepared` = un compteur ou tous (--tout).
+
+    `peaks_ok` : booléen (un compteur) ou texte déjà rédigé (tout le flux).
+    """
+    items = prepared if isinstance(prepared, list) else [prepared]
     manifest = acquire.load_manifest(snapshot_id)
     counts, counters = written["counts"], written["counters"]
     p = written["paths"]
@@ -526,10 +543,15 @@ def update_manifest(snapshot_id: str, prepared: Prepared, written: dict, peaks_o
         acquire.file_entry(
             p["counts"],
             "counts",
-            n_rows=int(len(counts)),
-            n_counters=int(counts["counter_id"].nunique()),
-            first_timestamp=counts["timestamp"].min(),
-            last_timestamp=counts["timestamp"].max(),
+            **(
+                written.get("counts_stats")
+                or {
+                    "n_rows": int(len(counts)),
+                    "n_counters": int(counts["counter_id"].nunique()),
+                    "first_timestamp": counts["timestamp"].min(),
+                    "last_timestamp": counts["timestamp"].max(),
+                }
+            ),
             columns=COUNTS_COLUMNS,
         ),
         "path",
@@ -546,7 +568,9 @@ def update_manifest(snapshot_id: str, prepared: Prepared, written: dict, peaks_o
         "source_field": "date (datetime ODS, précision horaire)",
         "export_parameter": "timezone=UTC",
         "interpretation": "début de l'intervalle horaire, converti en UTC",
-        "status": "cohérent avec le profil horaire (pics ~8 h / ~18 h, heure de Paris)"
+        "status": peaks_ok
+        if isinstance(peaks_ok, str)
+        else "cohérent avec le profil horaire (pics ~8 h / ~18 h, heure de Paris)"
         if peaks_ok
         else "incertain : profil horaire inattendu",
         "naive_timestamps": "interprétés en Europe/Paris ; heures ambiguës/inexistantes "
@@ -559,10 +583,11 @@ def update_manifest(snapshot_id: str, prepared: Prepared, written: dict, peaks_o
     manifest["is_scoreable_rule"] = (
         "is_observed et count non vide (pas de conflit, valeur numérique non négative)."
     )
-    manifest.setdefault("counters", {})[prepared.counter["counter_id"]] = {
-        **prepared.report,
-        "alerts": prepared.alerts,
-    }
+    for item in items:
+        manifest.setdefault("counters", {})[item.counter["counter_id"]] = {
+            **item.report,
+            "alerts": item.alerts,
+        }
     return acquire.write_manifest(manifest)
 
 
@@ -598,11 +623,24 @@ def print_report(prepared: Prepared, profile: pd.DataFrame, dst: dict, holes: pd
     print("Alertes :", *(prepared.alerts or ["aucune"]), sep="\n- ")
 
 
-def prepare_counter(snapshot_id: str, counter_id: str) -> Prepared:
-    raw_path = data_path("history") / snapshot_id / acquire.raw_filename(counter_id)
-    if not raw_path.exists():
-        raise FileNotFoundError(f"Brut introuvable : {relative_to_root(raw_path)}")
-    prepared = normalize(acquire.read_raw(raw_path), counter_id)
+def _source_column(raw: pd.DataFrame, internal: str) -> str:
+    for c in raw.columns:
+        if COLUMN_MAP.get(str(c).lstrip("﻿")) == internal:
+            return c
+    raise ValueError(f"Colonne « {internal} » introuvable ; lues : {list(raw.columns)}")
+
+
+def split_by_counter(raw: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    """Lignes du brut par compteur, dans l'ordre des identifiants."""
+    col = _source_column(raw, "counter_id")
+    return {
+        str(cid): part.reset_index(drop=True)
+        for cid, part in raw.groupby(raw[col].astype(str), sort=True)
+    }
+
+
+def add_controls(prepared: Prepared) -> tuple[pd.DataFrame, dict, pd.DataFrame, str | None]:
+    """Profil horaire, jours de changement d'heure et trous ; complète le rapport."""
     profile = hourly_profile(prepared.counts)
     morning, evening, peak_alert = check_peaks(profile)
     if peak_alert:
@@ -621,8 +659,100 @@ def prepare_counter(snapshot_id: str, counter_id: str) -> Prepared:
     holes = gaps(prepared.counts)
     prepared.report["n_gaps"] = int(len(holes))
     prepared.alerts.append(
-        "site_group_id = site_id par défaut : regroupement physique à vérifier avec E3/E4."
+        "site_group_id = site_id ici : relancer quality.py pour écrire les groupes candidats."
     )
+    return profile, dst, holes, peak_alert
+
+
+def write_all(items: list[Prepared], snapshot_id: str, source_id: str, out_dir: Path) -> dict:
+    """Écrit les sorties de tout le flux en remplaçant les fichiers de l'instantané.
+
+    counts.csv est écrit compteur par compteur (ordre counter_id, timestamp),
+    sans tout garder en mémoire.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "counts": out_dir / "counts.csv",
+        "counters": out_dir / "counters.csv",
+        "audit": out_dir / "audit_duplicates.csv",
+    }
+    items = sorted(items, key=lambda p: str(p.counter["counter_id"]))
+    n_rows, first, last = 0, None, None
+    with paths["counts"].open("w", encoding="utf-8", newline="") as fh:
+        for i, p in enumerate(items):
+            table = counts_table(p, snapshot_id, source_id)
+            table.to_csv(fh, index=False, header=i == 0)
+            n_rows += len(table)
+            if len(table):
+                first = min(first or table["timestamp"].iloc[0], table["timestamp"].iloc[0])
+                last = max(last or table["timestamp"].iloc[-1], table["timestamp"].iloc[-1])
+    counters = pd.concat([counters_table(p, snapshot_id) for p in items], ignore_index=True)
+    counters.to_csv(paths["counters"], index=False)
+    audits = []
+    for p in items:
+        a = p.audit.copy()
+        a["ts"] = _fmt_ts(a["ts"]) if len(a) else a["ts"]
+        audits.append(a.rename(columns={"ts": "timestamp"}).astype(str))
+    audit = pd.concat(audits, ignore_index=True)
+    audit.sort_values(["counter_id", "timestamp"], kind="stable").to_csv(
+        paths["audit"], index=False
+    )
+    stats = {
+        "n_rows": n_rows,
+        "n_counters": len(items),
+        "first_timestamp": first,
+        "last_timestamp": last,
+    }
+    return {"paths": paths, "counts": None, "counts_stats": stats, "counters": counters}
+
+
+def prepare_all(snapshot_id: str) -> list[Prepared]:
+    """Prépare chaque compteur du brut complet de l'instantané (`acquire --tout`)."""
+    raw_path = data_path("history") / snapshot_id / acquire.RAW_ALL_FILENAME
+    if not raw_path.exists():
+        raise FileNotFoundError(
+            f"Brut complet introuvable : {relative_to_root(raw_path)} (lancer acquire --tout)"
+        )
+    items, peaks_ok = [], 0
+    for cid, part in split_by_counter(acquire.read_raw(raw_path)).items():
+        p = normalize(part, cid)
+        peaks_ok += add_controls(p)[3] is None
+        items.append(p)
+
+    out_dir = data_path("processed") / snapshot_id
+    written = write_all(items, snapshot_id, acquire.source_file_id(raw_path), out_dir)
+    status = (
+        f"cohérent avec le profil horaire (pics ~8 h / ~18 h, heure de Paris) pour "
+        f"{peaks_ok}/{len(items)} compteurs"
+    )
+    manifest = update_manifest(snapshot_id, items, written, status)
+    print_all_report(snapshot_id, items, written, manifest)
+    return items
+
+
+def print_all_report(snapshot_id, items, written, manifest) -> None:
+    stats = written["counts_stats"]
+    observed = sum(int(p.counts["is_observed"].sum()) for p in items)
+    print(f"\n=== Instantané {snapshot_id} : {len(items)} compteurs")
+    print(f"Période UTC : {stats['first_timestamp']} -> {stats['last_timestamp']}")
+    print(f"Lignes de counts.csv : {stats['n_rows']} ; observées : {observed}")
+    n_alerts = sum(len(p.alerts) - 1 for p in items)
+    print(f"Alertes par compteur : {n_alerts} (détail dans le manifeste, « counters »)")
+    print("\nFichiers :")
+    for p in [*written["paths"].values(), manifest]:
+        print(f"- {relative_to_root(p)}")
+    print(
+        "\nÉtape suivante : uv run python -m src.data.quality --snapshot "
+        f"{snapshot_id}  (écrit les groupes de sites dans counters.csv)"
+    )
+
+
+def prepare_counter(snapshot_id: str, counter_id: str) -> Prepared:
+    raw_path = data_path("history") / snapshot_id / acquire.raw_filename(counter_id)
+    if not raw_path.exists():
+        raise FileNotFoundError(f"Brut introuvable : {relative_to_root(raw_path)}")
+    prepared = normalize(acquire.read_raw(raw_path), counter_id)
+    profile, dst, holes, peak_alert = add_controls(prepared)
 
     out_dir = data_path("processed") / snapshot_id
     written = write_outputs(prepared, snapshot_id, acquire.source_file_id(raw_path), out_dir)
@@ -637,9 +767,15 @@ def prepare_counter(snapshot_id: str, counter_id: str) -> Prepared:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--snapshot", required=True, help="identifiant d'instantané, ex. flux-20261112")
-    ap.add_argument("--compteur", required=True, help="id_compteur")
+    ap.add_argument("--compteur", help="id_compteur (un seul compteur)")
+    ap.add_argument("--tout", action="store_true", help="tous les compteurs (brut de acquire --tout)")
     args = ap.parse_args(argv)
-    prepare_counter(args.snapshot, args.compteur)
+    if args.tout == bool(args.compteur):
+        ap.error("indiquer --tout ou --compteur ID (l'un des deux)")
+    if args.tout:
+        prepare_all(args.snapshot)
+    else:
+        prepare_counter(args.snapshot, args.compteur)
     return 0
 
 

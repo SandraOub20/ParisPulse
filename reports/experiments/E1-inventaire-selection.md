@@ -19,6 +19,7 @@
 | --- | --- | --- |
 | `inventory_quality.csv` | Une ligne par compteur et par période (`period_role`). Les 12 colonnes du gabarit viennent en premier, puis : site et groupe, coordonnées, zone, bornes observées, taux de manque, suites de zéros, jours de changement d'heure incomplets, volumes, profil, alias possibles, incertitudes | E2, E3, E4, E5 |
 | `selection_summary.json` | Critères, effectifs par statut, listes `site_groups.train / dev_new / test_new` à recopier dans `config/project.yaml`, diversité des profils par statut, trous communs au réseau (`network_gaps`) | E3, E4, E5 |
+| `counters.csv` (colonne `site_group_id`) | Réécrite avec le groupe candidat de chaque compteur ; aucune autre colonne ne change. Ajouté le 15/11/2026 (étape 3 des décisions E1, fait par Nihed pour Zeineb) | Toutes |
 | `figures/inventory_*.png` | Histogrammes (volume, historique, manques, zéros) et carte des statuts | rapport, présentation |
 
 Les sorties sont aussi ajoutées au manifeste de l'instantané, avec leurs SHA-256.
@@ -57,7 +58,7 @@ Plusieurs raisons peuvent être cumulées dans `status_reason`. Les zéros prolo
 
 ## Sites réservés pour E3
 
-1. **Groupes candidats.** On part de `site_group_id` (égal à `site_id` par défaut, à vérifier). On réunit ensuite les groupes situés à moins de **100 m** l'un de l'autre. Le contrat demande de ne pas répartir entre donneurs et réservés des séries qui pourraient être identiques. Un nom identique ne suffit pas à raccorder deux séries ; la proximité ne le prouve pas non plus. Ces regroupements sont donc signalés comme incertitude (`alias_candidates`) et tranchés avec E3/E4. Le seuil était d'abord de 50 m ; il a été corrigé après contrôle, voir « Évolution de la décision ».
+1. **Groupes candidats.** On part de `site_id`, jamais d'un `site_group_id` déjà réécrit : relancer le script donne donc exactement le même résultat. On réunit ensuite les sites situés à moins de **100 m** l'un de l'autre ; l'identifiant du groupe est le plus petit `site_id` qu'il contient. Ce groupe est écrit dans `site_group_id` de `counters.csv`, d'`inventory_quality.csv` et dans les listes de `selection_summary.json` : toutes les équipes lisent ainsi le même regroupement. Le contrat demande de ne pas répartir entre donneurs et réservés des séries qui pourraient être identiques. Un nom identique ne suffit pas à raccorder deux séries ; la proximité ne le prouve pas non plus. Ces regroupements sont donc signalés comme incertitude (`alias_candidates`) et tranchés avec E3/E4. Le seuil était d'abord de 50 m ; il a été corrigé après contrôle, voir « Évolution de la décision ».
 2. **Éligibilité.** Seuls les groupes dont toutes les directions sont `retained` peuvent être réservés. Cela évite de confondre la question « généraliser à un nouveau site » avec un problème de qualité.
 3. **Effectifs.** 15 % des groupes éligibles en `test_new` et 10 % en `dev_new`, au moins 2 chacun. Au moins la moitié des groupes éligibles reste en apprentissage.
 4. **Diversité.** Les groupes sont classés par strate (volume × zone). On les tire tour à tour dans chaque strate, dans un ordre fixé par un hachage SHA-256 et une graine (`parispulse-e1`). Le tirage est **reproductible** et ne dépend d'aucun score de modèle.
@@ -73,11 +74,13 @@ Ils sont dans `tests/test_data_quality.py`, sur un réseau synthétique :
 - statuts et raisons : série morte et historique de 20 jours exclus, 30 % de manques et suite de zéros en robustesse, compteur sans coordonnées conservé ;
 - directions d'un même site et alias possibles gardés ensemble ; aucun groupe à la fois en apprentissage et réservé ;
 - tirage identique d'une exécution à l'autre ;
+- `site_group_id` de `counters.csv` = groupe candidat (alias et deux sens réunis), aucune autre colonne modifiée ;
+- relancer après la réécriture de `counters.csv` ne change plus aucun fichier (mêmes octets).
 - **aucun statut ne change quand on modifie le futur** après la fin de sélection ;
 - clé `(counter_id, timestamp)` dupliquée refusée ;
 - jour de passage à l'heure d'hiver (25 h) avec une heure absente signalé comme incomplet.
 
-Après passage sur données réelles, deux tests ont été ajoutés (13 au total) : deux sens à 80 m restent ensemble, et un trou commun au réseau est détecté. Sur l'instantané réel, on a aussi vérifié qu'aucun groupe utilisé n'a deux rôles et qu'aucun site réservé n'a de site d'apprentissage à moins de **164 m**.
+Après passage sur données réelles, deux tests ont été ajoutés (13), puis deux autres le 15/11 pour l'écriture des groupes (15 au total) : deux sens à 80 m restent ensemble, et un trou commun au réseau est détecté. Sur l'instantané réel, on a aussi vérifié qu'aucun groupe utilisé n'a deux rôles et qu'aucun site réservé n'a de site d'apprentissage à moins de **164 m**.
 
 ## Résultats mesurés (`flux-20261114`, période de sélection du 14/10/2025 au 30/09/2026)
 
@@ -142,7 +145,7 @@ Cette correction s'appuie **uniquement sur les coordonnées et les noms**, jamai
 ## Analyse, limites et décision
 
 - Les critères sont des choix raisonnés. Ils ne sont pas optimisés : ils ont été fixés avant tout score de modèle. Une analyse de sensibilité (par exemple le seuil de 180 jours) peut se faire avec E4 **sur la période de sélection uniquement**.
-- `site_group_id = site_id` par défaut : le regroupement physique n'est pas vérifié. Les alias sont seulement candidats.
+- `site_group_id` est un groupe **candidat** : déduit de la distance (100 m), non vérifié sur place. La règle est notée dans le manifeste (`quality.site_group_rule`). `quality.py` doit être relancé après chaque `prepare.py`, qui remet `site_group_id = site_id`.
 - La direction n'est pas validée (`prepare` la laisse vide). Elle ne sert donc pas encore à la sélection.
 - Les jours fériés et les vacances scolaires ne sont pas pris en compte dans le profil. `context.py` (membre 3) pourra raffiner `profile_type`.
 - Le flux couvre 13 mois glissants. Le seuil de 180 jours suppose que l'instantané commence vers octobre 2025, comme prévu au protocole.
