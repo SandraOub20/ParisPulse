@@ -361,6 +361,14 @@ def test_direction_checks_site_avec_un_sens_manquant_et_site_vide():
     assert checks["sites_not_opposite"] == [{"site_id": "s1", "directions": ["N-S", None]}]
 
 
+def test_changement_d_heure_pas_controle_apres_l_arret():
+    hours = pd.date_range("2026-03-25T00:00Z", "2026-04-02T00:00Z", freq="h")
+    stopped = _counter("arret", "s1", "Rue A N-S", hours[hours < "2026-03-27"], hours)
+    assert prepare.dst_days(stopped.counts) == {}
+    running = _counter("actif", "s2", "Rue B N-S", hours, hours)
+    assert prepare.dst_days(running.counts) == {dt.date(2026, 3, 29): (23, 23)}
+
+
 def test_grille_commune_dates_sans_fuseau_en_heure_de_paris():
     raw = pd.DataFrame(
         {

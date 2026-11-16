@@ -53,7 +53,7 @@ from src.data.quality import (
 
 TZ_LOCAL = "Europe/Paris"
 LONG_ZERO_RUN_HOURS = 24  # seuil d'une suite de zéros « longue » (heures consécutives)
-NORMALIZATION_VERSION = "e1-prepare/0.2.1"
+NORMALIZATION_VERSION = "e1-prepare/0.2.2"
 # Seuil défini une seule fois, dans quality.SelectionCriteria
 NETWORK_GAP_SHARE = SelectionCriteria.network_gap_share
 
@@ -444,10 +444,19 @@ def gaps(counts: pd.DataFrame) -> pd.DataFrame:
 
 
 def dst_days(counts: pd.DataFrame) -> dict:
-    """Jours locaux complets de 23 ou 25 h : {date: (heures observées, attendues)}."""
+    """Jours locaux complets de 23 ou 25 h : {date: (heures observées, attendues)}.
+
+    Seulement les jours où le compteur est actif (entre sa première et sa dernière
+    mesure) : avec la grille commune, un compteur arrêté a encore des lignes, mais
+    l'absence de mesure n'y dit rien du changement d'heure.
+    """
     s = local_frame(counts)
     day = s["ts_local"].dt.date
-    full_days = sorted(set(day))[1:-1]  # le premier et le dernier jour peuvent être partiels
+    seen = day[s["is_observed"]]
+    if seen.empty:
+        return {}
+    active_days = sorted(d for d in set(day) if seen.min() <= d <= seen.max())
+    full_days = active_days[1:-1]  # le premier et le dernier jour peuvent être partiels
     expected = s.groupby(day).size()
     observed = s[s["is_observed"]].groupby(day[s["is_observed"]]).size()
     return {d: (int(observed.get(d, 0)), int(expected[d])) for d in full_days if expected[d] != 24}
