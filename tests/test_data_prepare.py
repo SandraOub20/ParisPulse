@@ -292,7 +292,10 @@ def test_preparation_de_tout_le_flux(tmp_path, monkeypatch):
 
     flags = c["quality_flags"].map(json.loads)
     in_gap = c["timestamp"].isin(hours[gap].strftime("%Y-%m-%dT%H:%M:%S+00:00"))
-    assert all(f == ["missing", "network_gap"] for f in flags[in_gap])
+    is_stop = c["counter_id"] == "stop"
+    assert all(f == ["missing", "network_gap"] for f in flags[in_gap & ~is_stop])
+    # Arrêté avant la panne : l'heure manque à cause du compteur, pas du réseau
+    assert all(f == ["missing"] for f in flags[in_gap & is_stop])
     assert not any("network_gap" in f for f in flags[~in_gap])
 
     k = pd.read_csv(tmp_path / "processed" / "flux-test" / "counters.csv", dtype=str)
@@ -314,6 +317,69 @@ def test_sens_non_opposes_signales(tmp_path, monkeypatch):
     assert prepare.direction_checks(items)["sites_not_opposite"] == [
         {"site_id": "s0", "directions": ["N-S", "N-S"]}
     ]
+
+
+# ----------------------------------------------------------------- relecture du 16/11 (Tasnim)
+def _counter(cid, site, name, ts, hours, empty_hours=()):
+    """Compteur préparé sur la grille commune `hours` ; valeur vide aux `empty_hours`."""
+    rows = [(t.isoformat(), "" if t in empty_hours else "5.0") for t in ts]
+    raw = raw_frame(rows).assign(id_compteur=cid, id=site, nom_compteur=name)
+    return prepare.normalize(raw, cid, (hours[0], hours[-1]))
+
+
+def test_network_gap_seulement_sur_les_compteurs_actifs():
+    hours = pd.date_range("2026-03-02T00:00Z", periods=48, freq="h")
+    gap = hours[20:24]
+    ok = hours[~hours.isin(gap)]
+    items = [_counter(f"c{i}", f"s{i}", f"Rue {i} N-S", ok, hours) for i in range(10)]
+    items.append(_counter("vide", "sv", "Rue V N-S", hours, hours, empty_hours=set(gap)))
+    items.append(_counter("tard", "st", "Rue T N-S", hours[30:], hours))  # installé après
+    assert list(prepare.mark_network_gaps(items)) == list(gap)
+
+    def gap_flags(p):
+        return p.counts.loc[p.counts["ts"].isin(gap), "flags"].tolist()
+
+    assert gap_flags(items[0]) == [["missing", "network_gap"]] * 4
+    # Valeur vide pendant la panne : 'network_gap' avec 'empty_value', sans 'missing'
+    assert gap_flags(items[-2]) == [["empty_value", "network_gap"]] * 4
+    # Pas encore installé : pas de 'network_gap'
+    assert gap_flags(items[-1]) == [["missing"]] * 4
+    assert items[-1].report["n_network_gap_hours"] == 0
+
+
+def test_direction_checks_site_avec_un_sens_manquant_et_site_vide():
+    hours = pd.date_range("2026-03-02T00:00Z", periods=3, freq="h")
+    items = [
+        _counter("a", "s1", "Rue A N-S", hours, hours),
+        _counter("b", "s1", "Rue A", hours, hours),  # pas de sens dans le nom
+        _counter("c", "", "Rue C N-S", hours, hours),  # site inconnu
+        _counter("d", "", "Rue D N-S", hours, hours),  # site inconnu
+    ]
+    checks = prepare.direction_checks(items)
+    assert checks["without_direction"] == ["b"]
+    assert checks["n_sites_with_several_counters"] == 1  # s1 seul ; "" n'est pas un site
+    assert checks["sites_not_opposite"] == [{"site_id": "s1", "directions": ["N-S", None]}]
+
+
+def test_changement_d_heure_pas_controle_apres_l_arret():
+    hours = pd.date_range("2026-03-25T00:00Z", "2026-04-02T00:00Z", freq="h")
+    stopped = _counter("arret", "s1", "Rue A N-S", hours[hours < "2026-03-27"], hours)
+    assert prepare.dst_days(stopped.counts) == {}
+    running = _counter("actif", "s2", "Rue B N-S", hours, hours)
+    assert prepare.dst_days(running.counts) == {dt.date(2026, 3, 29): (23, 23)}
+
+
+def test_grille_commune_dates_sans_fuseau_en_heure_de_paris():
+    raw = pd.DataFrame(
+        {
+            "id_compteur": CID,
+            "date": ["2026-03-02T01:00:00", "2026-03-02T05:00:00"],  # sans fuseau (UTC+1)
+        }
+    )
+    assert prepare.snapshot_range(raw) == (
+        pd.Timestamp("2026-03-02T00:00Z"),
+        pd.Timestamp("2026-03-02T04:00Z"),
+    )
 
 
 def test_acquire_export_complet_sans_filtre():

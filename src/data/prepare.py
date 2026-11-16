@@ -53,7 +53,7 @@ from src.data.quality import (
 
 TZ_LOCAL = "Europe/Paris"
 LONG_ZERO_RUN_HOURS = 24  # seuil d'une suite de zéros « longue » (heures consécutives)
-NORMALIZATION_VERSION = "e1-prepare/0.2.0"
+NORMALIZATION_VERSION = "e1-prepare/0.2.2"
 # Seuil défini une seule fois, dans quality.SelectionCriteria
 NETWORK_GAP_SHARE = SelectionCriteria.network_gap_share
 
@@ -112,7 +112,9 @@ FLAG_DEFINITIONS = {
     "d'été ; décalée à l'heure suivante.",
     FLAG_NETWORK_GAP: f"Heure non observée pendant laquelle au moins {NETWORK_GAP_SHARE:.0%} "
     "des compteurs actifs sont sans mesure (panne ou publication, pas le compteur). "
-    "Toujours avec 'missing'. Posé seulement par la préparation de tout le flux (--tout).",
+    "Posé seulement sur un compteur actif à cette heure (entre sa première et sa dernière "
+    "mesure), jamais avant son installation ni après son arrêt. Toujours avec 'missing' "
+    "ou 'empty_value'. Posé seulement par la préparation de tout le flux (--tout).",
 }
 
 # Sens en fin de nom : « ... S-N », « ... SO-NE » (points cardinaux en français)
@@ -442,10 +444,19 @@ def gaps(counts: pd.DataFrame) -> pd.DataFrame:
 
 
 def dst_days(counts: pd.DataFrame) -> dict:
-    """Jours locaux complets de 23 ou 25 h : {date: (heures observées, attendues)}."""
+    """Jours locaux complets de 23 ou 25 h : {date: (heures observées, attendues)}.
+
+    Seulement les jours où le compteur est actif (entre sa première et sa dernière
+    mesure) : avec la grille commune, un compteur arrêté a encore des lignes, mais
+    l'absence de mesure n'y dit rien du changement d'heure.
+    """
     s = local_frame(counts)
     day = s["ts_local"].dt.date
-    full_days = sorted(set(day))[1:-1]  # le premier et le dernier jour peuvent être partiels
+    seen = day[s["is_observed"]]
+    if seen.empty:
+        return {}
+    active_days = sorted(d for d in set(day) if seen.min() <= d <= seen.max())
+    full_days = active_days[1:-1]  # le premier et le dernier jour peuvent être partiels
     expected = s.groupby(day).size()
     observed = s[s["is_observed"]].groupby(day[s["is_observed"]]).size()
     return {d: (int(observed.get(d, 0)), int(expected[d])) for d in full_days if expected[d] != 24}
@@ -693,10 +704,12 @@ def _source_column(raw: pd.DataFrame, internal: str) -> str:
 
 
 def snapshot_range(raw: pd.DataFrame) -> tuple[pd.Timestamp, pd.Timestamp]:
-    """Première et dernière heure pile (UTC) de tout le brut : la grille commune."""
-    ts = pd.to_datetime(
-        raw[_source_column(raw, "date_source")], utc=True, format="ISO8601", errors="coerce"
-    )
+    """Première et dernière heure pile (UTC) de tout le brut : la grille commune.
+
+    Dates lues comme dans `normalize` (sans fuseau = heure de Paris), pour que la
+    grille commune et les heures de chaque compteur soient dans la même référence.
+    """
+    ts = parse_timestamps(raw[_source_column(raw, "date_source")])[0]
     ts = ts[ts.notna() & (ts.dt.minute == 0) & (ts.dt.second == 0)]
     if ts.empty:
         raise ValueError("Aucune date lisible dans le brut.")
@@ -713,14 +726,22 @@ def split_by_counter(raw: pd.DataFrame) -> dict[str, pd.DataFrame]:
 
 
 def mark_network_gaps(items: list[Prepared], share: float = NETWORK_GAP_SHARE) -> pd.DatetimeIndex:
-    """Ajoute `network_gap` aux heures non observées où presque tout le réseau manque."""
+    """Ajoute `network_gap` aux heures non observées où presque tout le réseau manque.
+
+    Seulement sur les compteurs actifs à cette heure (même définition que
+    `quality.network_gap_hours`) : avant l'installation ou après l'arrêt, l'heure
+    manque à cause du compteur, pas du réseau.
+    """
     frame = pd.concat(
         [p.counts[["ts", "is_observed"]].assign(counter_id=p.counter["counter_id"]) for p in items],
         ignore_index=True,
     )
     hours = network_gap_hours(frame, share).index
     for p in items:
-        hit = (p.counts["ts"].isin(hours) & ~p.counts["is_observed"]).to_numpy()
+        ts, observed = p.counts["ts"], p.counts["is_observed"]
+        seen = ts[observed]
+        active = (ts >= seen.min()) & (ts <= seen.max()) if len(seen) else ts.isna()
+        hit = (ts.isin(hours) & ~observed & active).to_numpy()
         flags = p.counts["flags"].tolist()
         for i in np.flatnonzero(hit):
             flags[i] = sorted(set(flags[i]) | {FLAG_NETWORK_GAP})
@@ -730,16 +751,22 @@ def mark_network_gaps(items: list[Prepared], share: float = NETWORK_GAP_SHARE) -
 
 
 def direction_checks(items: list[Prepared]) -> dict:
-    """Sens manquants, et sites à deux compteurs dont les sens ne sont pas opposés."""
+    """Sens manquants, et sites à plusieurs compteurs dont les sens ne sont pas opposés.
+
+    Regroupement par `site_id` (même site déclaré par la source) ; un compteur sans
+    `site_id` n'est rattaché à aucun site. Un site dont un compteur n'a pas de sens
+    est signalé (sens `None`), au lieu d'être compté comme un site à un compteur.
+    """
     df = pd.DataFrame([p.counter for p in items])
     without = sorted(df.loc[df["direction"].isna(), "counter_id"].tolist())
+    sited = df[df["site_id"].fillna("").astype(str).str.strip() != ""]
     two, not_opposite = 0, []
-    for site, g in df.dropna(subset=["direction"]).groupby("site_id"):
+    for site, g in sited.groupby("site_id"):
         if len(g) == 1:
             continue
         two += 1
-        dirs = g["direction"].tolist()
-        if len(g) != 2 or dirs[1] != opposite(dirs[0]):
+        dirs = [d if isinstance(d, str) else None for d in g["direction"]]
+        if len(g) != 2 or None in dirs or dirs[1] != opposite(dirs[0]):
             not_opposite.append({"site_id": site, "directions": dirs})
     return {
         "rule": "fin du nom (ex. 'S-N'), non vérifiée sur place",
