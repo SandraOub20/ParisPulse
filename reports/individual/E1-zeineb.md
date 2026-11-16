@@ -9,7 +9,7 @@
 - Versions et liens vers les fichiers/résultats : instantané provisoire `flux-20261114` ; [fiche EXP-E1-02](../experiments/E1-inventaire-selection.md).
 - Résultat et analyse critique : 74 / 17 / 15 / 6 / 1 compteurs (retenus, robustesse, test E3, dev E3, exclu). Avec un seuil d'alias de 50 m, les deux sens du Pont National (57 m) et du boulevard Richard-Lenoir (65 m) étaient répartis entre apprentissage et E3 : c'est une fuite.
 - Décision ou adaptation : seuil d'alias porté à 100 m, placé dans le creux de la distribution des distances (0-93 m, puis 113 m). La décision repose uniquement sur les coordonnées et les noms, avant tout score.
-- Partenaire, retour reçu et usage vérifié : Nihed a écrit `site_group_id` dans `counters.csv` (15/11) ; critères envoyés à E4.
+- Partenaire, retour reçu et usage vérifié : critères envoyés à E4.
 - Prochaine étape : passer à l'instantané produit par la boucle `--tout`.
 
 ## 16/11/2026 - Journée 2 : reprise sur `team1-nihed`, mise à jour de la fiche, contrôles
@@ -26,5 +26,5 @@
 - Versions et liens vers les fichiers/résultats : [fiche EXP-E1-02](../experiments/E1-inventaire-selection.md) mise à jour ; `data/processed/flux-20261116/selection_summary.json`, `inventory_quality.csv`, `figures/` ; `data/manifests/flux-20261116.json`.
 - Résultat et analyse critique : la sélection ne dépend pas du jour d'extraction. Seules les mesures liées au bord de la fenêtre changent un peu (compteurs à plus de 340 jours : 102, puis 108). Les anciens effectifs « 68 / 9 » de la fiche étaient des nombres de `site_id`, pas de groupes : correction faite (47 / 7 / 4 groupes, 58 au total). La direction est maintenant tirée du nom et non plus laissée vide : limite mise à jour.
 - Décision ou adaptation : `flux-20261115` reste la référence de l'équipe ; `flux-20261116` sert de contrôle de reproductibilité. Argumentaire « critères fixés avant le test » ajouté à la fiche.
-- Partenaire, retour reçu et usage vérifié : E4, en attente de sa réponse sur les critères, la date de test (01/10/2026) et les sites réservés.
+- Partenaire, retour reçu et usage vérifié : Nihed a écrit `site_group_id` (groupes candidats) dans `counters.csv` le 15/11 ; usage vérifié sur `flux-20261116` (58 groupes, deux sens du Pont National réunis). E4 : en attente de sa réponse sur les critères, la date de test (01/10/2026) et les sites réservés.
 - Prochaine étape : dès qu'E4 valide, lui transmettre les listes `site_groups` de `selection_summary.json` pour `config/project.yaml`, puis noter son retour dans la fiche. Vérifier ensuite l'usage par E3 (sites réservés) et par E5 (statuts sur la carte).
