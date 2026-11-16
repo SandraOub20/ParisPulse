@@ -248,3 +248,33 @@ def test_sensibilite_au_seuil_memes_groupes_moins_d_heures_retirees():
         assert res["groups"]["concerned"]["n_counters"] == 1  # groupes fixés à 24 h
         assert res["min_run_hours"] == seuil
     assert dropped == {24: 110, 48: 80, 72: 80}
+
+
+def test_historique_a_l_origine_publie_seulement_et_identique_pour_A_et_B():
+    df = frame("z", with_zeros(48, 30, 200))
+    hist = ze.with_availability(df, LAG)
+    origin = START + pd.Timedelta(hours=150)
+    seen = ze.history_at(hist, origin)
+    assert (seen["ts"] + pd.Timedelta(hours=1 + LAG) <= origin).all()  # rien de non publié
+    assert len(seen) == 150 - LAG  # les 24 dernières heures ne sont pas encore publiées
+
+    class Spy:
+        def __init__(self):
+            self.history = None
+
+        def fit(self, train):
+            pass
+
+        def predict(self, targets, history):
+            self.history = history
+            return np.ones(len(targets))
+
+    cases = ze.expected_cases(["z"], "2026-01-10", "2026-01-11")
+    t = ze.case_targets(cases, df)
+    cutoff = START + pd.Timedelta(hours=100)
+    spies = {}
+    for treatment in ("keep", "drop"):
+        spies[treatment] = Spy()
+        ze.run_variant(spies[treatment], df, {"z"}, t, cutoff, treatment, LAG)
+    pd.testing.assert_frame_equal(spies["keep"].history, spies["drop"].history)
+    assert (spies["keep"].history["count"] == 0).sum() == 30  # les zéros restent des entrées

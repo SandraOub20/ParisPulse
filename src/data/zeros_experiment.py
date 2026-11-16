@@ -12,7 +12,13 @@ puis moyenne non pondérée ; un zéro observé reste une cible évaluable.
 Seules les CIBLES d'apprentissage sont retirées par B : l'historique publié à la coupure
 est transmis intact au modèle (mêmes entrées pour A et B), avec un drapeau `is_target`.
 
-Modèle : tout objet ayant `fit(train)` et `predict(targets) -> y_pred` (voir `Model`).
+Entrées au moment de prévoir (PROTOCOLE_EVALUATION.md §3 : « les observations d'entrée
+peuvent s'actualiser à chaque origine même si le modèle reste gelé ») : `predict` reçoit
+aussi `history`, tous les comptages avec leur `available_at` (fin de l'heure + délai de
+publication). Pour une origine, le modèle ne lit que `history_at(history, origine)`. Cet
+historique est le même pour A et B : un zéro observé reste une entrée.
+
+Modèle : tout objet ayant `fit(train)` et `predict(targets, history) -> y_pred` (voir `Model`).
 Interface PROVISOIRE, à convenir avec E2 (src/models/registry.py) quand son modèle
 existera. `ProfileModel` sert seulement de TEST TECHNIQUE du script : ses chiffres ne
 décident rien.
@@ -52,18 +58,38 @@ class Model(Protocol):
         possibles). N'apprendre que sur les lignes `is_target` : seul ce drapeau change.
         """
 
-    def predict(self, targets: pd.DataFrame) -> np.ndarray:
-        """`targets` : case_id, counter_id, origin, horizon, ts ; une prévision par ligne."""
+    def predict(self, targets: pd.DataFrame, history: pd.DataFrame) -> np.ndarray:
+        """`targets` : case_id, counter_id, origin, horizon, ts ; une prévision par ligne.
+
+        `history` : counter_id, ts, count, available_at. Pour chaque origine, n'utiliser
+        que `history_at(history, origin)` (comptages publiés à l'origine).
+        """
+
+
+def with_availability(counts: pd.DataFrame, lag_hours: int | None = None) -> pd.DataFrame:
+    """Comptages et heure de publication : fin de l'heure + délai (`publication_lag_hours`)."""
+    lag = zeros.publication_lag_hours() if lag_hours is None else lag_hours
+    out = counts[["counter_id", "ts", "count"]].copy()
+    out["available_at"] = out["ts"] + pd.Timedelta(hours=1 + lag)
+    return out
+
+
+def history_at(history: pd.DataFrame, origin: pd.Timestamp) -> pd.DataFrame:
+    """Comptages publiés à l'origine : seule entrée admissible pour prévoir depuis `origin`."""
+    return history[history["available_at"] <= origin]
 
 
 class ProfileModel:
-    """TEST TECHNIQUE : médiane par compteur, heure locale et type de jour."""
+    """TEST TECHNIQUE : médiane par compteur, heure locale et type de jour (profil gelé).
+
+    N'utilise pas `history` : le profil est appris une fois à la coupure.
+    """
 
     def fit(self, train: pd.DataFrame) -> None:
         train = train[train["is_target"]]
         self.table = train.groupby(self._key(train))["count"].median()
 
-    def predict(self, targets: pd.DataFrame) -> np.ndarray:
+    def predict(self, targets: pd.DataFrame, history: pd.DataFrame | None = None) -> np.ndarray:
         idx = pd.MultiIndex.from_arrays(self._key(targets))
         return self.table.reindex(idx).to_numpy(dtype=float)
 
@@ -135,7 +161,8 @@ def run_variant(
     train = training_frame(counts, train_ids, cutoff, treatment, lag_hours, min_run)
     model.fit(train)
     preds = targets[["case_id", "counter_id", "horizon"]].copy()
-    preds["y_pred"] = model.predict(targets)
+    history = with_availability(counts[counts["counter_id"].isin(train_ids)], lag_hours)
+    preds["y_pred"] = model.predict(targets, history)  # même historique pour A et B
     days = train[train["is_target"]].groupby("counter_id").size() / 24
     return preds, days
 
