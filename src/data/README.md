@@ -21,7 +21,7 @@ uv run python -m src.data.quality --snapshot flux-20261115 --figures
 uv run python -m src.data.context --snapshot flux-20261115
 ```
 
-`quality.py` doit venir après `prepare.py` (qui remet `site_group_id = site_id`).
+`quality.py` vient après `prepare.py`. Avec `--tout`, `prepare` écrit déjà les groupes candidats et `quality.py` confirme qu'ils sont à jour. En préparation compteur par compteur, `prepare` remet `site_group_id = site_id` : `quality.py` réécrit alors les groupes.
 
 Entrées : `data/history/`. Sorties : `data/processed/<snapshot_id>/counts.csv`, `counters.csv`, `inventory_quality.csv`, `context.csv`, puis `data/manifests/<snapshot_id>.json`.
 
