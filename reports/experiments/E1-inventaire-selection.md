@@ -3,13 +3,14 @@
 - **Date, équipe, responsables et partenaires :** 13/11/2026, E1, Zeineb (inventaire et sélection) ; partenaire principal E4 (protocole, sites réservés), E3 (sites nouveaux), E2 (sites connus), E5 (carte et couverture). Données d'entrée : extraction de Tasnim (`acquire.py`, `prepare.py`).
 - **Question et hypothèse :** quel réseau observe-t-on dans le flux courant, et quels compteurs peut-on utiliser, avec quel rôle ? Hypothèse de travail : une partie des compteurs a un historique court, des manques ou de longues suites de zéros. On les garde visibles, on les écarte de l'apprentissage seulement quand la série ne permet pas de construire un cas, et on met de côté des sites entiers pour E3.
 - **Références :** `doc/CONTRATS.md` §2 (inventaire), `doc/PROTOCOLE_EVALUATION.md` §3-4 (séparations temporelles et spatiales), sujet p. 3 (« Étudier le réseau avant de choisir les compteurs »).
-- **Instantané, protocole, code et paramètres :** `src/data/quality.py` (`e1-quality/0.1.0`), protocole **proposé, non validé**. Instantané `flux-20261114` :
-  - export CSV complet du flux courant, récupéré le 14/11/2026 à 20:39 UTC ;
+- **Instantané, protocole, code et paramètres :** `src/data/quality.py` (`e1-quality/0.1.0`), protocole **proposé, non validé**. Instantané de référence de l'équipe : **`flux-20261115`** :
+  - export CSV complet du flux courant, préparé avec la boucle `uv run python -m src.data.acquire --tout` (grille commune, `e1-prepare/0.2.0`, branche `team1-nihed`) ;
   - colonnes `id_compteur, nom_compteur, id, name, sum_counts, date, installation_date, coordinates`, `timezone=UTC` ;
-  - 1 034 965 lignes, SHA-256 `0bbbba82…228173` ;
-  - normalisé compteur par compteur avec `prepare.normalize()` de Tasnim (branche `Team1-tasnim`, commit `e301f54`).
+  - nombre de lignes et SHA-256 du brut : dans `data/manifests/flux-20261115.json` (`files[role=raw]`).
 
-  Cet instantané est **provisoire** : il sera recalculé avec la boucle d'extraction de Tasnim dès qu'elle sera livrée.
+  Il remplace l'instantané provisoire `flux-20261114`, qui avait été normalisé compteur par compteur avant la livraison de la boucle. **Les effectifs par statut sont identiques** : 74 `retained` / 17 `robustness` / 15 `reserved_test_new` / 6 `reserved_dev_new` / 1 `excluded`. Les listes de sites réservés sont elles aussi identiques.
+
+  **Contrôle de reproductibilité (16/11/2026, Zeineb)** : la chaîne complète a été relancée sur une copie neuve, en partant de zéro : `acquire --tout`, puis `quality --figures`. L'instantané obtenu, `flux-20261116`, a été récupéré le 16/11/2026 à 13:59 UTC : 1 034 677 lignes, SHA-256 `5194759a…fb3260`, grille du 16/10/2025 au 15/11/2026 (9 503 h). Il redonne les mêmes effectifs, les mêmes 58 groupes et les mêmes listes `train / dev_new / test_new`. La fenêtre a pourtant glissé de deux jours.
 
 ## Ce que produit le module
 
@@ -19,7 +20,7 @@
 | --- | --- | --- |
 | `inventory_quality.csv` | Une ligne par compteur et par période (`period_role`). Les 12 colonnes du gabarit viennent en premier, puis : site et groupe, coordonnées, zone, bornes observées, taux de manque, suites de zéros, jours de changement d'heure incomplets, volumes, profil, alias possibles, incertitudes | E2, E3, E4, E5 |
 | `selection_summary.json` | Critères, effectifs par statut, listes `site_groups.train / dev_new / test_new` à recopier dans `config/project.yaml`, diversité des profils par statut, trous communs au réseau (`network_gaps`) | E3, E4, E5 |
-| `counters.csv` (colonne `site_group_id`) | Réécrite avec le groupe candidat de chaque compteur ; aucune autre colonne ne change. Ajouté le 15/11/2026 (étape 3 des décisions E1, fait par Nihed pour Zeineb) | Toutes |
+| `counters.csv` (colonne `site_group_id`) | **58 groupes de sites candidats** désormais écrits pour les 113 compteurs. `prepare.py --tout` les écrit dès la préparation (même règle, `quality.candidate_site_groups`). `quality.py` les recalcule et ne réécrit le fichier que s'ils diffèrent (« déjà à jour » sur `flux-20261116`). Aucune autre colonne ne change. Ajouté le 15/11/2026 (étape 3 des décisions E1, fait par Nihed pour Zeineb) | Toutes |
 | `figures/inventory_*.png` | Histogrammes (volume, historique, manques, zéros) et carte des statuts | rapport, présentation |
 
 Les sorties sont aussi ajoutées au manifeste de l'instantané, avec leurs SHA-256.
@@ -82,7 +83,9 @@ Ils sont dans `tests/test_data_quality.py`, sur un réseau synthétique :
 
 Après passage sur données réelles, deux tests ont été ajoutés (13), puis deux autres le 15/11 pour l'écriture des groupes (15 au total) : deux sens à 80 m restent ensemble, et un trou commun au réseau est détecté. Sur l'instantané réel, on a aussi vérifié qu'aucun groupe utilisé n'a deux rôles et qu'aucun site réservé n'a de site d'apprentissage à moins de **164 m**.
 
-## Résultats mesurés (`flux-20261114`, période de sélection du 14/10/2025 au 30/09/2026)
+## Résultats mesurés (`flux-20261115`, période de sélection jusqu'au 30/09/2026)
+
+Les chiffres ci-dessous ont été mesurés d'abord sur `flux-20261114` (fenêtre ouverte le 14/10/2025), puis contrôlés sur `flux-20261116` (fenêtre ouverte le 16/10/2025). Ils sont stables à l'unité près. Seuls changent les nombres qui dépendent du bord de la fenêtre : compteurs à plus de 340 jours d'historique (102, puis 108) et historique de la rue d'Aubervilliers (128 j, puis 126 j). Les statuts, les groupes et les rôles ne changent pas.
 
 ### Le réseau
 
@@ -95,13 +98,15 @@ Après passage sur données réelles, deux tests ont été ajoutés (13), puis d
 
 ### Statuts
 
-| Statut | Compteurs | Groupes de sites |
+| Statut | Compteurs | Groupes candidats (`site_id`) |
 | --- | --- | --- |
-| `retained` (S_train) | 74 | 68 groupes `S_train`, dont 17 compteurs `robustness` |
+| `retained` (S_train) | 74 | 47 groupes `S_train` (68 `site_id`), robustesse comprise |
 | `robustness` (S_train, évalué à part) | 17 | |
-| `reserved_test_new` (S_test_new) | 15 | 9 |
-| `reserved_dev_new` (S_dev_new) | 6 | 4 |
-| `excluded` | 1 | 1 |
+| `reserved_test_new` (S_test_new) | 15 | 7 (9) |
+| `reserved_dev_new` (S_dev_new) | 6 | 4 (4) |
+| `excluded` | 1 | 1 (le groupe de Denfert-Rochereau, dont l'autre sens est en `S_train`) |
+
+Au total, **58 groupes** : 47 + 7 + 4 = 58, puisque le groupe de l'exclu est aussi un groupe `S_train`. Les versions précédentes de cette fiche donnaient « 68 » et « 9 » : ce sont des nombres de `site_id`, comptés avant que les groupes candidats soient écrits partout.
 
 - **Exclu** : 106 avenue Denfert-Rochereau NE-SO. 100 % des heures sont dans une suite de zéros (5 973 h). L'autre sens du même lieu est gardé.
 - **Robustesse, 17 compteurs** :
@@ -120,11 +125,28 @@ Après passage sur données réelles, deux tests ont été ajoutés (13), puis d
 
 21 groupes candidats réunissent plusieurs `site_id`. Dans presque tous les cas, ce sont **les deux sens d'un même lieu publiés sous deux `site_id`**, par exemple « 89 bd de Magenta NO-SE » et « 102 bd de Magenta SE-NO », ou « Pont National SO-NE » et « Pont National NE-SO ». Séparer les sites par `site_id`, comme le ferait le réglage par défaut `site_group_id = site_id`, aurait mis un sens en apprentissage et l'autre en test E3.
 
+### Contrôle à la main : Pont National (critère « Fini quand »)
+
+Critère : les deux sens ont le même `site_group_id` et des directions opposées. Commande :
+
+```bash
+uv run python -c "import pandas as pd;k=pd.read_csv('data/processed/flux-20261116/counters.csv',dtype=str);print(k[k.counter_name.str.contains('National')][['counter_id','counter_name','site_id','site_group_id','direction']])"
+```
+
+| `counter_id` | Nom | `site_id` | `site_group_id` | `direction` | Statut |
+| --- | --- | --- | --- | --- | --- |
+| 100047541-353326452 | Pont National SO-NE | 100047541 | **100047541** | SO-NE | `retained` |
+| 100047549-101047549 | Pont National NE-SO | 100047549 | **100047541** | NE-SO | `retained` |
+
+**Validé** : il y a deux `site_id` distants d'environ 57 m, un seul groupe, des sens opposés et le même rôle (`S_train`). Avec l'ancien seuil de 50 m, ces deux sens étaient séparés (voir « Évolution de la décision »). Le contrôle automatique de `prepare` le confirme sur tout le réseau : `direction_checks.sites_not_opposite = []` (31 sites à plusieurs compteurs). Sur `flux-20261116`, on a aussi revérifié qu'aucun groupe n'a deux rôles et qu'aucun site réservé n'a de site d'apprentissage à moins de 164 m.
+
 ### Trous communs au réseau (≥ 90 % des compteurs actifs sans mesure)
+
+**Changement de définition (15/11/2026)** : dans `network_gaps`, un compteur est désormais « actif » à une heure seulement si cette heure est **entre sa première et sa dernière mesure**. Avant, il suffisait qu'il ait une ligne dans `counts.csv`. Ce changement est nécessaire avec la grille commune de `prepare --tout`, où tout compteur a une ligne à toutes les heures, même avant son installation ou après son arrêt. Sans lui, ces heures auraient été comptées comme des manques du réseau. **Les trous trouvés restent les mêmes** (`flux-20261115` et `flux-20261116`), à l'exception du bord de la fenêtre glissante, qui suit la date de l'instantané.
 
 | Début (heure de Paris) | Durée | Période |
 | --- | --- | --- |
-| 14-15/10/2025, plusieurs heures | 8 h au total | début de la fenêtre glissante |
+| premier jour de la fenêtre glissante (14/10/2025 sur `-20261114`, 16/10/2025 sur `-20261116`), plusieurs heures | 8 à 12 h au total | début de la fenêtre glissante |
 | 26/10/2025 02:00 | 1 h | heure répétée du passage à l'heure d'hiver |
 | 02/07/2026 et 06/07/2026 00:00 | 2 h + 2 h | validation |
 | 22/08/2026 | 24 h | validation |
@@ -145,17 +167,28 @@ Cette correction s'appuie **uniquement sur les coordonnées et les noms**, jamai
 ## Analyse, limites et décision
 
 - Les critères sont des choix raisonnés. Ils ne sont pas optimisés : ils ont été fixés avant tout score de modèle. Une analyse de sensibilité (par exemple le seuil de 180 jours) peut se faire avec E4 **sur la période de sélection uniquement**.
-- `site_group_id` est un groupe **candidat** : déduit de la distance (100 m), non vérifié sur place. La règle est notée dans le manifeste (`quality.site_group_rule`). `quality.py` doit être relancé après chaque `prepare.py`, qui remet `site_group_id = site_id`.
-- La direction n'est pas validée (`prepare` la laisse vide). Elle ne sert donc pas encore à la sélection.
+- `site_group_id` est un groupe **candidat** : déduit de la distance (100 m), non vérifié sur place. La règle est notée dans le manifeste (`quality.site_group_rule`, `site_groups.rule`). `prepare.py --tout` écrit déjà les groupes. Seule la préparation compteur par compteur remet `site_group_id = site_id` : dans ce cas, il faut relancer `quality.py`.
+- La direction est tirée de la fin du nom (par exemple « SO-NE »), sans vérification sur place. Elle est renseignée pour 113 compteurs sur 113, et les sens d'un même site sont tous opposés. Elle ne sert pas aux critères de sélection.
 - Les jours fériés et les vacances scolaires ne sont pas pris en compte dans le profil. `context.py` (membre 3) pourra raffiner `profile_type`.
 - Le flux couvre 13 mois glissants. Le seuil de 180 jours suppose que l'instantané commence vers octobre 2025, comme prévu au protocole.
 - Le protocole n'est **pas encore validé** par le professeur. Les listes de sites deviennent définitives seulement après cette validation, et avant toute comparaison de modèles. Elles ne sont pas encore recopiées dans `config/project.yaml`, qui relève d'E4.
 - Le boulevard Jourdan E-O a 46 % de ses heures dans des suites de zéros, juste sous le seuil d'exclusion de 50 % : il est classé en robustesse. Ce cas limite est à examiner avec E2 (garder ou écarter la période de zéros en apprentissage, travail du membre 4).
-- La fenêtre glissante commence le 14/10/2025. Le seuil de 180 jours ne concerne en pratique que les séries arrêtées tôt.
-- Le premier jour de l'instantané (14/10/2025) est incomplet pour tout le réseau : c'est un effet du bord de la fenêtre glissante, pas une panne.
+- La fenêtre glissante commence vers mi-octobre 2025 (le 14/10 pour `-20261114`, le 16/10 pour `-20261116`). Le seuil de 180 jours ne concerne en pratique que les séries arrêtées tôt.
+- Le premier jour de l'instantané est incomplet pour tout le réseau : c'est un effet du bord de la fenêtre glissante, pas une panne.
+
+### Décision à défendre : des critères fixés avant le test
+
+1. **Période** : tous les statuts sont calculés sur la seule période de sélection, du début de l'instantané au 01/10/2026 00:00, heure de Paris. Les origines d'octobre 2026, réservées au test final, ne sont pas lues pour décider.
+2. **Preuve** : le test `tests/test_data_quality.py` modifie toutes les heures postérieures à la fin de sélection et vérifie qu'aucun statut ne change. La période complète sert seulement à décrire, et le statut y est recopié.
+3. **Aucun score de modèle** : les seuils (28 j, 180 j, 10 %, 50 %, 5 passages/h, 24 h de zéros, 100 m) et le tirage (SHA-256, graine `parispulse-e1`) ont été fixés avant toute prévision. La seule révision, de 50 m à 100 m, repose sur les coordonnées et les noms. Elle a été faite avant toute expérience de prévision.
+4. **Stabilité** : deux instantanés différents (`-20261115` et `-20261116`) donnent les mêmes statuts et les mêmes listes. Le choix ne dépend donc pas du jour d'extraction.
+5. **Rien ne disparaît** : l'exclu et les 17 compteurs de robustesse restent dans l'inventaire et sur la carte, avec leur raison.
 
 ## Lien vers les données et retours des partenaires
 
 - Données : `data/processed/<snapshot_id>/inventory_quality.csv`, `selection_summary.json`, `figures/`.
-- Retour d'E4 sur les critères et les sites réservés : *à renseigner*.
+- Retour d'E4 sur les critères, la date de test (01/10/2026) et les sites réservés : **demandé (point 1 du message à E4), en attente**. Dès qu'E4 valide, Zeineb lui transmet `site_groups.train / dev_new / test_new` de `selection_summary.json` pour `config/project.yaml` (`protocol.site_groups`), fichier qui relève d'E4. Listes actuelles :
+  - `dev_new` : `100056035, 100056331, 300030163, 300030922` ;
+  - `test_new` : `100047534, 100049407, 100056329, 100056330, 100056336, 300030139, 300030250` ;
+  - `train` : les 47 autres groupes (liste complète dans `selection_summary.json`).
 - Preuve d'usage par E3 (sites réservés repris dans `config/project.yaml`) et par E5 (statuts affichés sur la carte) : *à renseigner*.
