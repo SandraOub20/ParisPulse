@@ -133,7 +133,7 @@ Tests automatiques sur un petit jeu synthétique (`tests/test_data_zeros.py`, 16
 - à une origine, le modèle ne voit que les comptages publiés à cette date, identiques pour A et B.
 - à 48 h et 72 h, B retire moins d'heures mais les groupes restent ceux de la règle à 24 h.
 
-Sur données réelles, **sans modèle ni calcul d'erreur** (15/11/2026) : 91 compteurs répartis en 9 concernés, 74 témoins et 8 autres ; B retire 5 822 cibles d'apprentissage, toutes des zéros, sur ces 9 compteurs seulement ; historique identique pour A et B ; 5 642 cas attendus, dont 381 sans aucune mesure. **Relancé le 16/11/2026 sur la grille commune** (113 × 9 503 heures, reconstruite à partir de l'instantané) : chiffres strictement identiques, comme attendu, puisqu'une heure absente coupait déjà les suites. À reconfirmer sur le nouveau zip de Nihed.
+Sur données réelles, **sans modèle ni calcul d'erreur** (15/11/2026) : 91 compteurs répartis en 9 concernés, 74 témoins et 8 autres ; B retire 5 822 cibles d'apprentissage, toutes des zéros, sur ces 9 compteurs seulement ; historique identique pour A et B ; 5 642 cas attendus, dont 381 sans aucune mesure. **Relancé le 16/11/2026 sur la grille commune** (113 × 9 503 heures, reconstruite à partir de l'instantané) : chiffres strictement identiques, comme attendu, puisqu'une heure absente coupait déjà les suites. **Reconfirmé le 16/11/2026 sur la nouvelle version de `flux-20261115`** (fichiers du 15/11 à 21 h, 8 empreintes SHA-256 vérifiées ; 1 073 839 lignes, 9 503 par compteur, `direction` remplie, drapeau `network_gap` présent) : 5 822 heures sur 9 compteurs, 5 642 cas dont 381 sans mesure, 5 797 heures à 48 h et 72 h.
 
 ## Résultats mesurés
 
