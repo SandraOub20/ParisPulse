@@ -174,7 +174,7 @@ def test_colonnes_et_format_conformes_aux_gabarits(mixed, tmp_path):
 
     k = written["counters"].iloc[0]
     assert k["site_group_id"] == k["site_id"] == "999"
-    assert k["latitude"] == "48.85" and k["direction"] == ""
+    assert k["latitude"] == "48.85" and k["direction"] == "S-N"
 
 
 def test_ajout_d_un_second_compteur_sans_ecraser(mixed, tmp_path):
@@ -202,7 +202,120 @@ def test_acquire_identifiants_et_bom(tmp_path):
     assert len(acquire.sha256_file(raw)) == 64
 
 
-# ----------------------------------------------------------------- boucle sur tout le flux
+# ----------------------------------------------------------------- décisions E1 du 15/11
+def test_direction_tiree_du_nom():
+    assert prepare.direction_from_name("Totem 73 boulevard de Sébastopol S-N") == "S-N"
+    assert prepare.direction_from_name("Pont National SO-NE") == "SO-NE"
+    assert prepare.direction_from_name("Quai d'Orsay") is None
+    assert prepare.direction_from_name("Boulevard Saint-Michel") is None  # pas un sens
+    assert prepare.opposite("SO-NE") == "NE-SO"
+
+
+def test_compteur_arrete_garde_ses_heures_jusqu_a_la_fin():
+    """Grille commune : un compteur arrêté a des lignes manquantes jusqu'à la fin."""
+    rows = [("2026-03-02T00:00:00+00:00", "5.0"), ("2026-03-02T01:00:00+00:00", "6.0")]
+    grid = (pd.Timestamp("2026-03-01T22:00Z"), pd.Timestamp("2026-03-02T05:00Z"))
+    p = prepare.normalize(raw_frame(rows), CID, grid)
+    c = p.counts
+    assert len(c) == 8  # 22:00 -> 05:00
+    after = c[c["ts"] > pd.Timestamp("2026-03-02T01:00Z")]
+    before = c[c["ts"] < pd.Timestamp("2026-03-02T00:00Z")]
+    for part in (after, before):
+        assert not part["is_observed"].any() and part["count"].isna().all()
+        assert all(f == [prepare.FLAG_MISSING] for f in part["flags"])
+    assert p.report["last_observed"] == "2026-03-02T01:00:00+00:00"
+    assert p.report["grid"] == "commune à l'instantané"
+
+
+def test_grille_commune_ne_perd_aucune_mesure():
+    rows = [("2026-03-02T00:00:00+00:00", "5.0"), ("2026-03-02T09:00:00+00:00", "6.0")]
+    grid = (pd.Timestamp("2026-03-02T02:00Z"), pd.Timestamp("2026-03-02T03:00Z"))
+    c = prepare.normalize(raw_frame(rows), CID, grid).counts
+    assert len(c) == 10 and c["is_observed"].sum() == 2
+
+
+def _network(tmp_path, monkeypatch, n_sites=5, alias=False):
+    """Brut complet : n_sites x 2 sens + un compteur arrêté, sur 4 jours ; jour 2 vide.
+
+    Sites à environ 1 km les uns des autres ; `alias` ajoute un compteur d'un autre
+    site_id à environ 45 m du site s0 (même lieu probable).
+    """
+    start = pd.Timestamp("2026-08-21T00:00Z")
+    hours = pd.date_range(start, periods=96, freq="h")
+    gap = (hours >= start + pd.Timedelta(days=1)) & (hours < start + pd.Timedelta(days=2))
+    frames = []
+
+    def add(cid, site, name, ts, coords="48.85, 2.35"):
+        frames.append(
+            pd.DataFrame(
+                {
+                    "id_compteur": cid,
+                    "nom_compteur": name,
+                    "id": site,
+                    "name": f"Site {site}",
+                    "sum_counts": "4.0",
+                    "date": [t.isoformat() for t in ts],
+                    "installation_date": "2020-01-01",
+                    "coordinates": coords,
+                }
+            )
+        )
+
+    for k in range(n_sites):
+        coords = f"{48.80 + 0.01 * k:.4f}, 2.35"
+        add(f"c{k}a", f"s{k}", f"Rue {k} N-S", hours[~gap], coords)
+        add(f"c{k}b", f"s{k}", f"Rue {k} S-N", hours[~gap], coords)
+    add("stop", "z", "Rue arrêtée E-O", hours[:12], "48.95, 2.45")  # s'arrête le premier jour
+    if alias:
+        add("al", "s9", "Rue 0 bis N-S", hours[~gap], "48.8004, 2.35")
+    raw = pd.concat(frames, ignore_index=True)
+
+    for mod in (prepare, acquire):
+        monkeypatch.setattr(mod, "data_path", lambda key: tmp_path / key)
+        monkeypatch.setattr(mod, "relative_to_root", lambda p: str(p))
+    snap = tmp_path / "history" / "flux-test"
+    snap.mkdir(parents=True)
+    raw.to_csv(snap / acquire.RAW_ALL_FILENAME, sep=";", index=False, encoding="utf-8-sig")
+    return start, hours, gap
+
+
+def test_preparation_de_tout_le_flux(tmp_path, monkeypatch):
+    start, hours, gap = _network(tmp_path, monkeypatch)
+    items = prepare.prepare_all("flux-test")
+    assert len(items) == 11
+
+    c = pd.read_csv(tmp_path / "processed" / "flux-test" / "counts.csv", dtype=str)
+    assert c.groupby("counter_id").size().eq(96).all()  # même grille pour tous
+    assert c[["counter_id", "timestamp"]].duplicated().sum() == 0
+    stop = c[c["counter_id"] == "stop"]
+    assert (stop["is_observed"].iloc[12:] == "false").all()  # heures gardées après l'arrêt
+
+    flags = c["quality_flags"].map(json.loads)
+    in_gap = c["timestamp"].isin(hours[gap].strftime("%Y-%m-%dT%H:%M:%S+00:00"))
+    assert all(f == ["missing", "network_gap"] for f in flags[in_gap])
+    assert not any("network_gap" in f for f in flags[~in_gap])
+
+    k = pd.read_csv(tmp_path / "processed" / "flux-test" / "counters.csv", dtype=str)
+    assert len(k) == 11 and k["direction"].notna().all()
+    manifest = json.loads((tmp_path / "manifests" / "flux-test.json").read_text())
+    assert manifest["grid"]["n_hours"] == 96
+    assert manifest["network_gap"]["n_hours"] == 24
+    checks = manifest["direction_checks"]
+    assert checks["n_with_direction"] == 11 and checks["sites_not_opposite"] == []
+    assert checks["n_sites_with_several_counters"] == 5
+    assert manifest["files"][0]["n_rows"] == 11 * 96
+
+
+def test_sens_non_opposes_signales(tmp_path, monkeypatch):
+    _network(tmp_path, monkeypatch, n_sites=1)
+    items = prepare.prepare_all("flux-test")
+    items[0].counter["direction"] = "N-S"
+    items[1].counter["direction"] = "N-S"
+    assert prepare.direction_checks(items)["sites_not_opposite"] == [
+        {"site_id": "s0", "directions": ["N-S", "N-S"]}
+    ]
+
+
 def test_acquire_export_complet_sans_filtre():
     url, params = acquire.export_url()
     assert "where" not in params and "where" not in url
@@ -211,31 +324,55 @@ def test_acquire_export_complet_sans_filtre():
     assert {prepare.COLUMN_MAP[c] for c in acquire.EXPORT_COLUMNS} >= prepare.REQUIRED_COLUMNS
 
 
-def test_preparation_de_tous_les_compteurs(tmp_path, monkeypatch):
-    """Un brut complet à 3 compteurs donne 3 compteurs, comme 3 préparations séparées."""
-    frames = []
-    for cid, n in (("a-1", 5), ("b-2", 3), ("c-3", 4)):
-        f = raw_frame([(f"2026-03-02T0{h}:00:00+00:00", "2.0") for h in range(n)])
-        frames.append(f.assign(id_compteur=cid, id=cid.split("-")[1]))
-    raw = pd.concat(frames, ignore_index=True)
-    for mod in (prepare, acquire):
-        monkeypatch.setattr(mod, "data_path", lambda key: tmp_path / key)
-        monkeypatch.setattr(mod, "relative_to_root", lambda p: str(p))
-    snap = tmp_path / "history" / "flux-test"
-    snap.mkdir(parents=True)
-    raw.to_csv(snap / acquire.RAW_ALL_FILENAME, sep=";", index=False, encoding="utf-8-sig")
+# ----------------------------------------------------------------- corrections du 15/11 au soir
+def test_groupes_de_sites_ecrits_par_prepare(tmp_path, monkeypatch):
+    """counters.csv contient les groupes dès prepare --tout, comme quality.py les écrirait."""
+    from src.data import quality
 
-    items = prepare.prepare_all("flux-test")
+    _network(tmp_path, monkeypatch, alias=True)
+    prepare.prepare_all("flux-test")
     out = tmp_path / "processed" / "flux-test"
-    c = pd.read_csv(out / "counts.csv", dtype=str)
-    k = pd.read_csv(out / "counters.csv", dtype=str)
-    assert len(items) == 3 and len(k) == 3
-    assert c["counter_id"].value_counts().to_dict() == {"a-1": 5, "c-3": 4, "b-2": 3}
-    assert c[["counter_id", "timestamp"]].duplicated().sum() == 0
-    assert (out / "counts.csv").read_text().splitlines()[0] == _template_header("counts.csv")
-    alone = prepare.normalize(frames[1], "b-2").counts
-    assert (c[c["counter_id"] == "b-2"]["count"].astype(float).to_numpy() == alone["count"]).all()
+    k = pd.read_csv(out / "counters.csv", dtype=str).set_index("counter_id")
+    assert k.loc["al", "site_group_id"] == k.loc["c0a", "site_group_id"] == "s0"  # 45 m
+    assert k.loc["c1a", "site_group_id"] == k.loc["c1b", "site_group_id"] == "s1"
+    assert k["site_group_id"].nunique() == 6  # s0 (+ s9), s1..s4, z
+    # même règle que quality.py : relancer quality ne changerait rien
+    expected = quality.candidate_site_groups(quality.load_counters(out / "counters.csv"))
+    assert (k["site_group_id"] == expected.reindex(k.index)).all()
     manifest = json.loads((tmp_path / "manifests" / "flux-test.json").read_text())
-    entry = next(f for f in manifest["files"] if f["role"] == "counts")
-    assert entry["n_rows"] == 12 and entry["n_counters"] == 3
-    assert set(manifest["counters"]) == {"a-1", "b-2", "c-3"}
+    assert manifest["site_groups"]["n_groups"] == 6
+    assert not any(x.startswith("site_group_id = site_id") for x in manifest["known_limitations"])
+    assert not any(
+        "relancer quality.py" in a for r in manifest["counters"].values() for a in r["alerts"]
+    )
+
+
+def test_manifeste_indique_le_brut_utilise(tmp_path, monkeypatch):
+    _network(tmp_path, monkeypatch, n_sites=1)
+    path = tmp_path / "manifests" / "flux-test.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    old = {"path": "data/history/flux-test/ancien_essai.csv", "role": "raw", "sha256": "x"}
+    path.write_text(json.dumps({"snapshot_id": "flux-test", "files": [old], "sources": []}))
+    prepare.prepare_all("flux-test")
+    manifest = json.loads(path.read_text())
+    assert manifest["raw_used_by_prepare"].endswith(acquire.RAW_ALL_FILENAME)
+    raws = {f["path"]: f["used_by_prepare"] for f in manifest["files"] if f["role"] == "raw"}
+    assert raws["data/history/flux-test/ancien_essai.csv"] is False
+
+
+def test_telechargement_refuse_si_le_nom_n_est_pas_la_date_du_jour(tmp_path, monkeypatch):
+    monkeypatch.setattr(acquire, "data_path", lambda key: tmp_path / key)
+    monkeypatch.setattr(acquire, "relative_to_root", lambda p: str(p))
+
+    def no_download(*args, **kwargs):
+        raise AssertionError("aucun téléchargement ne doit partir")
+
+    monkeypatch.setattr(acquire, "download", no_download)
+    with pytest.raises(ValueError, match="Refusé"):
+        acquire.acquire_all("flux-20000101")
+
+
+def test_un_seul_seuil_network_gap():
+    from src.data import quality
+
+    assert prepare.NETWORK_GAP_SHARE == quality.SelectionCriteria.network_gap_share

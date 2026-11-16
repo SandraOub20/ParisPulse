@@ -5,7 +5,7 @@ Les modules contiennent des instructions à implémenter :
 | Fichier | Travail attendu |
 | --- | --- |
 | `acquire.py` | Sources, extraction, archives/flux et provenance ; `--tout` télécharge tout le flux en un seul export (`data/history/<snapshot_id>/comptage-velo-donnees-compteurs__complet.csv`) puis lance la préparation |
-| `prepare.py` | UTC, identifiants, grille horaire et résolution des doublons ; `--tout` prépare tous les compteurs du brut complet |
+| `prepare.py` | UTC, identifiants, grille horaire et résolution des doublons ; avec `--tout`, grille commune à tous les compteurs, `direction` tirée du nom, drapeau `network_gap` (contrôles dans le manifeste : `grid`, `network_gap`, `direction_checks`) |
 | `context.py` | Source complémentaire, disponibilité et cardinalité des jointures ; écrit `context.csv` (jours fériés, vacances zone C, météo prévue J-2 et observée), `context_sources.json` et `context_join_audit.json`. Hypothèses de disponibilité dans la section `context` de `config/project.yaml`. Choix et contrôles : [fiche](../../reports/experiments/E1-contexte-source-complementaire.md) |
 | `quality.py` | Inventaire, distribution, manques, zéros et choix d'échantillon ; écrit `inventory_quality.csv` et `selection_summary.json` (sites réservés E3), et réécrit `site_group_id` dans `counters.csv` (groupes candidats à moins de 100 m ; à relancer après `prepare.py`). Critères : [fiche](../../reports/experiments/E1-inventaire-selection.md) |
 | `zeros.py` | Approfondissement : heures d'une suite d'au moins 24 h de zéros à écarter de l'apprentissage (traitement B), détectées avec les seules heures publiées à la coupure ; ne modifie ni `count` ni les fichiers. Protocole : [fiche](../../reports/experiments/E1-zeros-apprentissage.md) |

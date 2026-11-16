@@ -13,12 +13,14 @@ Conventions (doc/CONTRATS.md §1 et §3) :
   Règle structurelle, indépendante de la méthode ; un zéro prolongé reste
   évaluable.
 
+Grille commune (décision E1, étape 2) : avec `--tout`, chaque compteur a les
+mêmes heures, du début à la fin de l'instantané. Une heure où le compteur ne
+mesure pas (avant son installation, après son arrêt) est une ligne avec
+`is_observed=false` et le drapeau `missing`, jamais une ligne absente.
+
 Usage, depuis la racine du dépôt (normalement enchaîné par acquire) :
   uv run python -m src.data.prepare --snapshot flux-20261115 --tout
   uv run python -m src.data.prepare --snapshot flux-20261112 --compteur ID
-
-`--tout` prépare chaque compteur du brut complet (`acquire --tout`) avec la même
-normalisation que `--compteur`, et écrit les fichiers de l'instantané en une fois.
 
 Logique reprise de l'ancien script de l'équipe (parispulse-equipe01,
 commit 5488590, src/phase0.py), avec trois corrections : heures ambiguës du
@@ -31,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass, field
 from itertools import chain
@@ -41,10 +44,18 @@ import pandas as pd
 
 from src.common.config import data_path, relative_to_root
 from src.data import acquire
+from src.data.quality import (
+    SITE_GROUP_RULE,
+    SelectionCriteria,
+    candidate_site_groups,
+    network_gap_hours,
+)
 
 TZ_LOCAL = "Europe/Paris"
 LONG_ZERO_RUN_HOURS = 24  # seuil d'une suite de zéros « longue » (heures consécutives)
-NORMALIZATION_VERSION = "e1-prepare/0.1.0"
+NORMALIZATION_VERSION = "e1-prepare/0.2.0"
+# Seuil défini une seule fois, dans quality.SelectionCriteria
+NETWORK_GAP_SHARE = SelectionCriteria.network_gap_share
 
 COUNTS_COLUMNS = [
     "counter_id",
@@ -81,6 +92,7 @@ FLAG_CONFLICT = "conflict"
 FLAG_LONG_ZERO_RUN = "long_zero_run"
 FLAG_DST_AMBIGUOUS = "dst_ambiguous"
 FLAG_DST_NONEXISTENT = "dst_nonexistent"
+FLAG_NETWORK_GAP = "network_gap"
 
 FLAG_DEFINITIONS = {
     FLAG_MISSING: "Heure de grille absente de la source ; count vide, non évaluable.",
@@ -98,7 +110,25 @@ FLAG_DEFINITIONS = {
     "1re occurrence = heure d'été, 2e = heure d'hiver (ordre du fichier).",
     FLAG_DST_NONEXISTENT: "Heure locale sans décalage inexistante au passage à l'heure "
     "d'été ; décalée à l'heure suivante.",
+    FLAG_NETWORK_GAP: f"Heure non observée pendant laquelle au moins {NETWORK_GAP_SHARE:.0%} "
+    "des compteurs actifs sont sans mesure (panne ou publication, pas le compteur). "
+    "Toujours avec 'missing'. Posé seulement par la préparation de tout le flux (--tout).",
 }
+
+# Sens en fin de nom : « ... S-N », « ... SO-NE » (points cardinaux en français)
+DIRECTION_PATTERN = r"^(N|S|E|O|NE|NO|SE|SO)-(N|S|E|O|NE|NO|SE|SO)$"
+
+
+def direction_from_name(name) -> str | None:
+    """Sens tiré de la fin du nom (`S-N`, `SO-NE`...), ou None s'il n'y en a pas."""
+    text = str(name or "").strip()
+    tail = text.rsplit(" ", 1)[-1] if " " in text else ""
+    return tail if re.fullmatch(DIRECTION_PATTERN, tail) else None
+
+
+def opposite(direction: str) -> str:
+    a, b = direction.split("-")
+    return f"{b}-{a}"
 
 # Noms techniques (API) et libellés (exports du site / archives) -> noms internes
 COLUMN_MAP = {
@@ -203,8 +233,17 @@ def _parse_coordinates(value) -> tuple[float, float]:
     return np.nan, np.nan
 
 
-def normalize(raw: pd.DataFrame, counter_id: str) -> Prepared:
-    """Normalise le brut d'un compteur sur une grille horaire UTC complète."""
+def normalize(
+    raw: pd.DataFrame,
+    counter_id: str,
+    grid_range: tuple[pd.Timestamp, pd.Timestamp] | None = None,
+) -> Prepared:
+    """Normalise le brut d'un compteur sur une grille horaire UTC complète.
+
+    `grid_range` = (première, dernière heure UTC de l'instantané) : grille
+    commune à tous les compteurs. Sans elle, la grille va de la première à la
+    dernière heure du compteur (usage compteur par compteur).
+    """
     df = raw.rename(columns=lambda c: COLUMN_MAP.get(str(c).lstrip("﻿"), c))
     missing_cols = REQUIRED_COLUMNS - set(df.columns)
     if missing_cols:
@@ -261,7 +300,11 @@ def normalize(raw: pd.DataFrame, counter_id: str) -> Prepared:
     )
 
     # Grille horaire complète
-    grid = pd.date_range(hours.index.min(), hours.index.max(), freq="h", tz="UTC", name="ts")
+    first, last = hours.index.min(), hours.index.max()
+    if grid_range is not None:
+        # Jamais plus courte que les heures du compteur : aucune mesure n'est perdue.
+        first, last = min(first, grid_range[0]), max(last, grid_range[1])
+    grid = pd.date_range(first, last, freq="h", tz="UTC", name="ts")
     h = hours.reindex(grid)
     present = h["n_rows"].notna()
     conflict = is_conflict.reindex(grid, fill_value=False)
@@ -327,13 +370,15 @@ def normalize(raw: pd.DataFrame, counter_id: str) -> Prepared:
         "site_name": last.get("site_name", ""),
         "latitude": lat,
         "longitude": lon,
-        "direction": None,  # non validée ; voir report["direction_candidate"]
+        # Tirée du nom (décision E1, étape 3 bis), non vérifiée sur place.
+        "direction": direction_from_name(last.get("counter_name", "")),
         "installation_date": last.get("installation_date", ""),
     }
 
     name = str(counter["counter_name"])
     tail = name.rsplit(" ", 1)[-1] if " " in name else ""
     longest = int(zero_run.max()) if len(zero_run) else 0
+    observed_ts = grid[is_observed.to_numpy()]
     report = {
         "n_source_rows": int(len(df)),
         "n_rows_unplaced": int((bad_ts | off_hour).sum()),
@@ -354,8 +399,12 @@ def normalize(raw: pd.DataFrame, counter_id: str) -> Prepared:
         "coverage": round(float(is_observed.mean()), 4),
         "first_timestamp": grid.min().isoformat(),
         "last_timestamp": grid.max().isoformat(),
+        "first_observed": observed_ts.min().isoformat() if len(observed_ts) else None,
+        "last_observed": observed_ts.max().isoformat() if len(observed_ts) else None,
+        "grid": "commune à l'instantané" if grid_range is not None else "propre au compteur",
         "metadata_variants": variants,
         "direction_candidate": tail if "-" in tail else None,
+        "direction_source": "fin du nom" if counter["direction"] else "aucun sens dans le nom",
         "site_group_id_status": "par défaut = site_id, à vérifier",
     }
     if conflict.any():
@@ -514,12 +563,14 @@ KNOWN_LIMITATIONS = [
     "PAS servir de variable de prévision (E2/E3). Un zéro reste un zéro et reste évaluable.",
     "site_group_id = site_id par défaut ; le regroupement physique (directions, alias) n'est "
     "pas encore vérifié.",
-    "direction laissée vide : le suffixe du nom (ex. 'S-N') est un candidat non validé.",
+    "direction tirée de la fin du nom (ex. 'S-N', 'SO-NE'), non vérifiée sur place ; vide si "
+    "le nom ne se termine pas par un sens.",
     "Hypothèse : le champ 'date' marque le DÉBUT de l'intervalle horaire ; le profil horaire "
     "est cohérent avec cette lecture mais ne la prouve pas à l'heure près.",
     "Flux courant uniquement (13 mois glissants) : pas d'archives annuelles ni de contexte.",
-    "Les heures absentes sont détectées entre la première et la dernière heure présentes ; "
-    "les manques avant/après ces bornes ne sont pas représentés.",
+    "Avec --tout, grille commune : chaque compteur a toutes les heures de l'instantané ; "
+    "avant l'installation et après l'arrêt, is_observed=false. Compteur par compteur "
+    "(--compteur), la grille va de la première à la dernière heure du compteur.",
     "Une suite de zéros est interrompue par une heure absente ou invalide.",
 ]
 
@@ -529,8 +580,13 @@ def update_manifest(
     prepared: Prepared | list[Prepared],
     written: dict,
     peaks_ok: bool | str,
+    extra: dict | None = None,
+    raw_used: str | None = None,
 ) -> Path:
     """Complète le manifeste ; `prepared` = un compteur ou tous (--tout).
+
+    `raw_used` : brut lu par la préparation ; les autres bruts de l'instantané sont
+    marqués comme non utilisés (ex. un premier essai sur un seul compteur).
 
     `peaks_ok` : booléen (un compteur) ou texte déjà rédigé (tout le flux).
     """
@@ -588,6 +644,12 @@ def update_manifest(
             **item.report,
             "alerts": item.alerts,
         }
+    manifest.update(extra or {})
+    if raw_used is not None:
+        manifest["raw_used_by_prepare"] = raw_used
+        for f in manifest.get("files", []):
+            if f.get("role") == "raw":
+                f["used_by_prepare"] = f.get("path") == raw_used
     return acquire.write_manifest(manifest)
 
 
@@ -630,6 +692,17 @@ def _source_column(raw: pd.DataFrame, internal: str) -> str:
     raise ValueError(f"Colonne « {internal} » introuvable ; lues : {list(raw.columns)}")
 
 
+def snapshot_range(raw: pd.DataFrame) -> tuple[pd.Timestamp, pd.Timestamp]:
+    """Première et dernière heure pile (UTC) de tout le brut : la grille commune."""
+    ts = pd.to_datetime(
+        raw[_source_column(raw, "date_source")], utc=True, format="ISO8601", errors="coerce"
+    )
+    ts = ts[ts.notna() & (ts.dt.minute == 0) & (ts.dt.second == 0)]
+    if ts.empty:
+        raise ValueError("Aucune date lisible dans le brut.")
+    return ts.min(), ts.max()
+
+
 def split_by_counter(raw: pd.DataFrame) -> dict[str, pd.DataFrame]:
     """Lignes du brut par compteur, dans l'ordre des identifiants."""
     col = _source_column(raw, "counter_id")
@@ -639,7 +712,48 @@ def split_by_counter(raw: pd.DataFrame) -> dict[str, pd.DataFrame]:
     }
 
 
-def add_controls(prepared: Prepared) -> tuple[pd.DataFrame, dict, pd.DataFrame, str | None]:
+def mark_network_gaps(items: list[Prepared], share: float = NETWORK_GAP_SHARE) -> pd.DatetimeIndex:
+    """Ajoute `network_gap` aux heures non observées où presque tout le réseau manque."""
+    frame = pd.concat(
+        [p.counts[["ts", "is_observed"]].assign(counter_id=p.counter["counter_id"]) for p in items],
+        ignore_index=True,
+    )
+    hours = network_gap_hours(frame, share).index
+    for p in items:
+        hit = (p.counts["ts"].isin(hours) & ~p.counts["is_observed"]).to_numpy()
+        flags = p.counts["flags"].tolist()
+        for i in np.flatnonzero(hit):
+            flags[i] = sorted(set(flags[i]) | {FLAG_NETWORK_GAP})
+        p.counts["flags"] = flags
+        p.report["n_network_gap_hours"] = int(hit.sum())
+    return pd.DatetimeIndex(hours)
+
+
+def direction_checks(items: list[Prepared]) -> dict:
+    """Sens manquants, et sites à deux compteurs dont les sens ne sont pas opposés."""
+    df = pd.DataFrame([p.counter for p in items])
+    without = sorted(df.loc[df["direction"].isna(), "counter_id"].tolist())
+    two, not_opposite = 0, []
+    for site, g in df.dropna(subset=["direction"]).groupby("site_id"):
+        if len(g) == 1:
+            continue
+        two += 1
+        dirs = g["direction"].tolist()
+        if len(g) != 2 or dirs[1] != opposite(dirs[0]):
+            not_opposite.append({"site_id": site, "directions": dirs})
+    return {
+        "rule": "fin du nom (ex. 'S-N'), non vérifiée sur place",
+        "n_counters": int(len(df)),
+        "n_with_direction": int(df["direction"].notna().sum()),
+        "without_direction": without,
+        "n_sites_with_several_counters": two,
+        "sites_not_opposite": not_opposite,
+    }
+
+
+def add_controls(
+    prepared: Prepared, site_group_alert: bool = True
+) -> tuple[pd.DataFrame, dict, pd.DataFrame, str | None]:
     """Profil horaire, jours de changement d'heure et trous ; complète le rapport."""
     profile = hourly_profile(prepared.counts)
     morning, evening, peak_alert = check_peaks(profile)
@@ -658,9 +772,10 @@ def add_controls(prepared: Prepared) -> tuple[pd.DataFrame, dict, pd.DataFrame, 
             )
     holes = gaps(prepared.counts)
     prepared.report["n_gaps"] = int(len(holes))
-    prepared.alerts.append(
-        "site_group_id = site_id ici : relancer quality.py pour écrire les groupes candidats."
-    )
+    if site_group_alert:  # compteur par compteur : groupes écrits ensuite par quality.py
+        prepared.alerts.append(
+            "site_group_id = site_id ici : relancer quality.py pour écrire les groupes candidats."
+        )
     return profile, dst, holes, peak_alert
 
 
@@ -707,17 +822,26 @@ def write_all(items: list[Prepared], snapshot_id: str, source_id: str, out_dir: 
 
 
 def prepare_all(snapshot_id: str) -> list[Prepared]:
-    """Prépare chaque compteur du brut complet de l'instantané (`acquire --tout`)."""
+    """Prépare tout le flux d'un instantané sur une grille commune (décisions E1)."""
     raw_path = data_path("history") / snapshot_id / acquire.RAW_ALL_FILENAME
     if not raw_path.exists():
         raise FileNotFoundError(
             f"Brut complet introuvable : {relative_to_root(raw_path)} (lancer acquire --tout)"
         )
+    raw = acquire.read_raw(raw_path)
+    grid_range = snapshot_range(raw)
     items, peaks_ok = [], 0
-    for cid, part in split_by_counter(acquire.read_raw(raw_path)).items():
-        p = normalize(part, cid)
-        peaks_ok += add_controls(p)[3] is None
+    for cid, part in split_by_counter(raw).items():
+        p = normalize(part, cid, grid_range)
+        peaks_ok += add_controls(p, site_group_alert=False)[3] is None
         items.append(p)
+    gap_hours = mark_network_gaps(items)
+    checks = direction_checks(items)
+    # Groupes candidats écrits dès ici (même règle que quality.py) : counters.csv ne
+    # dépend plus de l'ordre des commandes.
+    groups = candidate_site_groups(pd.DataFrame([p.counter for p in items]))
+    for p in items:
+        p.counter["site_group_id"] = groups[str(p.counter["counter_id"])]
 
     out_dir = data_path("processed") / snapshot_id
     written = write_all(items, snapshot_id, acquire.source_file_id(raw_path), out_dir)
@@ -725,25 +849,63 @@ def prepare_all(snapshot_id: str) -> list[Prepared]:
         f"cohérent avec le profil horaire (pics ~8 h / ~18 h, heure de Paris) pour "
         f"{peaks_ok}/{len(items)} compteurs"
     )
-    manifest = update_manifest(snapshot_id, items, written, status)
-    print_all_report(snapshot_id, items, written, manifest)
+    extra = {
+        "grid": {
+            "rule": "commune à tous les compteurs (décision E1, étape 2)",
+            "first_timestamp": grid_range[0].isoformat(),
+            "last_timestamp": grid_range[1].isoformat(),
+            "n_hours": int((grid_range[1] - grid_range[0]) / pd.Timedelta(hours=1)) + 1,
+        },
+        "network_gap": {
+            "share": NETWORK_GAP_SHARE,
+            "n_hours": int(len(gap_hours)),
+            "rule": FLAG_DEFINITIONS[FLAG_NETWORK_GAP],
+        },
+        "direction_checks": checks,
+        "site_groups": {"rule": SITE_GROUP_RULE, "n_groups": int(groups.nunique())},
+        "known_limitations": [
+            SITE_GROUP_RULE if x.startswith("site_group_id = site_id") else x
+            for x in KNOWN_LIMITATIONS
+        ],
+    }
+    manifest = update_manifest(
+        snapshot_id, items, written, status, extra, raw_used=relative_to_root(raw_path)
+    )
+    print_all_report(snapshot_id, items, extra, written, manifest)
     return items
 
 
-def print_all_report(snapshot_id, items, written, manifest) -> None:
-    stats = written["counts_stats"]
+def print_all_report(snapshot_id, items, extra, written, manifest) -> None:
+    lengths = {len(p.counts) for p in items}
+    g, d = extra["grid"], extra["direction_checks"]
     observed = sum(int(p.counts["is_observed"].sum()) for p in items)
+    total = sum(len(p.counts) for p in items)
     print(f"\n=== Instantané {snapshot_id} : {len(items)} compteurs")
-    print(f"Période UTC : {stats['first_timestamp']} -> {stats['last_timestamp']}")
-    print(f"Lignes de counts.csv : {stats['n_rows']} ; observées : {observed}")
-    n_alerts = sum(len(p.alerts) - 1 for p in items)
+    print(f"Grille commune UTC : {g['first_timestamp']} -> {g['last_timestamp']} ({g['n_hours']} h)")
+    print(
+        "Même nombre d'heures pour tous : "
+        + ("oui" if len(lengths) == 1 else f"NON ({sorted(lengths)})")
+    )
+    print(f"Heures observées : {observed}/{total} ({observed / total:.1%})")
+    print(f"Heures 'network_gap' : {extra['network_gap']['n_hours']}")
+    print(f"Groupes de sites (candidats, à moins de 100 m) : {extra['site_groups']['n_groups']}")
+    print(
+        f"Direction : {d['n_with_direction']}/{d['n_counters']} compteurs ; "
+        f"sites à plusieurs compteurs : {d['n_sites_with_several_counters']} ; "
+        f"sens non opposés : {len(d['sites_not_opposite'])}"
+    )
+    for s in d["sites_not_opposite"]:
+        print(f"  - site {s['site_id']} : {s['directions']}")
+    if d["without_direction"]:
+        print("  Sans direction :", ", ".join(d["without_direction"]))
+    n_alerts = sum(len(p.alerts) for p in items)
     print(f"Alertes par compteur : {n_alerts} (détail dans le manifeste, « counters »)")
     print("\nFichiers :")
     for p in [*written["paths"].values(), manifest]:
         print(f"- {relative_to_root(p)}")
     print(
         "\nÉtape suivante : uv run python -m src.data.quality --snapshot "
-        f"{snapshot_id}  (écrit les groupes de sites dans counters.csv)"
+        f"{snapshot_id}  (inventaire et sélection ; groupes déjà écrits)"
     )
 
 
@@ -768,7 +930,9 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--snapshot", required=True, help="identifiant d'instantané, ex. flux-20261112")
     ap.add_argument("--compteur", help="id_compteur (un seul compteur)")
-    ap.add_argument("--tout", action="store_true", help="tous les compteurs (brut de acquire --tout)")
+    ap.add_argument(
+        "--tout", action="store_true", help="tout le flux, grille commune (brut de acquire --tout)"
+    )
     args = ap.parse_args(argv)
     if args.tout == bool(args.compteur):
         ap.error("indiquer --tout ou --compteur ID (l'un des deux)")

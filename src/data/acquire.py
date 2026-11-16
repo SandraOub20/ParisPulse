@@ -218,16 +218,20 @@ def acquire_counter(
     snapshot_id: str | None = None,
     fichier: Path | None = None,
     force: bool = False,
+    autre_date: bool = False,
 ) -> tuple[str, Path]:
     """Dépose le brut d'un compteur et met à jour le manifeste."""
-    return _acquire(raw_filename(counter_id), counter_id, snapshot_id, fichier, force)
+    return _acquire(raw_filename(counter_id), counter_id, snapshot_id, fichier, force, autre_date)
 
 
 def acquire_all(
-    snapshot_id: str | None = None, fichier: Path | None = None, force: bool = False
+    snapshot_id: str | None = None,
+    fichier: Path | None = None,
+    force: bool = False,
+    autre_date: bool = False,
 ) -> tuple[str, Path]:
     """Dépose tout le flux en un seul export : toutes les séries prises au même instant."""
-    return _acquire(RAW_ALL_FILENAME, None, snapshot_id, fichier, force)
+    return _acquire(RAW_ALL_FILENAME, None, snapshot_id, fichier, force, autre_date)
 
 
 def _acquire(
@@ -236,6 +240,7 @@ def _acquire(
     snapshot_id: str | None,
     fichier: Path | None,
     force: bool,
+    autre_date: bool = False,
 ) -> tuple[str, Path]:
     now = dt.datetime.now(dt.timezone.utc)
     snapshot_id = snapshot_id or snapshot_id_for(now)
@@ -261,12 +266,18 @@ def _acquire(
             },
         }
     else:
-        if snapshot_id.startswith(f"{SNAPSHOT_PREFIX}-") and snapshot_id != snapshot_id_for(now):
-            print(
-                f"ATTENTION : instantané {snapshot_id}, mais nous sommes le "
-                f"{snapshot_id_for(now)} (UTC) : le nom ne correspondra pas au contenu. "
-                "L'annoncer à l'équipe."
-            )
+        today = snapshot_id_for(now)
+        if snapshot_id.startswith(f"{SNAPSHOT_PREFIX}-") and snapshot_id != today:
+            # Le flux change chaque jour : télécharger aujourd'hui sous le nom d'un
+            # autre jour donnerait d'autres données sous le même nom.
+            if not autre_date:
+                raise ValueError(
+                    f"Refusé : l'instantané {snapshot_id} n'est pas daté d'aujourd'hui "
+                    f"({today}, UTC). Ses fichiers se récupèrent auprès de l'équipe 1 "
+                    f"(zip), pas en retéléchargeant. Nouvel instantané : --snapshot {today}. "
+                    "Forcer quand même : --autre-date."
+                )
+            print(f"ATTENTION : instantané {snapshot_id} téléchargé le {today} (--autre-date).")
         print(f"Téléchargement : {url}")
         download(url, dest)
         source = {
@@ -319,6 +330,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--snapshot", help="identifiant d'instantané (défaut : flux-<date UTC>)")
     ap.add_argument("--fichier", type=Path, help="CSV exporté à la main si l'API ne répond pas")
     ap.add_argument("--force", action="store_true", help="retélécharger un brut déjà présent")
+    ap.add_argument(
+        "--autre-date",
+        action="store_true",
+        help="télécharger même si le nom de l'instantané n'est pas la date du jour (déconseillé)",
+    )
     ap.add_argument("--sans-preparation", action="store_true", help="ne pas lancer prepare")
     args = ap.parse_args(argv)
 
@@ -329,7 +345,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.tout:
         if args.compteur:
             ap.error("--tout et --compteur sont incompatibles")
-        snapshot_id, _ = acquire_all(args.snapshot, args.fichier, args.force)
+        snapshot_id, _ = acquire_all(args.snapshot, args.fichier, args.force, args.autre_date)
         if not args.sans_preparation:
             from src.data.prepare import prepare_all
 
@@ -338,7 +354,9 @@ def main(argv: list[str] | None = None) -> int:
     if not args.compteur:
         ap.error("--compteur ou --tout est obligatoire (ou --lister)")
 
-    snapshot_id, _ = acquire_counter(args.compteur, args.snapshot, args.fichier, args.force)
+    snapshot_id, _ = acquire_counter(
+        args.compteur, args.snapshot, args.fichier, args.force, args.autre_date
+    )
     if not args.sans_preparation:
         from src.data.prepare import prepare_counter
 
