@@ -235,6 +235,46 @@ def test_deux_sens_a_80_m_restent_ensemble():
     assert cand["P1"] == cand["P2"] != cand["F"]
 
 
+def test_voisins_en_dictionnaire_avec_distance():
+    """alias_candidates (< 100 m) et nearby_sites_300m (< 300 m) : {site: mètres}."""
+    counters = pd.DataFrame(
+        [
+            counter_row("p1", "P1", 48.8300, 2.3800),
+            counter_row("p2", "P2", 48.8300, 2.3811),  # ~80 m à l'est de P1
+            counter_row("m", "M", 48.8300, 2.3830),  # ~220 m de P1, ~140 m de P2
+            counter_row("far", "F", 48.8400, 2.3800),  # ~1,1 km
+        ]
+    )
+    g = q.candidate_groups(counters, 100.0, 300.0).set_index("site_group_id")
+    alias, near = g["alias_candidates"], g["nearby_sites_300m"]
+    # Distance attendue calculée indépendamment (formule de haversine)
+    d12 = round(q.haversine_km(48.83, 2.38, 48.83, 2.3811) * 1000)
+    assert 75 <= d12 <= 85
+    assert alias["P1"] == {"P2": d12} and alias["P2"] == {"P1": d12}
+    assert alias["M"] == {} and alias["F"] == {}
+    # 300 m : alias compris, du plus proche au plus loin, sans le site lui-même
+    assert list(near["P1"]) == ["P2", "M"] and near["P1"]["P2"] == d12
+    assert 210 <= near["P1"]["M"] <= 230
+    assert list(near["M"]) == ["P2", "P1"]
+    assert near["F"] == {}
+    # Le seuil de 300 m n'agrandit pas les groupes : M reste seul
+    cand = g["candidate_group_id"]
+    assert cand["P1"] == cand["P2"] != cand["M"]
+
+
+def test_colonnes_voisinage_ecrites_en_json(network):
+    """Dans le CSV, les deux colonnes sont des objets JSON {site: mètres}."""
+    import json
+
+    inv, _ = build(network)
+    table = q.inventory_table(inv)
+    row = table[(table["counter_id"] == "alias1") & (table["period_role"] == q.PERIOD_SELECTION)]
+    alias = json.loads(row["alias_candidates"].iloc[0])
+    near = json.loads(row["nearby_sites_300m"].iloc[0])
+    assert list(alias) == ["A2"] and isinstance(alias["A2"], int)
+    assert alias.items() <= near.items()
+
+
 def test_trou_commun_au_reseau_detecte(network):
     counts, _ = network
     day = (counts["ts"] >= START + pd.Timedelta(days=30)) & (

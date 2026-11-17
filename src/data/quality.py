@@ -114,6 +114,7 @@ EXTRA_COLUMNS = [
     "volume_class",
     "profile_type",
     "alias_candidates",
+    "nearby_sites_300m",
     "uncertainties",
     "quality_version",
 ]
@@ -147,6 +148,10 @@ class SelectionCriteria:
     # Sur flux-20261114, les deux sens d'un même lieu ont souvent deux site_id
     # distants de 0 à 93 m (Pont National : 57 m) ; la paire suivante est à 113 m.
     alias_distance_m: float = 100.0
+    # Sites voisins à moins de 300 m : descriptif seulement (aucun effet sur les
+    # groupes ni les statuts). Sert à proposer un compteur proche quand un
+    # compteur n'a pas de mesure (exclu, série arrêtée, trou).
+    nearby_distance_m: float = 300.0
     # Heure « trou du réseau » si au moins 90 % des compteurs actifs sont sans mesure.
     network_gap_share: float = 0.90
     seed: str = "parispulse-e1"
@@ -343,12 +348,28 @@ def volume_classes(mean_counts: pd.Series) -> tuple[pd.Series, list[float]]:
 
 
 # ----------------------------------------------------------------- groupes de sites
-def candidate_groups(counters: pd.DataFrame, alias_distance_m: float) -> pd.DataFrame:
+def _by_distance(neighbours: dict[str, int]) -> dict[str, int]:
+    """Voisins triés du plus proche au plus loin (puis par identifiant)."""
+    return dict(sorted(neighbours.items(), key=lambda kv: (kv[1], kv[0])))
+
+
+def candidate_groups(
+    counters: pd.DataFrame,
+    alias_distance_m: float,
+    nearby_distance_m: float = SelectionCriteria.nearby_distance_m,
+) -> pd.DataFrame:
     """Rassemble les `site_group_id` à moins de `alias_distance_m` (alias possibles).
 
     Un nom identique ne suffit pas à raccorder deux séries ; la proximité ne le
     prouve pas non plus : on garde ces groupes ENSEMBLE (jamais répartis entre
     donneurs et réservés) et on le signale comme incertitude.
+
+    Colonnes de voisinage, en dictionnaires {site voisin: distance en mètres,
+    arrondie}, triés du plus proche au plus loin, sans le site lui-même :
+    - `alias_candidates` : voisins directs à moins de `alias_distance_m`
+      (ce sont eux qui forment les groupes, par chaînage) ;
+    - `nearby_sites_300m` : voisins à moins de `nearby_distance_m`, alias compris ;
+      descriptif, sans effet sur les groupes ni les statuts.
     """
     sites = (
         counters.groupby("site_group_id", sort=True)[["latitude", "longitude"]].mean().reset_index()
@@ -361,25 +382,31 @@ def candidate_groups(counters: pd.DataFrame, alias_distance_m: float) -> pd.Data
             x = parent[x]
         return x
 
-    neighbours: dict[str, list[str]] = {s: [] for s in parent}
+    aliases: dict[str, dict[str, int]] = {s: {} for s in parent}
+    nearby: dict[str, dict[str, int]] = {s: {} for s in parent}
     located = sites.dropna(subset=["latitude", "longitude"]).reset_index(drop=True)
     if len(located) > 1:
         lat = located["latitude"].to_numpy()
         lon = located["longitude"].to_numpy()
         dist = haversine_km(lat[:, None], lon[:, None], lat[None, :], lon[None, :]) * 1000
         ids = located["site_group_id"].to_numpy()
-        for i, j in zip(*np.nonzero(np.triu(dist < alias_distance_m, k=1))):
-            a, b = ids[i], ids[j]
-            neighbours[a].append(b)
-            neighbours[b].append(a)
-            ra, rb = find(a), find(b)
-            if ra != rb:
-                parent[max(ra, rb)] = min(ra, rb)
+        limit = max(alias_distance_m, nearby_distance_m)
+        for i, j in zip(*np.nonzero(np.triu(dist < limit, k=1))):
+            a, b, d = ids[i], ids[j], dist[i, j]
+            meters = int(round(float(d)))
+            if d < nearby_distance_m:
+                nearby[a][b] = nearby[b][a] = meters
+            if d < alias_distance_m:
+                aliases[a][b] = aliases[b][a] = meters
+                ra, rb = find(a), find(b)
+                if ra != rb:
+                    parent[max(ra, rb)] = min(ra, rb)
     return pd.DataFrame(
         {
             "site_group_id": list(parent),
             "candidate_group_id": [find(s) for s in parent],
-            "alias_candidates": [sorted(neighbours[s]) for s in parent],
+            "alias_candidates": [_by_distance(aliases[s]) for s in parent],
+            "nearby_sites_300m": [_by_distance(nearby[s]) for s in parent],
         }
     )
 
@@ -515,7 +542,8 @@ def uncertainties(row: pd.Series) -> list[str]:
     if not row["has_coordinates"]:
         out.append("coordonnées absentes : non placé sur la carte")
     if row["alias_candidates"]:
-        out.append(f"site tout proche de {', '.join(row['alias_candidates'])} : alias possible")
+        near = ", ".join(f"{s} ({d} m)" for s, d in row["alias_candidates"].items())
+        out.append(f"site tout proche de {near} : alias possible")
     if row["n_dst_days_incomplete"]:
         out.append(f"{row['n_dst_days_incomplete']} jour(s) de changement d'heure incomplet(s)")
     if not str(row.get("direction") or "").strip():
@@ -577,7 +605,8 @@ def build_inventory(
         meta["latitude"], meta["longitude"], PARIS_CENTER[0], PARIS_CENTER[1]
     )
     meta["zone"] = meta["dist_center_km"].map(zone_of)
-    meta = meta.merge(candidate_groups(counters, c.alias_distance_m), on="site_group_id")
+    groups = candidate_groups(counters, c.alias_distance_m, c.nearby_distance_m)
+    meta = meta.merge(groups, on="site_group_id")
     # La décision de l'étape 3 : le groupe utilisé partout est le groupe candidat.
     meta["site_group_id"] = meta["candidate_group_id"]
 
@@ -719,7 +748,7 @@ def inventory_table(inv: pd.DataFrame) -> pd.DataFrame:
     for col in ("period_start", "period_end", "first_observed", "last_observed"):
         out[col] = out[col].map(_iso)
     out["has_coordinates"] = out["has_coordinates"].map({True: "true", False: "false"})
-    for col in ("alias_candidates", "uncertainties"):
+    for col in ("alias_candidates", "nearby_sites_300m", "uncertainties"):
         out[col] = out[col].map(lambda v: json.dumps(v, ensure_ascii=False))
     rounding = {
         "dist_center_km": 3,
