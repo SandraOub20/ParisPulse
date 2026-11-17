@@ -1,6 +1,7 @@
 
 """Prediction error visualizations supplied by Team 4."""
 
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -15,8 +16,14 @@ def show_errors(
 
     st.subheader("Prediction errors and model reliability")
 
+    # Display the official macro MAE supplied by Team 4.
     if mae_macro is not None and pd.notna(mae_macro):
-        st.metric("Macro MAE (Team 4)", f"{float(mae_macro):.2f}")
+        mae_value = float(mae_macro)
+
+        if np.isfinite(mae_value) and mae_value >= 0:
+            st.metric("Macro MAE (Team 4)", f"{mae_value:.2f}")
+        else:
+            st.warning("The macro MAE supplied by Team 4 is invalid.")
     else:
         st.info("Macro MAE has not been provided by Team 4 yet.")
 
@@ -37,42 +44,72 @@ def show_errors(
 
     data = errors.copy()
 
+    # Parse timestamps and numerical errors.
     data["target_timestamp"] = pd.to_datetime(
         data["target_timestamp"], utc=True, errors="coerce"
     )
+
     data["signed_error"] = pd.to_numeric(
         data["signed_error"], errors="coerce"
     )
+
     data["absolute_error"] = pd.to_numeric(
         data["absolute_error"], errors="coerce"
     )
 
     invalid_timestamps = int(data["target_timestamp"].isna().sum())
-    data = data.dropna(
-        subset=["target_timestamp", "signed_error", "absolute_error"]
-    ).copy()
+
+    # Keep only valid timestamps.
+    data = data.dropna(subset=["target_timestamp"]).copy()
+
+    # Apply the official scoreability flag when available.
+    excluded_unscoreable = 0
 
     if "is_scoreable" in data.columns:
         scoreable = (
             data["is_scoreable"]
             .astype("string")
+            .str.strip()
             .str.lower()
             .map({"true": True, "false": False})
         )
+
+        excluded_unscoreable = int((~scoreable.eq(True)).sum())
         data = data[scoreable.eq(True)].copy()
 
-    data["target_timestamp"] = data["target_timestamp"].dt.tz_convert(
-        "Europe/Paris"
+    # Errors must be finite numerical values.
+    valid_errors = (
+        data["signed_error"].notna()
+        & np.isfinite(data["signed_error"])
+        & data["absolute_error"].notna()
+        & np.isfinite(data["absolute_error"])
+        & data["absolute_error"].ge(0)
     )
-    data = data.sort_values("target_timestamp")
+
+    invalid_error_rows = int((~valid_errors).sum())
+    data = data.loc[valid_errors].copy()
 
     if data.empty:
         st.warning("No valid scoreable hourly errors are available.")
+        st.caption(
+            f"Invalid timestamps excluded: {invalid_timestamps} | "
+            f"Unscoreable rows excluded: {excluded_unscoreable} | "
+            f"Invalid error rows excluded: {invalid_error_rows}"
+        )
         return
+
+    # Convert UTC timestamps to Paris local time.
+    data["target_timestamp"] = (
+        data["target_timestamp"].dt.tz_convert("Europe/Paris")
+    )
+
+    data = data.sort_values("target_timestamp").copy()
 
     st.caption(
         f"Scoreable error rows: {len(data)} | "
-        f"Invalid timestamps excluded: {invalid_timestamps}"
+        f"Invalid timestamps excluded: {invalid_timestamps} | "
+        f"Unscoreable rows excluded: {excluded_unscoreable} | "
+        f"Invalid error rows excluded: {invalid_error_rows}"
     )
 
     # Experiment visualization 1: actual vs predicted.
@@ -80,16 +117,23 @@ def show_errors(
         st.markdown("**Visualization 1 — Actual vs predicted**")
 
         comparison = data.copy()
+
         comparison["y_true"] = pd.to_numeric(
             comparison["y_true"], errors="coerce"
         )
+
         comparison["y_pred"] = pd.to_numeric(
             comparison["y_pred"], errors="coerce"
         )
 
-        comparison = comparison.dropna(
-            subset=["y_true", "y_pred"]
+        valid_comparison = (
+            comparison["y_true"].notna()
+            & np.isfinite(comparison["y_true"])
+            & comparison["y_pred"].notna()
+            & np.isfinite(comparison["y_pred"])
         )
+
+        comparison = comparison.loc[valid_comparison].copy()
 
         if not comparison.empty:
             comparison = comparison.melt(
@@ -112,8 +156,13 @@ def show_errors(
                     "series": "Series",
                 },
             )
+
             fig_comparison.update_layout(hovermode="x unified")
-            st.plotly_chart(fig_comparison, use_container_width=True)
+
+            st.plotly_chart(
+                fig_comparison,
+                use_container_width=True,
+            )
 
     # Experiment visualization 2: hourly residuals.
     st.markdown("**Visualization 2 — Hourly prediction errors**")
@@ -129,11 +178,16 @@ def show_errors(
         },
         hover_data=["absolute_error"],
     )
+
     fig_errors.add_hline(y=0, line_dash="dash")
     fig_errors.update_layout(hovermode="x unified")
+
     st.plotly_chart(fig_errors, use_container_width=True)
 
     # Optional detailed scores supplied by Team 4.
     if mae_by_counter is not None and not mae_by_counter.empty:
         st.markdown("**MAE by counter — Team 4**")
-        st.dataframe(mae_by_counter, use_container_width=True)
+        st.dataframe(
+            mae_by_counter,
+            use_container_width=True,
+        )

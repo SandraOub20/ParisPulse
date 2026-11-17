@@ -1,6 +1,7 @@
 
 """Historical bicycle observations visualization."""
 
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -26,6 +27,7 @@ def show_history(data: pd.DataFrame) -> None:
 
     history = data.copy()
 
+    # Parse timestamps and numeric counts.
     history["timestamp"] = pd.to_datetime(
         history["timestamp"], utc=True, errors="coerce"
     )
@@ -33,42 +35,77 @@ def show_history(data: pd.DataFrame) -> None:
         history["count"], errors="coerce"
     )
 
-    # Preserve missing-value counts before filtering invalid timestamps.
-    missing_count = int(history["count"].isna().sum())
     invalid_timestamps = int(history["timestamp"].isna().sum())
 
-    # Convert UTC timestamps to Paris local time for display.
-    history = history.dropna(subset=["timestamp"]).copy()
-    history["timestamp"] = history["timestamp"].dt.tz_convert(
-        "Europe/Paris"
+    # A usable count must be finite.
+    finite_counts = (
+        history["count"].notna()
+        & np.isfinite(history["count"])
     )
-    history = history.sort_values("timestamp")
+
+    history.loc[~finite_counts, "count"] = np.nan
+
+    unavailable_counts = int(history["count"].isna().sum())
+
+    # Remove rows without valid timestamps.
+    history = history.dropna(subset=["timestamp"]).copy()
 
     if history.empty:
         st.warning("No valid timestamps available.")
         st.caption(
-            f"Missing counts: {missing_count} | "
+            f"Unavailable counts: {unavailable_counts} | "
             f"Invalid timestamps: {invalid_timestamps}"
         )
         return
 
-    # Use is_observed when supplied by the official data contract.
+    # Convert UTC timestamps to Paris local time for display.
+    history["timestamp"] = (
+        history["timestamp"].dt.tz_convert("Europe/Paris")
+    )
+
+    # Each selected counter should have one row per timestamp.
+    if history["timestamp"].duplicated().any():
+        st.error("Duplicate observation timestamps were detected.")
+        return
+
+    history = history.sort_values("timestamp").copy()
+
+    # Respect the official meaning of is_observed.
     if "is_observed" in history.columns:
-        history["is_observed"] = (
+        observed = (
             history["is_observed"]
             .astype("string")
+            .str.strip()
             .str.lower()
             .map({"true": True, "false": False})
         )
 
-        history["observation_status"] = history["is_observed"].map(
-            {True: "Observed", False: "Not observed"}
-        ).fillna("Unknown")
+        history["observation_status"] = "Unknown"
+
+        history.loc[
+            observed.eq(False),
+            "observation_status",
+        ] = "Not observed"
+
+        history.loc[
+            observed.eq(True) & history["count"].notna(),
+            "observation_status",
+        ] = "Observed"
+
+        history.loc[
+            observed.eq(True) & history["count"].isna(),
+            "observation_status",
+        ] = "Observed, count unavailable"
+
     else:
-        history["observation_status"] = history["count"].notna().map(
-            {True: "Observed", False: "Missing"}
+        # Fallback when is_observed is not supplied.
+        history["observation_status"] = (
+            history["count"]
+            .notna()
+            .map({True: "Observed", False: "Missing"})
         )
 
+    # Display historical counts.
     fig = px.line(
         history,
         x="timestamp",
@@ -92,8 +129,9 @@ def show_history(data: pd.DataFrame) -> None:
 
     st.plotly_chart(fig, use_container_width=True)
 
-    st.caption(
-        f"Rows: {len(data)} | "
-        f"Missing counts: {missing_count} | "
-        f"Invalid timestamps: {invalid_timestamps}"
-    )
+    # Summary metrics.
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("Total rows", len(data))
+    col2.metric("Unavailable counts", unavailable_counts)
+    col3.metric("Invalid timestamps", invalid_timestamps)

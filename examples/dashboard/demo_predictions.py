@@ -11,6 +11,7 @@ st.set_page_config(page_title="ParisPulse - Forecast Test", layout="wide")
 st.title("ParisPulse — 24-hour forecast")
 st.warning("DEMONSTRATION ONLY — all values below are fictitious.")
 
+# Generate 24 hourly timestamps in Paris time.
 timestamps = pd.date_range(
     start="2026-11-17 00:00",
     periods=24,
@@ -18,7 +19,12 @@ timestamps = pd.date_range(
     tz="Europe/Paris",
 )
 
+# Forecast origin: first timestamp, converted to UTC.
+origin = timestamps[0].tz_convert("UTC")
+
+# Fictitious predictions.
 predictions = pd.DataFrame({
+    "origin": [origin] * 24,
     "horizon": range(1, 25),
     "target_timestamp": timestamps,
     "y_pred": [
@@ -30,6 +36,7 @@ predictions = pd.DataFrame({
     "method_used": ["demo_model"] * 24,
 })
 
+# Fictitious actual observations.
 observations = pd.DataFrame({
     "target_timestamp": timestamps,
     "y_true": [
@@ -45,6 +52,7 @@ def load_demo_observations():
     return observations
 
 
+# Display the forecast and reveal observations only after user consent.
 show_predictions(
     predictions=predictions,
     load_observations=load_demo_observations,
