@@ -6,17 +6,19 @@ def adapt(model_name, history):
 
     L'adaptation doit rester limitée à l'historique local autorisé pour le cas.
     """
+    model = manager.load_model(model_name)
+    adapted_model = model
     if model_name == "chronos-2":
-        # TODO : charger, copier et adapter Chronos-2 sur history.
+        # TODO : adapter Chronos-2 sur history (travailler sur adapted_model).
         adapted_model = None
     elif model_name == "google_TimesFM_2.5":
-        # TODO : charger, copier et adapter TimesFM 2.5 sur history.
+        # TODO : adapter TimesFM 2.5 sur history (travailler sur adapted_model).
         adapted_model = None
     elif model_name == "team2":
-        # TODO : charger, copier et adapter le modèle E2 sur history.
+        # TODO : adapter le modèle E2 sur history (travailler sur adapted_model).
         adapted_model = None
     else:
         raise ValueError(f"Modèle inconnu : {model_name}")
 
-    # TODO : retourner le modèle adapté sans modifier le modèle global partagé.
+    # TODO : retourner le modèle adapté sans modifier le modèle global (model) partagé.
     return adapted_model
