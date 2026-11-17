@@ -3,7 +3,7 @@
 - **Date, équipe, responsables et partenaires :** 15/11/2026, E1, Nihed (source complémentaire) ; partenaires E2 (sites connus, ablation du contexte), E3 (nouveaux sites, même contexte pour les variantes), E4 (règle de disponibilité). Données d'entrée : comptages de Tasnim (`acquire.py`, `prepare.py`).
 - **Question et hypothèse :** quelles informations externes, connues au moment de prévoir, peut-on joindre aux comptages sans créer ni perdre de lignes et sans utiliser le futur ? Hypothèse : le calendrier (jours fériés, vacances) et la météo expliquent une partie des écarts au profil hebdomadaire ; leur intérêt réel sera mesuré par E2.
 - **Références :** sujet, « Ajouter une source complémentaire » et « Les règles communes pour comparer les méthodes » ; `doc/CONTRATS.md` §4 (contexte) ; `doc/PROTOCOLE_EVALUATION.md` §2 (information autorisée).
-- **Instantané, protocole, code et paramètres :** `src/data/context.py` (`e1-context/0.1.0`), protocole **proposé, non validé**. Instantané `flux-20261115` (export complet du 15/11/2026) : 113 compteurs, 1 073 839 lignes de comptage (grille commune), du 15/10/2025 00:00 au 14/11/2026 22:00 UTC. Premier essai sur un seul compteur (Totem 73 bd de Sébastopol S-N, 9 500 heures). Paramètres : prévision de J-2, délai de publication d'un run 6 h, latence des observations 24 h, lus dans la section `context` de `config/project.yaml` (commit `f6ef4d8`) pour être validés par E4 sans modifier le code.
+- **Instantané, protocole, code et paramètres :** `src/data/context.py` (`e1-context/0.1.0`), protocole **proposé, non validé**. Instantané `flux-20261115` (export complet du 15/11/2026) : 113 compteurs, 1 071 127 lignes de comptage (grille commune, `e1-prepare/0.3.0`, régénérée le 17/11/2026), du 16/10/2025 00:00 au 14/11/2026 22:00 UTC. Le premier jour du brut (15/10/2025), rogné par la source, est écarté. Premier essai sur un seul compteur (Totem 73 bd de Sébastopol S-N, 9 500 heures). Paramètres : prévision de J-2, délai de publication d'un run 6 h, latence des observations 24 h, lus dans la section `context` de `config/project.yaml` (commit `f6ef4d8`) pour être validés par E4 sans modifier le code.
 
 ## Ce que produit le module
 
@@ -64,12 +64,12 @@ Sur données réelles (`flux-20261115`, 113 compteurs, relancé le 15/11/2026) :
 
 | Contrôle | Résultat |
 | --- | --- |
-| Lignes de comptage avant / après jointure | 1 073 839 / 1 073 839 ; 0 clé en double ; statut `ok` |
+| Lignes de comptage avant / après jointure | 1 071 127 / 1 071 127 ; 0 clé en double ; statut `ok` |
 | Lignes de `context.csv` | 58 436 (format long) |
 | Calendrier | 397 jours, 0 ligne de comptage sans valeur ; 13 jours fériés, tous corrects |
 | Vacances zone C 2025-2026 | Toussaint 18/10–02/11, Noël 20/12–04/01, hiver 21/02–08/03, printemps 18/04–03/05, pont de l'Ascension 14–17/05, été à partir du 04/07 : conformes au calendrier officiel |
 | Météo prévue (J-2) | 9 505 heures par variable, 0 ligne de comptage sans valeur |
-| Météo observée | 9 484 heures pour la température et le vent, 9 365 pour la pluie. Lignes de comptage sans valeur : 2 260 (0,2 %) pour la température et le vent, 15 707 (1,5 %) pour la pluie. Manques de la station, signalés, non remplacés |
+| Météo observée | 9 480 heures pour la température et le vent, 9 361 pour la pluie. Lignes de comptage sans valeur : 113 (0,01 %, une seule heure, le 31/10/2025) pour la température et le vent, 13 560 (1,3 %) pour la pluie. Avant le 17/11, la grille commençait le 15/10/2025 et ces nombres étaient de 2 260 et 15 707. Manques de la station, signalés, non remplacés |
 | Unités plausibles (premier essai) | température −4,2 à 40,5 °C (observée), vent moyen 3,0 m/s (observé) et 2,4 m/s (prévu), pluie max 25,9 mm/h (observée) et 8,8 mm/h (prévue) |
 | Alignement horaire prévue / observée (premier essai) | corrélation des températures 0,960 (−2 h), 0,978 (−1 h), **0,987 (0 h)**, 0,985 (+1 h), 0,972 (+2 h) : maximum sans décalage |
 

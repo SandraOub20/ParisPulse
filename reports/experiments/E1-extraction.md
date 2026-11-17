@@ -47,7 +47,7 @@ Pas de MAE : ce n'est pas une comparaison de modèles.
 **Volume de `flux-20261115`** (manifeste) :
 
 - 1 034 819 lignes source, 113 compteurs ;
-- grille commune de 9 503 heures, du 15/10/2025 00:00 au 14/11/2026 22:00 UTC, soit 1 073 839 lignes ;
+- grille commune de 9 503 heures, du 15/10/2025 00:00 au 14/11/2026 22:00 UTC, soit 1 073 839 lignes (`e1-prepare/0.2.0`). Depuis la régénération du 17/11/2026 (`e1-prepare/0.3.0`) : 9 479 heures à partir du 16/10/2025 00:00, soit 1 071 127 lignes et 1 033 477 heures observées ; 27 mesures du 15/10/2025 écartées, gardées dans le brut ;
 - 1 033 504 heures observées, 39 020 heures absentes, 1 315 valeurs vides ;
 - 0 doublon, 0 conflit, 0 valeur négative ou invalide.
 
@@ -77,14 +77,15 @@ Pas de MAE : ce n'est pas une comparaison de modèles.
 - **Le début de la fenêtre glissante est rogné.** La source retire les données au-delà de 13 mois, si bien que le premier jour d'un instantané est partiel et varie selon l'heure d'extraction.
   - **Effet de bord constaté :** dans `flux-20261115`, ces heures rognées du 15/10/2025 sont marquées `network_gap` (1 574 lignes), alors que ce n'est pas une panne.
   - **Proposition à valider avec E1 et E4 :** faire commencer la grille commune au premier jour complet (16/10/2025 00:00 UTC pour `flux-20261115`), ou marquer ces heures d'un drapeau distinct (« hors fenêtre »). Dans les deux cas, ne pas les compter comme panne.
+  - **Appliqué le 17/11/2026 (`e1-prepare/0.3.0`, Nihed) :** le premier jour UTC du brut est toujours écarté, et le manifeste note la règle (`grid.window_rule`), la première heure du brut et le nombre de mesures écartées (27). Les heures `network_gap` passent de 116 à 102. Question Q13 du contrat, en attente de l'accord d'E4.
 - **Limites :**
   - un seul compteur ;
   - 3 jours d'écart : une révision plus tardive n'est pas exclue. À refaire sur tout le flux avec le prochain instantané ;
   - comparaison faite sur les fichiers préparés, faute de brut dans le zip.
 - **Décisions :**
   1. garder les instantanés figés et ne jamais retélécharger sous un ancien nom (règle déjà dans le code) ;
-  2. demander que le zip d'un instantané contienne aussi `data/history/` ;
-  3. décider avec l'équipe du traitement du premier jour de la fenêtre.
+  2. demander que le zip d'un instantané contienne aussi `data/history/` (fait le 17/11 : zip séparé des bruts, partagé par Drive) ;
+  3. décider avec l'équipe du traitement du premier jour de la fenêtre (proposé et appliqué le 17/11, voir ci-dessus).
 
 ## Reproduire
 

@@ -79,7 +79,7 @@ Le contrôle cherche le maximum de la moyenne de semaine entre 5 h et 12 h (mati
 - 221 alertes (A et B) viennent de la source : une heure perdue au passage à l'heure d'hiver 2025, et une journée non publiée le 25/10/2026.
 - 7 alertes (C) étaient un effet de bord de la grille commune ; corrigé dans `e1-prepare/0.2.2` (commit `b325294`).
 - 8 alertes (D) décrivent des usages réels (sens du soir, très faibles volumes) ou une panne déjà connue.
-- Quand `flux-20261115` sera relancé avec `e1-prepare/0.2.2`, le manifeste devrait compter **229** alertes (113 A + 108 B + 8 D). À vérifier dès que le brut sera disponible : il manque dans le zip.
+- Quand `flux-20261115` sera relancé avec `e1-prepare/0.2.2`, le manifeste devrait compter **229** alertes (113 A + 108 B + 8 D). **Vérifié le 17/11/2026** : après régénération (`e1-prepare/0.3.0`, grille à partir du 16/10/2025), le manifeste compte bien 229 alertes.
 
 ## Reproduire
 
