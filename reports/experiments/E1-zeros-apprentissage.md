@@ -3,7 +3,7 @@
 - **Date, équipe, responsables et partenaires :** 15/11/2026, E1, Sabrina (approfondissement : traitement d'un problème de qualité). Partenaires : E2 (modèle sites connus, exécution des deux variantes), E4 (cas d'évaluation, validation du protocole). Données d'entrée : comptages (`prepare.py`, Tasnim ; instantané créé par Nihed), inventaire et statuts de Zeineb (`quality.py`).
 - **Question et hypothèse :** faut-il garder (A) ou écarter (B) de l'apprentissage les heures situées dans une suite d'au moins 24 h consécutives de zéros ? Hypothèse : ces suites ressemblent à des pannes ou des fermetures et non à la fréquentation habituelle ; les écarter devrait réduire l'erreur sur les compteurs concernés, sans dégrader les autres, au prix d'un historique plus court. Le sujet le rappelle : les fichiers permettent de constater ces zéros, **sans en établir la cause**.
 - **Références :** sujet, fiche E1, « Approfondissement » ; `PLAN_PROJET.md` §5 (question autonome E1) et §3 (« comparer deux préparations de l'entraînement en gardant les mêmes observations d'évaluation ; mesurer aussi le changement de couverture ») ; `doc/CONTRATS.md` §3 (un zéro observé reste un zéro, évaluable) ; `doc/PROTOCOLE_EVALUATION.md` §2, §3 et §6.
-- **Instantané, protocole, code et paramètres :** instantané `flux-20261115` (113 compteurs ; 1 073 839 lignes dans la version à grille commune, 1 049 499 dans la première version ; empreintes SHA-256 vérifiées le 15/11/2026). Protocole d'évaluation **proposé, non validé**. Ce protocole d'expérience est écrit **avant tout résultat** ; il est lui aussi **proposé, à valider par E4**. Code (`e1-zeros/0.1.0`) : `src/data/zeros.py` (traitement B, détection sans fuite) et `src/data/zeros_experiment.py` (comparaison A/B, règle de décision), testés par `tests/test_data_zeros.py` sur données synthétiques seulement. Le modèle d'E2 se branchera sur l'interface `Model` (`fit`, `predict`), **provisoire, à convenir avec E2** ; `ProfileModel` ne sert que de test technique du script et ne décide rien. Délai de publication : 24 h, lu dans `protocol.publication_lag_hours`.
+- **Instantané, protocole, code et paramètres :** instantané `flux-20261115`, version régénérée par Nihed le 17/11/2026 (`e1-prepare/0.3.0`, grille commune du 16/10/2025 00:00 UTC au 14/11/2026 22:00 UTC : 113 compteurs × 9 479 heures = 1 071 127 lignes ; empreintes SHA-256 des 8 fichiers de `data/processed/` vérifiées le 17/11/2026). Protocole d'évaluation **proposé, non validé**. Ce protocole d'expérience est écrit **avant tout résultat** ; il est lui aussi **proposé, à valider par E4**. Code (`e1-zeros/0.1.0`) : `src/data/zeros.py` (traitement B, détection sans fuite) et `src/data/zeros_experiment.py` (comparaison A/B, règle de décision), testés par `tests/test_data_zeros.py` sur données synthétiques seulement. Le modèle d'E2 se branchera sur l'interface `Model` (`fit`, `predict`), **provisoire, à convenir avec E2** ; `ProfileModel` ne sert que de test technique du script et ne décide rien. Délai de publication : 24 h, lu dans `protocol.publication_lag_hours`.
 
 ## Les deux traitements
 
@@ -25,7 +25,7 @@ Précisions :
 
 Le drapeau `long_zero_run` de `counts.csv` est **rétrospectif** : il est calculé sur tout l'instantané, donc avec des heures postérieures à la coupure. Il ne sert **pas** directement.
 
-Pour une coupure d'apprentissage `F`, la variante B recalcule les suites **uniquement avec les heures disponibles à `F`**, c'est-à-dire celles dont `interval_end + 24 h <= F` (délai de publication `protocol.publication_lag_hours` de `config/project.yaml`, et règle « toutes les cibles disponibles à `F` » de `PROTOCOLE_EVALUATION.md` §2). Une heure est écartée si elle appartient à au moins 24 h consécutives de zéros parmi ces heures. Une suite qui se prolonge au-delà n'est comptée que par sa partie disponible. Ce marquage ne sert jamais de variable de prévision.
+Pour une coupure d'apprentissage `F`, la variante B recalcule les suites **uniquement avec les heures disponibles à `F`**, c'est-à-dire celles dont `interval_end + 24 h <= F` (délai de publication `protocol.publication_lag_hours` de `config/project.yaml`, ou du gabarit `config/project.example.yaml` si ce fichier n'existe pas, et règle « toutes les cibles disponibles à `F` » de `PROTOCOLE_EVALUATION.md` §2). Une heure est écartée si elle appartient à au moins 24 h consécutives de zéros parmi ces heures. Une suite qui se prolonge au-delà n'est comptée que par sa partie disponible. Ce marquage ne sert jamais de variable de prévision.
 
 ## Données concernées
 
@@ -117,7 +117,7 @@ Ajoutées le 15/11/2026 au soir, avant toute comparaison. Elles servent à **com
 
 ## Contrôles réalisés
 
-Tests automatiques sur un petit jeu synthétique (`tests/test_data_zeros.py`, 17 tests, verts le 16/11/2026 ; 70 tests au total après la fusion de `team1-nihed`) :
+Tests automatiques sur un petit jeu synthétique (`tests/test_data_zeros.py`, 17 tests, verts le 17/11/2026 ; 76 tests au total après la fusion de `team1-nihed`) :
 
 - une suite de 24 h de zéros est écartée, une suite de 23 h ne l'est pas ;
 - une heure absente au milieu de zéros coupe la suite (case vide ou ligne manquante) ;
@@ -134,7 +134,7 @@ Tests automatiques sur un petit jeu synthétique (`tests/test_data_zeros.py`, 17
 - à 48 h et 72 h, B retire moins d'heures mais les groupes restent ceux de la règle à 24 h.
 - l'analyse « sans Jourdan E-O » recalcule la MAE macro des seuls concernés restants ; sans aucun compteur, elle ne donne pas de valeur (jamais zéro).
 
-Sur données réelles, **sans modèle ni calcul d'erreur** (15/11/2026) : 91 compteurs répartis en 9 concernés, 74 témoins et 8 autres ; B retire 5 822 cibles d'apprentissage, toutes des zéros, sur ces 9 compteurs seulement ; historique identique pour A et B ; 5 642 cas attendus, dont 381 sans aucune mesure. **Relancé le 16/11/2026 sur la grille commune** (113 × 9 503 heures, reconstruite à partir de l'instantané) : chiffres strictement identiques, comme attendu, puisqu'une heure absente coupait déjà les suites. **Reconfirmé le 16/11/2026 sur la nouvelle version de `flux-20261115`** (les 8 fichiers reçus ont l'empreinte SHA-256 du manifeste ; 1 073 839 lignes, 9 503 par compteur, `direction` remplie, drapeau `network_gap` présent) : 5 822 heures sur 9 compteurs, 5 642 cas dont 381 sans mesure, 5 797 heures à 48 h et 72 h.
+Sur données réelles, **sans modèle ni calcul d'erreur** (15/11/2026) : 91 compteurs répartis en 9 concernés, 74 témoins et 8 autres ; B retire 5 822 cibles d'apprentissage, toutes des zéros, sur ces 9 compteurs seulement ; historique identique pour A et B ; 5 642 cas attendus, dont 381 sans aucune mesure. **Relancé le 16/11/2026 sur la grille commune** (113 × 9 503 heures, reconstruite à partir de l'instantané) : chiffres strictement identiques, comme attendu, puisqu'une heure absente coupait déjà les suites. **Reconfirmé le 16/11/2026 sur la nouvelle version de `flux-20261115`** (les 8 fichiers reçus ont l'empreinte SHA-256 du manifeste ; 1 073 839 lignes, 9 503 par compteur, `direction` remplie, drapeau `network_gap` présent) : 5 822 heures sur 9 compteurs, 5 642 cas dont 381 sans mesure, 5 797 heures à 48 h et 72 h. **Relancé le 17/11/2026 sur la version régénérée (`e1-prepare/0.3.0`)** : la grille commence maintenant au premier jour UTC complet (16/10/2025 00:00 UTC), soit 9 479 heures par compteur et 1 071 127 lignes. Tous les chiffres de cette fiche sont inchangés : 9 compteurs concernés et 5 822 heures (même tableau, mêmes parts), 74 témoins et 8 autres, 5 642 cas dont 381 sans mesure, 5 797 heures sur 8 compteurs à 48 h et 72 h, 96 jours d'apprentissage restants pour Jourdan E-O avec B.
 
 ## Résultats mesurés
 
@@ -146,7 +146,7 @@ Sur données réelles, **sans modèle ni calcul d'erreur** (15/11/2026) : 91 com
 
 - Les effectifs sont petits (9 compteurs concernés) : la MAE par compteur sera rapportée en plus de la moyenne.
 - La cause des zéros reste inconnue : B suppose qu'ils ne décrivent pas la fréquentation habituelle, ce qui n'est pas prouvé.
-- La grille commune (étape 2, faite par Nihed le 15/11) ne change aucun chiffre de cette fiche (relancé le 16/11).
+- La grille commune (étape 2, faite par Nihed le 15/11) et la fenêtre au premier jour complet (`e1-prepare/0.3.0`, 17/11) ne changent aucun chiffre de cette fiche (relancé le 16/11 et le 17/11).
 - Le résultat dépend du modèle d'E2 : un modèle global et un modèle par compteur peuvent réagir différemment.
 
 ## Lien vers les données et retours des partenaires
