@@ -227,11 +227,17 @@ def test_compteur_arrete_garde_ses_heures_jusqu_a_la_fin():
     assert p.report["grid"] == "commune à l'instantané"
 
 
-def test_grille_commune_ne_perd_aucune_mesure():
-    rows = [("2026-03-02T00:00:00+00:00", "5.0"), ("2026-03-02T09:00:00+00:00", "6.0")]
+def test_mesures_hors_fenetre_comptees_pas_sur_la_grille():
+    """La fenêtre commune est la même pour tous : ce qui est hors fenêtre est compté."""
+    rows = [
+        ("2026-03-02T00:00:00+00:00", "5.0"),
+        ("2026-03-02T02:00:00+00:00", "7.0"),
+        ("2026-03-02T09:00:00+00:00", "6.0"),
+    ]
     grid = (pd.Timestamp("2026-03-02T02:00Z"), pd.Timestamp("2026-03-02T03:00Z"))
-    c = prepare.normalize(raw_frame(rows), CID, grid).counts
-    assert len(c) == 10 and c["is_observed"].sum() == 2
+    p = prepare.normalize(raw_frame(rows), CID, grid)
+    assert len(p.counts) == 2 and p.counts["is_observed"].sum() == 1
+    assert p.report["n_hours_outside_window"] == 2
 
 
 def _network(tmp_path, monkeypatch, n_sites=5, alias=False):
@@ -242,6 +248,8 @@ def _network(tmp_path, monkeypatch, n_sites=5, alias=False):
     """
     start = pd.Timestamp("2026-08-21T00:00Z")
     hours = pd.date_range(start, periods=96, freq="h")
+    # Premier jour du brut rogné par la source : quelques heures d'un seul compteur
+    rogne = pd.date_range(start - pd.Timedelta(days=1), periods=24, freq="h")[::4]
     gap = (hours >= start + pd.Timedelta(days=1)) & (hours < start + pd.Timedelta(days=2))
     frames = []
 
@@ -263,7 +271,8 @@ def _network(tmp_path, monkeypatch, n_sites=5, alias=False):
 
     for k in range(n_sites):
         coords = f"{48.80 + 0.01 * k:.4f}, 2.35"
-        add(f"c{k}a", f"s{k}", f"Rue {k} N-S", hours[~gap], coords)
+        first_ts = rogne.append(hours[~gap]) if k == 0 else hours[~gap]
+        add(f"c{k}a", f"s{k}", f"Rue {k} N-S", first_ts, coords)
         add(f"c{k}b", f"s{k}", f"Rue {k} S-N", hours[~gap], coords)
     add("stop", "z", "Rue arrêtée E-O", hours[:12], "48.95, 2.45")  # s'arrête le premier jour
     if alias:
@@ -442,3 +451,32 @@ def test_un_seul_seuil_network_gap():
     from src.data import quality
 
     assert prepare.NETWORK_GAP_SHARE == quality.SelectionCriteria.network_gap_share
+
+
+# ----------------------------------------------------------------- fenêtre (17/11, Nihed)
+def test_premier_jour_du_brut_ecarte(tmp_path, monkeypatch):
+    """Le premier jour UTC du brut, rogné par la source, n'est pas sur la grille."""
+    _network(tmp_path, monkeypatch)
+    prepare.prepare_all("flux-test")
+    c = pd.read_csv(tmp_path / "processed" / "flux-test" / "counts.csv", dtype=str)
+    assert c["timestamp"].min() == "2026-08-21T00:00:00+00:00"
+    assert c.groupby("counter_id").size().eq(96).all()
+    assert not c["timestamp"].str.startswith("2026-08-20").any()
+    grid = json.loads((tmp_path / "manifests" / "flux-test.json").read_text())["grid"]
+    assert grid["raw_first_timestamp"] == "2026-08-20T00:00:00+00:00"
+    assert grid["first_timestamp"] == "2026-08-21T00:00:00+00:00"
+    assert grid["n_source_hours_outside_window"] == 6  # les 6 heures rognées de c0a
+    assert "premier jour UTC" in grid["window_rule"]
+
+
+def test_fenetre_commence_au_jour_suivant_minuit_utc():
+    raw = pd.DataFrame(
+        {"id_compteur": CID, "date": ["2026-03-02T16:00:00+00:00", "2026-03-05T22:00:00+00:00"]}
+    )
+    first, last, raw_first = prepare.grid_window(raw)
+    assert raw_first == pd.Timestamp("2026-03-02T16:00Z")
+    assert first == pd.Timestamp("2026-03-03T00:00Z")
+    assert last == pd.Timestamp("2026-03-05T22:00Z")
+    one_day = pd.DataFrame({"id_compteur": CID, "date": ["2026-03-02T16:00:00+00:00"]})
+    with pytest.raises(ValueError):
+        prepare.grid_window(one_day)

@@ -53,7 +53,7 @@ from src.data.quality import (
 
 TZ_LOCAL = "Europe/Paris"
 LONG_ZERO_RUN_HOURS = 24  # seuil d'une suite de zéros « longue » (heures consécutives)
-NORMALIZATION_VERSION = "e1-prepare/0.2.2"
+NORMALIZATION_VERSION = "e1-prepare/0.3.0"
 # Seuil défini une seule fois, dans quality.SelectionCriteria
 NETWORK_GAP_SHARE = SelectionCriteria.network_gap_share
 
@@ -243,7 +243,9 @@ def normalize(
     """Normalise le brut d'un compteur sur une grille horaire UTC complète.
 
     `grid_range` = (première, dernière heure UTC de l'instantané) : grille
-    commune à tous les compteurs. Sans elle, la grille va de la première à la
+    commune à tous les compteurs. Les heures du compteur hors de cette fenêtre ne
+    vont pas sur la grille ; elles sont comptées (`n_hours_outside_window`) et
+    restent dans le brut. Sans `grid_range`, la grille va de la première à la
     dernière heure du compteur (usage compteur par compteur).
     """
     df = raw.rename(columns=lambda c: COLUMN_MAP.get(str(c).lstrip("﻿"), c))
@@ -292,6 +294,12 @@ def normalize(
     hours["row_flags"] = pd.Series(
         {k: sorted(set(chain.from_iterable(v))) for k, v in g["row_flags"]}, dtype=object
     )
+    n_outside = 0
+    if grid_range is not None:
+        inside = (hours.index >= grid_range[0]) & (hours.index <= grid_range[1])
+        n_outside = int((~inside).sum())
+        hours = hours[inside]
+        rows = rows[rows["ts"].isin(hours.index)]
     is_dup = hours["n_rows"] > 1
     is_conflict = is_dup & (hours["n_values"] > 1)
     audit = rows[rows["ts"].isin(hours.index[is_dup])][["ts", "date_source", "count"]].copy()
@@ -302,10 +310,10 @@ def normalize(
     )
 
     # Grille horaire complète
-    first, last = hours.index.min(), hours.index.max()
     if grid_range is not None:
-        # Jamais plus courte que les heures du compteur : aucune mesure n'est perdue.
-        first, last = min(first, grid_range[0]), max(last, grid_range[1])
+        first, last = grid_range  # fenêtre commune, la même pour tous les compteurs
+    else:
+        first, last = hours.index.min(), hours.index.max()
     grid = pd.date_range(first, last, freq="h", tz="UTC", name="ts")
     h = hours.reindex(grid)
     present = h["n_rows"].notna()
@@ -384,6 +392,7 @@ def normalize(
     report = {
         "n_source_rows": int(len(df)),
         "n_rows_unplaced": int((bad_ts | off_hour).sum()),
+        "n_hours_outside_window": n_outside,
         "n_grid_hours": int(len(grid)),
         "n_observed": int(is_observed.sum()),
         "n_missing": int((~present).sum()),
@@ -579,8 +588,9 @@ KNOWN_LIMITATIONS = [
     "Hypothèse : le champ 'date' marque le DÉBUT de l'intervalle horaire ; le profil horaire "
     "est cohérent avec cette lecture mais ne la prouve pas à l'heure près.",
     "Flux courant uniquement (13 mois glissants) : pas d'archives annuelles ni de contexte.",
-    "Avec --tout, grille commune : chaque compteur a toutes les heures de l'instantané ; "
-    "avant l'installation et après l'arrêt, is_observed=false. Compteur par compteur "
+    "Avec --tout, grille commune : chaque compteur a toutes les heures de l'instantané, "
+    "à partir du premier jour UTC complet (le premier jour du brut, rogné par la "
+    "source, est écarté) ; avant l'installation et après l'arrêt, is_observed=false. Compteur par compteur "
     "(--compteur), la grille va de la première à la dernière heure du compteur.",
     "Une suite de zéros est interrompue par une heure absente ou invalide.",
 ]
@@ -714,6 +724,23 @@ def snapshot_range(raw: pd.DataFrame) -> tuple[pd.Timestamp, pd.Timestamp]:
     if ts.empty:
         raise ValueError("Aucune date lisible dans le brut.")
     return ts.min(), ts.max()
+
+
+WINDOW_RULE = (
+    "Fenêtre commune : du premier jour UTC complet à la dernière heure du brut. Le "
+    "premier jour UTC du brut est toujours écarté : la source garde 13 mois glissants "
+    "et rogne ce jour selon l'heure du téléchargement (0 à 5 compteurs par heure le "
+    "15/10/2025 dans flux-20261115). Les mesures écartées restent dans le brut."
+)
+
+
+def grid_window(raw: pd.DataFrame) -> tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp]:
+    """(début, fin, première heure du brut) de la grille commune, selon `WINDOW_RULE`."""
+    raw_first, last = snapshot_range(raw)
+    first = raw_first.floor("D") + pd.Timedelta(days=1)
+    if first > last:
+        raise ValueError("Le brut couvre moins de deux jours : pas de jour complet.")
+    return first, last, raw_first
 
 
 def split_by_counter(raw: pd.DataFrame) -> dict[str, pd.DataFrame]:
@@ -856,7 +883,8 @@ def prepare_all(snapshot_id: str) -> list[Prepared]:
             f"Brut complet introuvable : {relative_to_root(raw_path)} (lancer acquire --tout)"
         )
     raw = acquire.read_raw(raw_path)
-    grid_range = snapshot_range(raw)
+    *grid_range, raw_first = grid_window(raw)
+    grid_range = tuple(grid_range)
     items, peaks_ok = [], 0
     for cid, part in split_by_counter(raw).items():
         p = normalize(part, cid, grid_range)
@@ -879,6 +907,11 @@ def prepare_all(snapshot_id: str) -> list[Prepared]:
     extra = {
         "grid": {
             "rule": "commune à tous les compteurs (décision E1, étape 2)",
+            "window_rule": WINDOW_RULE,
+            "raw_first_timestamp": raw_first.isoformat(),
+            "n_source_hours_outside_window": sum(
+                p.report["n_hours_outside_window"] for p in items
+            ),
             "first_timestamp": grid_range[0].isoformat(),
             "last_timestamp": grid_range[1].isoformat(),
             "n_hours": int((grid_range[1] - grid_range[0]) / pd.Timedelta(hours=1)) + 1,
@@ -909,6 +942,10 @@ def print_all_report(snapshot_id, items, extra, written, manifest) -> None:
     total = sum(len(p.counts) for p in items)
     print(f"\n=== Instantané {snapshot_id} : {len(items)} compteurs")
     print(f"Grille commune UTC : {g['first_timestamp']} -> {g['last_timestamp']} ({g['n_hours']} h)")
+    print(
+        f"Premier jour du brut écarté (rogné par la source) : depuis {g['raw_first_timestamp']}, "
+        f"{g['n_source_hours_outside_window']} heures-compteur hors fenêtre"
+    )
     print(
         "Même nombre d'heures pour tous : "
         + ("oui" if len(lengths) == 1 else f"NON ({sorted(lengths)})")
