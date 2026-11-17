@@ -875,16 +875,38 @@ def write_all(items: list[Prepared], snapshot_id: str, source_id: str, out_dir: 
     return {"paths": paths, "counts": None, "counts_stats": stats, "counters": counters}
 
 
+def history_settings(snapshot_id: str) -> dict | None:
+    """Bloc `history` du manifeste d'un instantané assemblé (archives + flux), sinon None."""
+    path = acquire.manifest_path(snapshot_id)
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8")).get("history")
+
+
 def prepare_all(snapshot_id: str) -> list[Prepared]:
-    """Prépare tout le flux d'un instantané sur une grille commune (décisions E1)."""
-    raw_path = data_path("history") / snapshot_id / acquire.RAW_ALL_FILENAME
+    """Prépare tout le flux d'un instantané sur une grille commune (décisions E1).
+
+    Instantané du flux : brut `acquire --tout`, fenêtre `WINDOW_RULE`. Instantané
+    assemblé (`hist-…`, écrit par `src.data.archives --assembler`) : brut et fenêtre
+    lus dans le bloc `history` de son manifeste.
+    """
+    hist = history_settings(snapshot_id)
+    if hist:
+        raw_path = data_path("history") / snapshot_id / hist["raw_file"]
+    else:
+        raw_path = data_path("history") / snapshot_id / acquire.RAW_ALL_FILENAME
     if not raw_path.exists():
         raise FileNotFoundError(
             f"Brut complet introuvable : {relative_to_root(raw_path)} (lancer acquire --tout)"
         )
     raw = acquire.read_raw(raw_path)
-    *grid_range, raw_first = grid_window(raw)
-    grid_range = tuple(grid_range)
+    if hist:
+        grid_range = (pd.Timestamp(hist["start"]), pd.Timestamp(hist["end"]))
+        raw_first, window_rule = grid_range[0], hist["window_rule"]
+    else:
+        *grid_range, raw_first = grid_window(raw)
+        grid_range = tuple(grid_range)
+        window_rule = WINDOW_RULE
     items, peaks_ok = [], 0
     for cid, part in split_by_counter(raw).items():
         p = normalize(part, cid, grid_range)
@@ -907,7 +929,7 @@ def prepare_all(snapshot_id: str) -> list[Prepared]:
     extra = {
         "grid": {
             "rule": "commune à tous les compteurs (décision E1, étape 2)",
-            "window_rule": WINDOW_RULE,
+            "window_rule": window_rule,
             "raw_first_timestamp": raw_first.isoformat(),
             "n_source_hours_outside_window": sum(
                 p.report["n_hours_outside_window"] for p in items
@@ -943,8 +965,8 @@ def print_all_report(snapshot_id, items, extra, written, manifest) -> None:
     print(f"\n=== Instantané {snapshot_id} : {len(items)} compteurs")
     print(f"Grille commune UTC : {g['first_timestamp']} -> {g['last_timestamp']} ({g['n_hours']} h)")
     print(
-        f"Premier jour du brut écarté (rogné par la source) : depuis {g['raw_first_timestamp']}, "
-        f"{g['n_source_hours_outside_window']} heures-compteur hors fenêtre"
+        f"Hors fenêtre : depuis {g['raw_first_timestamp']}, "
+        f"{g['n_source_hours_outside_window']} heures-compteur écartées"
     )
     print(
         "Même nombre d'heures pour tous : "
