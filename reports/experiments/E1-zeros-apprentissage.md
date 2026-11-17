@@ -110,14 +110,14 @@ Limites de cette règle :
 
 Ajoutées le 15/11/2026 au soir, avant toute comparaison. Elles servent à **comprendre** le résultat principal, jamais à changer la décision prise à 24 h.
 
-1. **Sans Jourdan E-O.** Jourdan représente 3 853 des 5 822 heures retirées (66 %). La MAE macro des concernés sera aussi calculée sur les **8 autres compteurs**. Si l'effet de B disparaît sans Jourdan, la conclusion le dira : B aide un compteur très atypique, pas les suites de zéros en général.
-2. **Compteur par compteur.** MAE de A et de B pour chacun des 9 concernés, et nombre de compteurs améliorés / dégradés (déjà dans la sortie du script).
+1. **Sans Jourdan E-O.** Jourdan représente 3 853 des 5 822 heures retirées (66 %). La MAE macro des concernés sera aussi calculée sur les **8 autres compteurs** (fonction `concerned_without` de `zeros_experiment.py`, affichée à la fin de la sortie du script ; codée le 16/11/2026, avant tout résultat). Si l'effet de B disparaît sans Jourdan, la conclusion le dira : B aide un compteur très atypique, pas les suites de zéros en général.
+2. **Compteur par compteur.** MAE de A et de B pour chacun des 9 concernés, et nombre de compteurs améliorés / dégradés (tableau « MAE par compteur concerné » et colonnes `n_improved` / `n_degraded` de la sortie du script).
 3. **Effet sur les témoins.** Variation de la MAE des 74 `retained`, pour voir si retirer des zéros chez quelques compteurs change le modèle pour tout le réseau (cas d'un modèle global).
 4. **Seuil de longueur des suites : 48 h et 72 h** (option `--seuil` du script). Mesure descriptive faite avant les résultats : à 48 h comme à 72 h, B retire 5 797 heures sur 8 compteurs ; seul le quai de l'Hôtel de Ville (suite de 25 h) sort. Sur cet instantané, le seuil change donc très peu de chose : cette analyse sera rapportée brièvement, l'analyse « sans Jourdan » est la plus informative. Les groupes de comparaison restent ceux de la règle à 24 h.
 
 ## Contrôles réalisés
 
-Tests automatiques sur un petit jeu synthétique (`tests/test_data_zeros.py`, 16 tests, verts le 16/11/2026 ; 69 tests au total après la fusion de `team1-nihed`) :
+Tests automatiques sur un petit jeu synthétique (`tests/test_data_zeros.py`, 17 tests, verts le 16/11/2026 ; 70 tests au total après la fusion de `team1-nihed`) :
 
 - une suite de 24 h de zéros est écartée, une suite de 23 h ne l'est pas ;
 - une heure absente au milieu de zéros coupe la suite (case vide ou ligne manquante) ;
@@ -132,6 +132,7 @@ Tests automatiques sur un petit jeu synthétique (`tests/test_data_zeros.py`, 16
 - la règle de décision applique les trois conditions ; les sites réservés à E3 n'entrent pas dans l'expérience.
 - à une origine, le modèle ne voit que les comptages publiés à cette date, identiques pour A et B.
 - à 48 h et 72 h, B retire moins d'heures mais les groupes restent ceux de la règle à 24 h.
+- l'analyse « sans Jourdan E-O » recalcule la MAE macro des seuls concernés restants ; sans aucun compteur, elle ne donne pas de valeur (jamais zéro).
 
 Sur données réelles, **sans modèle ni calcul d'erreur** (15/11/2026) : 91 compteurs répartis en 9 concernés, 74 témoins et 8 autres ; B retire 5 822 cibles d'apprentissage, toutes des zéros, sur ces 9 compteurs seulement ; historique identique pour A et B ; 5 642 cas attendus, dont 381 sans aucune mesure. **Relancé le 16/11/2026 sur la grille commune** (113 × 9 503 heures, reconstruite à partir de l'instantané) : chiffres strictement identiques, comme attendu, puisqu'une heure absente coupait déjà les suites. **Reconfirmé le 16/11/2026 sur la nouvelle version de `flux-20261115`** (les 8 fichiers reçus ont l'empreinte SHA-256 du manifeste ; 1 073 839 lignes, 9 503 par compteur, `direction` remplie, drapeau `network_gap` présent) : 5 822 heures sur 9 compteurs, 5 642 cas dont 381 sans mesure, 5 797 heures à 48 h et 72 h.
 

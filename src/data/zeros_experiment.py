@@ -48,6 +48,8 @@ GROUPS = ("concerned", "control", "other_robustness")
 # Règle de décision de la fiche (seuils proposés, à valider par E4)
 MIN_GAIN_CONCERNED = 0.05
 MAX_LOSS_CONTROL = 0.01
+# Analyse complémentaire 1 de la fiche : 24 boulevard Jourdan E-O (counter_id de counters.csv)
+JOURDAN_EO = "300030116-353354957"
 
 
 class Model(Protocol):
@@ -255,6 +257,27 @@ def decide(result: dict) -> tuple[str, str]:
     return ("B (écarter)" if ok else "A (garder)"), reason
 
 
+def concerned_without(result: dict, excluded: set[str]) -> dict:
+    """MAE macro des compteurs concernés, sans `excluded`.
+
+    Analyse complémentaire de la fiche (« sans Jourdan E-O ») : elle aide à comprendre
+    le résultat principal et ne change jamais la décision.
+    """
+    pc = result["per_counter"]
+    pc = pc[(pc["group"] == "concerned") & ~pc["counter_id"].isin(excluded)]
+    mae_a = float(pc["mae_a"].mean()) if len(pc) else np.nan
+    mae_b = float(pc["mae_b"].mean()) if len(pc) else np.nan
+    computable = np.isfinite(mae_a) and np.isfinite(mae_b) and mae_a > 0
+    return {
+        "n_evaluable_counters": int(len(pc)),
+        "mae_macro_a": mae_a,
+        "mae_macro_b": mae_b,
+        "variation": mae_b / mae_a - 1 if computable else np.nan,
+        "n_improved": int((pc["mae_b"] < pc["mae_a"]).sum()),
+        "n_degraded": int((pc["mae_b"] > pc["mae_a"]).sum()),
+    }
+
+
 # ----------------------------------------------------------------- ensemble
 def comparison_groups(inventory: pd.DataFrame, dropped_ids: set[str]) -> dict[str, str]:
     """Compteurs de S_train, répartis entre concernés, témoins et autres robustness."""
@@ -338,7 +361,13 @@ def main(argv: list[str] | None = None) -> int:
         if k not in ("groups", "per_counter"):
             print(f"{k} : {v}")
     print(pd.DataFrame(res["groups"]).T.to_string())
+    print("MAE par compteur concerné :")
+    pc = res["per_counter"]
+    print(pc[pc["group"] == "concerned"].to_string(index=False))
     print("Décision selon la règle de la fiche :", *decide(res), sep="\n- ")
+    print("Analyse complémentaire, concernés sans Jourdan E-O (ne décide rien) :")
+    for k, v in concerned_without(res, {JOURDAN_EO}).items():
+        print(f"- {k} : {v}")
     return 0
 
 

@@ -194,6 +194,29 @@ def test_regle_de_decision():
     assert ze.decide(result(10, 9, 10, 10, ub=9))[0].startswith("A")  # compteur perdu
 
 
+def test_analyse_sans_un_compteur_concerne():
+    per_counter = pd.DataFrame(
+        {
+            "counter_id": ["j", "c1", "c2", "t"],
+            "group": ["concerned", "concerned", "concerned", "control"],
+            "mae_a": [100.0, 10.0, 20.0, 5.0],
+            "mae_b": [40.0, 12.0, 18.0, 5.0],
+        }
+    )
+    res = {"per_counter": per_counter}
+    tous = ze.concerned_without(res, set())
+    assert tous["n_evaluable_counters"] == 3
+    assert tous["mae_macro_a"] == pytest.approx(130 / 3)
+    sans = ze.concerned_without(res, {"j"})  # l'effet venait surtout de "j"
+    assert sans["n_evaluable_counters"] == 2  # le témoin "t" n'entre jamais
+    assert sans["mae_macro_a"] == pytest.approx(15.0)
+    assert sans["mae_macro_b"] == pytest.approx(15.0)
+    assert sans["variation"] == pytest.approx(0.0)
+    assert sans["n_improved"] == 1 and sans["n_degraded"] == 1
+    vide = ze.concerned_without(res, {"j", "c1", "c2"})
+    assert vide["n_evaluable_counters"] == 0 and np.isnan(vide["variation"])  # jamais zéro
+
+
 def test_experience_complete_sur_reseau_synthetique():
     n = 24 * 70
     rng = np.random.default_rng(0)
