@@ -1,14 +1,23 @@
-"""GABARIT À COMPLÉTER - E3
 
-Prévoir sur un site exclu de l’apprentissage initial.
+from ._core import manager
 
-Entrées et sorties : voir doc/CONTRATS.md et doc/templates/.
 
-À faire :
-1. Garder toutes les directions du site hors entraînement et choix des paramètres finaux.
-2. Limiter historique, normalisation et imputations au support local défini par E4.
-3. Produire une version gelée et une référence équitable sur le même support.
-4. Écrire les prévisions, limites, support_id et coûts selon les mêmes contrats qu’E2.
+def predict(model_name,history,horizon=24):
+    model = manager.load_model(model_name)
 
-Aucune implémentation fournie ; ce fichier contient uniquement des consignes.
-"""
+    if model_name == "chronos-2":
+        # TODO : préparation Chronos-2 (avec manager)
+        # TODO : prédiction Chronos-2
+        pass
+    elif model_name == "google_TimesFM_2.5":
+        # TODO : préparation Google TimesFM 2.5 (avec manager)
+        # TODO : prédiction Google TimesFM 2.5
+        pass
+    elif model_name == "team2":
+        # TODO : préparation modèle E2 (avec manager)
+        # TODO : prédiction modèle E2
+        pass
+
+    else:
+        raise ValueError("Modèle inconnu")
+
