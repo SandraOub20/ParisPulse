@@ -11,9 +11,31 @@ Une ligne par jour, du 01/01/2023 au 17/11/2026 (1 417 jours, dont 73 de grève)
 | `date` | jour, heure de Paris (AAAA-MM-JJ) |
 | `greve` | `true` si les transports en commun d'Île-de-France (RATP, RER, Transilien) ont été perturbés par une grève ce jour-là, sinon `false` |
 
-**Jointure :** date locale (Europe/Paris) de l'heure de comptage = `date`. En dehors de la période, la valeur est inconnue.
+```
+date,greve
+2026-11-04,false
+2026-11-05,true
+2026-11-06,false
+```
 
-**Pour une prévision :** une grève est annoncée au moins 24 h avant (Code des transports, art. L1222-8). On peut donc l'utiliser pour prévoir le jour même.
+**Jointure.** On convertit l'heure de comptage en heure de Paris, puis on joint sa date sur `date`. Attention au décalage :
+
+| `timestamp` de counts.csv (UTC) | heure de Paris | `greve` |
+| --- | --- | --- |
+| 2026-11-04T22:00:00+00:00 | 04/11 23 h | false |
+| 2026-11-04T23:00:00+00:00 | **05/11** 00 h | **true** |
+
+En dehors de la période recensée, la valeur est inconnue.
+
+**Peut-on l'utiliser pour prévoir ?** Oui : on n'a pas à prédire une grève, elle est connue à l'avance. Il faut cependant distinguer trois moments :
+
+| Moment | Quand | Ce qu'on sait |
+| --- | --- | --- |
+| Annonce syndicale (grandes journées) | souvent 2 à 4 semaines avant | qu'une grève aura lieu, pas son ampleur |
+| Préavis légal (services publics) | au moins 5 jours avant | qu'une grève est possible ; un préavis n'entraîne pas toujours de perturbation |
+| Prévision de trafic RATP/SNCF | au plus tard 24 h avant (Code des transports, art. L1222-8) | lignes et niveau de perturbation |
+
+Ici, `greve = true` veut dire « trafic annoncé comme perturbé ». On considère donc l'information connue **24 h avant** : pour une prévision faite à minuit le jour J, la valeur de J et celle de J+1 sont utilisables.
 
 ## `greves_transport_idf_sources.csv` - justification des jours de grève
 
