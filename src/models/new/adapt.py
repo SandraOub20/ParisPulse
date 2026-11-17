@@ -1,14 +1,19 @@
-"""GABARIT À COMPLÉTER - E3
 
-Comparer la même méthode sans et avec adaptation légère.
+from ._core import manager
 
-Entrées et sorties : voir doc/CONTRATS.md et doc/templates/.
 
-À faire :
-1. Définir précisément quels paramètres changent et comment les estimer sur le support local.
-2. Choisir les réglages sur des sites de développement distincts des sites finaux.
-3. Garder le futur caché et le même support entre variantes ; réinitialiser selon le protocole.
-4. Tracer adaptation_id, paramètres, coût, échecs et résultats sur plusieurs sites.
+def adapt(model_name,history,horizon=24):
+    model = manager.load_model(model_name)
 
-Aucune implémentation fournie ; ce fichier contient uniquement des consignes.
-"""
+    if model_name == "chronos":
+        # TODO : adaptation Chronos-2
+        pass
+    elif model_name == "google_TimesFM_2.5":
+        # TODO : adaptation Google TimesFM 2.5
+        pass
+    elif model_name == "team2":
+        # TODO : adaptation modèle E2
+        pass
+
+    else:
+        raise ValueError("Modèle inconnu")
