@@ -312,3 +312,49 @@ def test_delai_de_publication_applique():
     assert first["available_at"] == "2026-06-08T12:00:00+00:00"  # -48 h + 12 h
     obs, _ = c.parse_observed(meteofrance_gz("2026-06-10", 1), lag_h=48)
     assert c._frame(obs).iloc[0]["available_at"] == "2026-06-12T00:00:00+00:00"
+
+
+def test_prevision_jma_avant_2024_puis_modele_par_defaut():
+    segs = c.forecast_segments(dt.date(2023, 10, 16), dt.date(2026, 11, 14))
+    assert [s["model"] for s in segs] == ["jma_gsm", None]
+    assert segs[0]["start"] == dt.date(2023, 10, 15) and segs[0]["end"] == dt.date(2024, 3, 1)
+    assert segs[1]["start"] == dt.date(2024, 1, 1) and segs[1]["end"] == dt.date(2026, 11, 14)
+    assert segs[0]["location_id"] != segs[1]["location_id"]
+    seul = c.forecast_segments(dt.date(2025, 10, 16), dt.date(2026, 11, 14))
+    assert len(seul) == 1 and seul[0]["model"] is None and seul[0]["start"] == dt.date(2025, 10, 15)
+    assert c.forecast_params(dt.date(2023, 1, 1), dt.date(2023, 1, 2), 2, "jma_gsm")["models"] == (
+        "jma_gsm"
+    )
+    assert "models" not in c.forecast_params(dt.date(2025, 1, 1), dt.date(2025, 1, 2), 2)
+
+
+def test_cles_suffixees_par_le_modele_acceptees():
+    import json as js
+
+    raw = js.dumps(
+        {
+            "hourly": {
+                "time": ["2023-12-01T10:00"],
+                "temperature_2m_previous_day2_jma_gsm": [5.0],
+                "precipitation_previous_day2_jma_gsm": [0.2],
+                "wind_speed_10m_previous_day2_jma_gsm": [3.0],
+            },
+            "hourly_units": {"wind_speed_10m_previous_day2_jma_gsm": "m/s"},
+        }
+    ).encode()
+    rows, _, _ = c.parse_forecast(raw, 2, location_id="x", model="jma_gsm")
+    assert {r["variable"] for r in rows} == {"temp_prev", "rain_prev", "wind_prev"}
+    assert all(r["location_id"] == "x" for r in rows)
+
+
+def test_bascule_unique_vers_le_modele_par_defaut():
+    def r(t, loc):
+        return {"valid_time": t, "location_id": loc, "variable": "temp_prev", "value": 1.0}
+
+    jma = [r(f"2024-01-{d:02d}T00:00:00+00:00", "jma") for d in range(1, 26)]
+    defaut = [r(f"2024-01-{d:02d}T00:00:00+00:00", "def") for d in range(21, 26)]
+    rows, switch = c.merge_forecast_segments(jma, defaut)
+    assert switch == "2024-01-21T00:00:00+00:00"
+    assert [x["location_id"] for x in rows].count("jma") == 20
+    assert len({x["valid_time"] for x in rows}) == len(rows) == 25
+    assert c.merge_forecast_segments(jma, []) == (jma, None)

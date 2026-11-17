@@ -107,6 +107,16 @@ URL_SCHOOL = (
     "fr-en-calendrier-scolaire/exports/csv?delimiter=%3B"
 )
 URL_FORECAST = "https://previous-runs-api.open-meteo.com/v1/forecast"
+# Archive des anciens runs d'Open-Meteo : « Most models are archived from January 2024 »
+# (open-meteo.com/en/docs/previous-runs-api). Avant cette date, décision E1 du
+# 17/11/2026 : modèle JMA GSM (archivé depuis 2018), puis le modèle par défaut.
+FORECAST_ARCHIVE_START = dt.date(2024, 1, 1)
+FORECAST_FALLBACK_MODEL = "jma_gsm"
+LOC_FORECAST_FALLBACK = f"openmeteo-{FORECAST_FALLBACK_MODEL}-48.8566-2.3522"
+# Le modèle par défaut n'a de prévision J-2 qu'à partir du 20/01/2024 12:00 UTC (constaté
+# sur hist-20261117) : le repli est demandé un peu au-delà, et la bascule se fait à la
+# première heure où le modèle par défaut a une valeur (une seule bascule, pas de mélange).
+FORECAST_FALLBACK_OVERLAP_DAYS = 60
 URL_METEOFRANCE_DATASET = (
     "https://www.data.gouv.fr/api/1/datasets/donnees-climatologiques-de-base-horaires/"
 )
@@ -305,12 +315,62 @@ def school_rows(periods: pd.DataFrame, days: list[dt.date]) -> list[dict]:
 
 
 # ----------------------------------------------------------------- météo prévue
-def forecast_params(start: dt.date, end: dt.date, lead_days: int) -> dict:
+def forecast_segments(first_day: dt.date, last_day: dt.date) -> list[dict]:
+    """Requêtes de prévision : modèle de repli avant l'archive, modèle par défaut ensuite.
+
+    La veille du premier jour est demandée pour couvrir la première nuit en UTC.
+    Chaque segment : model (None = défaut), location_id, start, end (dates incluses).
+    """
+    wanted = first_day - dt.timedelta(days=1)
+    segments = []
+    if wanted < FORECAST_ARCHIVE_START:
+        segments.append(
+            {
+                "model": FORECAST_FALLBACK_MODEL,
+                "location_id": LOC_FORECAST_FALLBACK,
+                "start": wanted,
+                "end": min(
+                    last_day,
+                    FORECAST_ARCHIVE_START + dt.timedelta(days=FORECAST_FALLBACK_OVERLAP_DAYS),
+                ),
+            }
+        )
+    if last_day >= FORECAST_ARCHIVE_START:
+        segments.append(
+            {
+                "model": None,
+                "location_id": LOC_FORECAST,
+                "start": max(wanted, FORECAST_ARCHIVE_START),
+                "end": last_day,
+            }
+        )
+    return segments
+
+
+def merge_forecast_segments(
+    fallback: list[dict], default: list[dict]
+) -> tuple[list[dict], str | None]:
+    """Repli jusqu'à la première heure du modèle par défaut, puis le défaut seul.
+
+    Une seule bascule : aucune heure ne mélange les deux modèles. Retourne (lignes,
+    heure de bascule ou None si le défaut est vide).
+    """
+    switch = min((r["valid_time"] for r in default), default=None)
+    if switch is None:
+        return fallback, None
+    return [r for r in fallback if r["valid_time"] < switch] + default, switch
+
+
+def forecast_params(
+    start: dt.date, end: dt.date, lead_days: int, model: str | None = None
+) -> dict:
     hourly = ",".join(
         f"{v}_previous_day{lead_days}"
         for v in ("temperature_2m", "precipitation", "wind_speed_10m")
     )
+    extra = {"models": model} if model else {}
     return {
+        **extra,
         "latitude": PARIS_CENTER[0],
         "longitude": PARIS_CENTER[1],
         "hourly": hourly,
@@ -322,10 +382,18 @@ def forecast_params(start: dt.date, end: dt.date, lead_days: int) -> dict:
 
 
 def parse_forecast(
-    raw: bytes, lead_days: int, run_delay_h: int = RUN_PUBLICATION_DELAY_H
+    raw: bytes,
+    lead_days: int,
+    run_delay_h: int = RUN_PUBLICATION_DELAY_H,
+    location_id: str = LOC_FORECAST,
+    model: str | None = None,
 ) -> tuple[list[dict], dict, list[str]]:
     data = json.loads(raw.decode("utf-8"))
     hourly, units = data["hourly"], data.get("hourly_units", {})
+    if model:  # avec `models=`, certaines réponses suffixent les clés par le modèle
+        suffix = f"_{model}"
+        hourly = {k.removesuffix(suffix): v for k, v in hourly.items()}
+        units = {k.removesuffix(suffix): v for k, v in units.items()}
     alerts: list[str] = []
     wind_key = f"wind_speed_10m_previous_day{lead_days}"
     if units.get(wind_key) not in (None, "m/s"):
@@ -350,7 +418,7 @@ def parse_forecast(
             rows.append(
                 {
                     "context_source_id": SRC_FORECAST,
-                    "location_id": LOC_FORECAST,
+                    "location_id": location_id,
                     "valid_time": t,
                     "local_date": "",
                     "variable": variable,
@@ -569,21 +637,50 @@ def build_context(
         sheets[SRC_SCHOOL]["alerts"].append("Aucune période de vacances sur la période.")
 
     if meteo:
-        params = forecast_params(first_day - dt.timedelta(days=1), last_day, lead_days)
-        path = raw_dir / f"openmeteo_previous_day{lead_days}.json"
-        f_rows, f_info, f_alerts = parse_forecast(
-            fetch(URL_FORECAST, path, params=params, force=force),
-            lead_days,
-            settings["run_publication_delay_hours"],
-        )
+        f_alerts, segments, seg_rows = [], [], []
+        for seg in forecast_segments(first_day, last_day):
+            params = forecast_params(seg["start"], seg["end"], lead_days, seg["model"])
+            name = f"openmeteo_previous_day{lead_days}"
+            if seg["model"]:
+                name += f"_{seg['model']}"
+            path = raw_dir / f"{name}.json"
+            rows_seg, info, alerts_seg = parse_forecast(
+                fetch(URL_FORECAST, path, params=params, force=force),
+                lead_days,
+                settings["run_publication_delay_hours"],
+                location_id=seg["location_id"],
+                model=seg["model"],
+            )
+            seg_start = pd.Timestamp(seg["start"], tz="UTC")
+            seg_end = pd.Timestamp(seg["end"] + dt.timedelta(days=1), tz="UTC")
+            seg_rows.append(keep_period(rows_seg, seg_start, seg_end))
+            f_alerts += [f"{seg['model'] or 'défaut'} : {x}" for x in alerts_seg]
+            raw_files.append(path)
+            segments.append(
+                {
+                    "model": seg["model"] or "défaut (best_match)",
+                    "location_id": seg["location_id"],
+                    "from": seg["start"].isoformat(),
+                    "to": seg["end"].isoformat(),
+                    "raw_file": relative_to_root(path),
+                    "request": params,
+                    **info,
+                }
+            )
+        if len(segments) > 1:
+            f_rows, switch = merge_forecast_segments(*seg_rows)
+            if switch is not None:
+                segments[0]["to_valid_time_excluded"] = switch
+                segments[1]["from_valid_time"] = switch
+            f_alerts.append(
+                f"Prévision du modèle {FORECAST_FALLBACK_MODEL} jusqu'à {switch} (exclu), "
+                "puis du modèle par défaut : deux sources, une seule bascule (voir segments "
+                "et location_id)."
+            )
+        else:
+            f_rows = seg_rows[0] if seg_rows else []
         rows += keep_period(f_rows, start, end + pd.Timedelta(hours=1))
-        raw_files.append(path)
-        sheets[SRC_FORECAST] = {
-            "raw_file": relative_to_root(path),
-            "request": params,
-            **f_info,
-            "alerts": f_alerts,
-        }
+        sheets[SRC_FORECAST] = {"segments": segments, "lead_days": lead_days, "alerts": f_alerts}
 
         listing = json.loads(
             fetch(URL_METEOFRANCE_DATASET, raw_dir / "meteofrance_ressources.json", force=force)
