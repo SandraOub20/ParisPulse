@@ -6,12 +6,18 @@ validité et variable), une fiche par source (`context_sources.json`) et un audi
 de jointure avec `counts.csv` (`context_join_audit.json`). Les bruts sont déposés
 intacts dans `data/history/<snapshot_id>/context/` et décrits dans le manifeste.
 
+Calendrier sur une seule ligne (`e1-context/0.2.0`, 18/11/2026) : un jour férié ou de
+vacances tient en une ligne, `variable = is_holiday`, `value = true`, et son nom dans la
+colonne `label` (ex. « Toussaint ») ; un jour ordinaire a `value = false` et `label`
+vide. Avant, le nom occupait une deuxième ligne (`holiday_name`). `label` est vide pour
+la météo. `--migrer` convertit un context.csv de l'ancien format sans rien retélécharger.
+
 Sources et rôles (doc/CONTRATS.md §4)
 -------------------------------------
-| context_source_id    | Variables                                   | Rôle              |
+| context_source_id    | Variables (nom dans `label`)                | Rôle              |
 | -------------------- | ------------------------------------------- | ----------------- |
-| `jours_feries`       | is_holiday, holiday_name                    | known_calendar    |
-| `vacances_zone_c`    | is_school_holiday, school_holiday_name      | known_calendar    |
+| `jours_feries`       | is_holiday                                  | known_calendar    |
+| `vacances_zone_c`    | is_school_holiday                           | known_calendar    |
 | `meteo_prevue`       | temp_prev, rain_prev, wind_prev             | forecast_bulletin |
 | `meteo_observee`     | temp_obs, rain_obs, wind_obs                | past_observation  |
 
@@ -38,6 +44,7 @@ Usage, depuis la racine du dépôt :
   uv run python -m src.data.context --snapshot flux-20261114
   uv run python -m src.data.context --snapshot flux-20261114 --sans-meteo
   uv run python -m src.data.context --snapshot ID --debut 2025-10-11 --fin 2026-11-14
+  uv run python -m src.data.context --snapshot flux-20261115 --migrer
 """
 
 from __future__ import annotations
@@ -59,7 +66,7 @@ from src.common.config import data_path, load_config, relative_to_root
 from src.data import acquire
 
 TZ_LOCAL = "Europe/Paris"
-CONTEXT_VERSION = "e1-context/0.1.0"
+CONTEXT_VERSION = "e1-context/0.2.0"
 HTTP_TIMEOUT = httpx.Timeout(30.0, read=300.0)
 
 CONTEXT_COLUMNS = [
@@ -69,12 +76,15 @@ CONTEXT_COLUMNS = [
     "local_date",
     "variable",
     "value",
+    "label",
     "unit",
     "role",
     "issued_at",
     "available_at",
     "context_version",
 ]
+# Ancien format (e1-context/0.1.0) : le nom sur une deuxième ligne -> colonne `label`
+OLD_NAME_VARIABLES = {"holiday_name": "is_holiday", "school_holiday_name": "is_school_holiday"}
 CONTEXT_KEY = ["context_source_id", "location_id", "valid_time", "local_date", "variable"]
 
 ROLE_CALENDAR = "known_calendar"
@@ -128,7 +138,7 @@ SOURCES = {
         "license": "Licence Ouverte 2.0 (Etalab) - à confirmer sur api.gouv.fr",
         "geography": "France métropolitaine",
         "timezone": "dates civiles locales",
-        "units": {"is_holiday": "bool", "holiday_name": "text"},
+        "units": {"is_holiday": "bool", "label": "nom du jour férié (texte), vide sinon"},
         "join": "date locale du début de l'heure comptée",
         "role": ROLE_CALENDAR,
     },
@@ -138,7 +148,7 @@ SOURCES = {
         "license": "Licence Ouverte 2.0 (Etalab) - à confirmer sur data.education.gouv.fr",
         "geography": "Zone C",
         "timezone": "début et fin convertis en Europe/Paris ; jours [début, fin[",
-        "units": {"is_school_holiday": "bool", "school_holiday_name": "text"},
+        "units": {"is_school_holiday": "bool", "label": "nom des vacances (texte), vide sinon"},
         "join": "date locale du début de l'heure comptée",
         "role": ROLE_CALENDAR,
     },
@@ -248,8 +258,15 @@ def holiday_rows(holidays: dict[dt.date, str], days: list[dt.date]) -> list[dict
             "issued_at": "",
             "available_at": "",
         }
-        rows.append({**base, "variable": "is_holiday", "value": name is not None, "unit": "bool"})
-        rows.append({**base, "variable": "holiday_name", "value": name or "", "unit": "text"})
+        rows.append(
+            {
+                **base,
+                "variable": "is_holiday",
+                "value": name is not None,
+                "label": name or "",
+                "unit": "bool",
+            }
+        )
     return rows
 
 
@@ -306,10 +323,13 @@ def school_rows(periods: pd.DataFrame, days: list[dt.date]) -> list[dict]:
             "available_at": "",
         }
         rows.append(
-            {**base, "variable": "is_school_holiday", "value": name is not None, "unit": "bool"}
-        )
-        rows.append(
-            {**base, "variable": "school_holiday_name", "value": name or "", "unit": "text"}
+            {
+                **base,
+                "variable": "is_school_holiday",
+                "value": name is not None,
+                "label": name or "",
+                "unit": "bool",
+            }
         )
     return rows
 
@@ -361,9 +381,7 @@ def merge_forecast_segments(
     return [r for r in fallback if r["valid_time"] < switch] + default, switch
 
 
-def forecast_params(
-    start: dt.date, end: dt.date, lead_days: int, model: str | None = None
-) -> dict:
+def forecast_params(start: dt.date, end: dt.date, lead_days: int, model: str | None = None) -> dict:
     hourly = ",".join(
         f"{v}_previous_day{lead_days}"
         for v in ("temperature_2m", "precipitation", "wind_speed_10m")
@@ -519,10 +537,37 @@ def admissible_context(ctx: pd.DataFrame, origin: pd.Timestamp) -> pd.DataFrame:
 
 
 def wide_calendar(ctx: pd.DataFrame) -> pd.DataFrame:
+    """Une colonne par variable du calendrier, et son nom dans `<variable>_label`."""
     cal = ctx[ctx["role"] == ROLE_CALENDAR]
     if cal.empty:
         return pd.DataFrame(columns=["local_date"])
-    return cal.pivot(index="local_date", columns="variable", values="value").reset_index()
+    values = cal.pivot(index="local_date", columns="variable", values="value")
+    labels = cal.pivot(index="local_date", columns="variable", values="label")
+    labels.columns = [f"{v}_label" for v in labels.columns]
+    return values.join(labels).reset_index()
+
+
+def migrate_calendar(old: pd.DataFrame) -> pd.DataFrame:
+    """Ancien context.csv (nom sur une 2e ligne, sans `label`) -> format à une ligne.
+
+    Aucune valeur n'est recalculée : le nom de la ligne `holiday_name` (ou
+    `school_holiday_name`) passe dans `label` de la ligne `is_holiday` (ou
+    `is_school_holiday`) du même jour, puis la ligne du nom est retirée.
+    """
+    if "label" in old.columns:
+        return old.copy()
+    df = old.copy()
+    df["label"] = ""
+    for name_var, flag_var in OLD_NAME_VARIABLES.items():
+        names = df[df["variable"] == name_var]
+        key = ["context_source_id", "location_id", "local_date"]
+        lookup = names.set_index(key)["value"]
+        flags = df["variable"] == flag_var
+        idx = pd.MultiIndex.from_frame(df.loc[flags, key])
+        df.loc[flags, "label"] = lookup.reindex(idx).fillna("").to_numpy()
+        df = df[df["variable"] != name_var]
+    df["context_version"] = CONTEXT_VERSION
+    return df[CONTEXT_COLUMNS].reset_index(drop=True)
 
 
 def wide_weather(ctx: pd.DataFrame) -> pd.DataFrame:
@@ -813,9 +858,64 @@ def main(argv: list[str] | None = None) -> int:
         help="prévision de J-N (défaut : config/project.yaml, sinon 2)",
     )
     ap.add_argument("--force", action="store_true", help="retélécharger les bruts")
+    ap.add_argument(
+        "--migrer",
+        action="store_true",
+        help="convertir context.csv existant au format à une ligne (sans téléchargement)",
+    )
     args = ap.parse_args(argv)
+    if args.migrer:
+        migrate(args.snapshot)
+        return 0
     run(args.snapshot, args.debut, args.fin, not args.sans_meteo, args.lead, args.force)
     return 0
+
+
+def migrate(snapshot_id: str) -> None:
+    """Réécrit context.csv au format à une ligne, met à jour la fiche et le manifeste."""
+    out_dir = data_path("processed") / snapshot_id
+    path = out_dir / "context.csv"
+    old = pd.read_csv(path, dtype=str, keep_default_na=False)
+    new = migrate_calendar(old)
+    validate_context(new)
+    new.to_csv(path, index=False)
+    sheets_path = out_dir / "context_sources.json"
+    if sheets_path.exists():
+        sheets = json.loads(sheets_path.read_text(encoding="utf-8"))
+        for sid in (SRC_HOLIDAYS, SRC_SCHOOL):
+            if sid in sheets:
+                sheets[sid]["units"] = SOURCES[sid]["units"]
+                sheets[sid]["context_version"] = CONTEXT_VERSION
+        sheets_path.write_text(
+            json.dumps(sheets, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8"
+        )
+    audit_path = out_dir / "context_join_audit.json"
+    counts_path = out_dir / "counts.csv"
+    if counts_path.exists():
+        counts = pd.read_csv(
+            counts_path,
+            dtype=str,
+            keep_default_na=False,
+            usecols=["counter_id", "timestamp", "interval_end"],
+        )
+        _, audit = join_context(counts, new)
+        audit["status"] = "ok"
+        audit_path.write_text(
+            json.dumps(audit, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+    manifest = acquire.load_manifest(snapshot_id)
+    files = (
+        ("context", path),
+        ("context_sources", sheets_path),
+        ("context_join_audit", audit_path),
+    )
+    for role, p in files:
+        if p.exists():
+            acquire.upsert(manifest["files"], acquire.file_entry(p, role), "path")
+    manifest["context_version"] = CONTEXT_VERSION
+    acquire.write_manifest(manifest)
+    print(f"context.csv : {len(old)} -> {len(new)} lignes ({CONTEXT_VERSION})")
+    print(new.groupby(["context_source_id", "variable"]).size().to_string())
 
 
 if __name__ == "__main__":

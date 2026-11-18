@@ -84,12 +84,15 @@ Ces scripts prennent l'instantané en paramètre ; ils sont prêts à être lanc
 
 | Tâche | Commande | Sur `flux-20261115` |
 | --- | --- | --- |
+| A3 - les 431 alertes | `uv run python -m src.data.alerts_review --snapshot hist-20261117` | Retrouve la fiche de Tasnim : 229 alertes = 113 heures perdues au passage à l'heure d'hiver + 108 journées non publiées + 8 pics (4 sens du soir, 2 faibles volumes, 1 panne, 1 à examiner : Pont des Invalides). |
 | A2 - critère des zéros | `uv run python -m src.data.zeros_criteria --snapshot hist-20261117` | L'option 1 retrouve exactement l'inventaire (95 / 17 / 1 avant réservation). Avec une part de zéros > 1 %, 5 % ou 10 % au lieu d'« au moins une suite » : 15, 9 ou 8 `robustness`. |
 | B1 - mêmes dates un an avant | `uv run python -m src.data.zeros_years --snapshot hist-20261117 --annees 1 2` | 17 suites ; 1 seule comparable un an avant (13 mois de données), sans zéros aux mêmes dates. |
 | B2 - remplacement J-7 | `uv run python -m src.data.fill_j7 --snapshot hist-20261117` | 13 589 heures remplacées dans `count_filled_j7`, 2 116 laissées vides. |
 | B7 - étude A/B des zéros | `uv run python -m src.data.zeros_experiment --snapshot hist-20261117 --coupure … --debut … --fin …` | Dates de découpage sur 3 ans à fixer (A6) ; modèle d'E2 à brancher. |
 
-Les seuils 1 %, 5 % et 10 % ne sont que des exemples pour la discussion : la décision A2 revient à Zeineb puis à E4.
+Les seuils 1 %, 5 % et 10 % ne sont que des exemples pour la discussion.
+
+**Décision A2 (Sabrina, 18/11/2026) :** pour `hist-20261117`, la règle actuelle est gardée (« au moins une suite de zéros ≥ 24 h » → `robustness`). Raisons : aucune modification de `quality.py` ni nouveau tirage des sites réservés à E3 (consigne B5) ; aucun seuil sur la part de zéros n'est justifié à ce jour ; `robustness` ne retire aucun compteur de l'apprentissage. Limite : avec un historique plus long, un compteur a plus de chances d'avoir une suite, d'où 30 `robustness` au lieu de 17. Une fois l'historique reçu, `zeros_criteria.py` montrera l'effet d'un seuil sur la part de zéros. Décision présentée aux autres équipes après la livraison, et modifiable selon leurs retours.
 
 ## Limites et points à confirmer
 

@@ -111,13 +111,23 @@ def meteofrance_gz(start: str, hours: int) -> bytes:
 
 
 # ----------------------------------------------------------------- calendrier
-def test_jours_feries_une_ligne_par_jour_et_variable():
+def test_jours_feries_une_seule_ligne_par_jour_avec_le_nom():
     days = c.local_dates(dt.date(2026, 7, 13), dt.date(2026, 7, 15))
     ctx = c._frame(c.holiday_rows(c.parse_holidays(holidays_json()), days))
     c.validate_context(ctx)
-    assert len(ctx) == 3 * 2
-    flags = ctx[ctx["variable"] == "is_holiday"].set_index("local_date")["value"]
-    assert flags.to_dict() == {"2026-07-13": "false", "2026-07-14": "true", "2026-07-15": "false"}
+    assert len(ctx) == 3  # une ligne par jour, plus de ligne holiday_name
+    assert set(ctx["variable"]) == {"is_holiday"}
+    by_day = ctx.set_index("local_date")
+    assert by_day["value"].to_dict() == {
+        "2026-07-13": "false",
+        "2026-07-14": "true",
+        "2026-07-15": "false",
+    }
+    assert by_day["label"].to_dict() == {
+        "2026-07-13": "",
+        "2026-07-14": "14 juillet",
+        "2026-07-15": "",
+    }
     assert set(ctx["role"]) == {c.ROLE_CALENDAR} and set(ctx["available_at"]) == {""}
 
 
@@ -134,6 +144,10 @@ def test_vacances_zone_c_filtres_et_jour_de_reprise_exclu():
     assert flags["2025-10-26"] == "true"  # jour de passage à l'heure d'hiver
     assert flags["2025-11-02"] == "true"
     assert flags["2025-11-03"] == "false"  # jour de reprise
+    labels = ctx.set_index("local_date")["label"]
+    assert labels["2025-10-18"] == "Vacances de la Toussaint"
+    assert labels["2025-11-03"] == ""
+    assert set(ctx["variable"]) == {"is_school_holiday"}
     hiver = c._frame(
         c.school_rows(periods, c.local_dates(dt.date(2026, 2, 9), dt.date(2026, 2, 9)))
     )
@@ -213,6 +227,7 @@ def test_jointure_ni_creation_ni_perte_jour_de_25_heures():
     assert len(joined) == len(counts) == audit["n_rows_after"]
     assert (joined["local_date"] == "2026-10-25").all()  # les deux heures « 2 h » comprises
     assert audit["is_holiday"]["n_unmatched"] == 0
+    assert audit["is_holiday_label"]["n_unmatched"] == 0
     assert audit["temp_obs"]["n_unmatched"] == 0
     # la météo décrit la même heure que le comptage : jointure sur interval_end
     first = joined.iloc[0]
@@ -225,6 +240,59 @@ def test_jointure_signale_les_heures_sans_contexte():
     _, audit = c.join_context(counts, ctx)
     assert audit["temp_obs"]["n_unmatched"] == 2 * 24
     assert audit["temp_obs"]["unmatched_share"] == 0.5
+
+
+def test_jointure_donne_le_nom_du_jour_ferie():
+    counts = counts_frame("2026-07-14", 2)
+    days = c.local_dates(dt.date(2026, 7, 14), dt.date(2026, 7, 14))
+    ctx = c._frame(c.holiday_rows(c.parse_holidays(holidays_json()), days))
+    joined, _ = c.join_context(counts, ctx)
+    assert set(joined["is_holiday"]) == {"true"}
+    assert set(joined["is_holiday_label"]) == {"14 juillet"}
+
+
+def test_migration_de_l_ancien_format():
+    def old_row(src, day, var, value, unit):
+        return {
+            "context_source_id": src,
+            "location_id": "L",
+            "valid_time": "",
+            "local_date": day,
+            "variable": var,
+            "value": value,
+            "unit": unit,
+            "role": c.ROLE_CALENDAR,
+            "issued_at": "",
+            "available_at": "",
+            "context_version": "e1-context/0.1.0",
+        }
+
+    old = pd.DataFrame(
+        [
+            old_row(c.SRC_HOLIDAYS, "2025-11-01", "is_holiday", "true", "bool"),
+            old_row(c.SRC_HOLIDAYS, "2025-11-01", "holiday_name", "Toussaint", "text"),
+            old_row(c.SRC_HOLIDAYS, "2025-11-02", "is_holiday", "false", "bool"),
+            old_row(c.SRC_HOLIDAYS, "2025-11-02", "holiday_name", "", "text"),
+            old_row(c.SRC_SCHOOL, "2025-11-01", "is_school_holiday", "true", "bool"),
+            old_row(c.SRC_SCHOOL, "2025-11-01", "school_holiday_name", "Vacances", "text"),
+            {
+                **old_row("meteo_observee", "", "temp_obs", "12.5", "degC"),
+                "valid_time": "2025-11-01T00:00:00+00:00",
+                "role": c.ROLE_OBSERVATION,
+            },
+        ]
+    )
+    new = c.migrate_calendar(old)
+    c.validate_context(new)
+    assert list(new.columns) == c.CONTEXT_COLUMNS
+    assert len(new) == 4  # les 3 lignes de nom sont retirées
+    lab = new.set_index(["variable", "local_date"])["label"]
+    assert lab[("is_holiday", "2025-11-01")] == "Toussaint"
+    assert lab[("is_holiday", "2025-11-02")] == ""
+    assert lab[("is_school_holiday", "2025-11-01")] == "Vacances"
+    assert lab[("temp_obs", "")] == ""
+    assert set(new["context_version"]) == {c.CONTEXT_VERSION}
+    assert new["value"].tolist() == ["true", "false", "true", "12.5"]  # valeurs inchangées
 
 
 def test_contexte_en_double_refuse():
