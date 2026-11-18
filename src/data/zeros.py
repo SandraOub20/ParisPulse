@@ -65,7 +65,11 @@ def long_zero_mask(
     avail = counts[available_at_cutoff(counts["ts"], cutoff, lag)]
     for _, g in avail.groupby("counter_id", sort=False):
         g = g.sort_values("ts")
-        is_zero = g["count"].eq(0).to_numpy()
+        is_zero = g["count"].eq(0)
+        if "is_scoreable" in g:
+            # Une valeur remplacée (fill_j7, is_scoreable faux) n'est pas un zéro observé
+            is_zero &= g["is_scoreable"].eq(True)
+        is_zero = is_zero.to_numpy()
         # Une heure manquante dans la grille (écart > 1 h) coupe aussi la suite
         step = g["ts"].diff().ne(pd.Timedelta(hours=1)).to_numpy()
         new_block = step | np.r_[True, is_zero[1:] != is_zero[:-1]]
