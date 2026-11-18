@@ -38,7 +38,7 @@ Entrées reliées aux commits de la branche `Team1-sabrina` et aux fiches de `re
 ## 18/11/2026 - Passation de l'historique : préparation sans les données
 
 - **Question ou objectif personnel :** préparer les tâches A2, A5, B1, B2 et B7 de la passation de Nihed avant de recevoir `hist-20261117`.
-- **Travail réalisé et outils utilisés :** J-7 dans une nouvelle colonne `count_filled_j7` (B2) ; `src/data/zeros_criteria.py` (A2) ; `src/data/zeros_years.py` (B1) ; fiche `reports/experiments/E1-historique.md` (A5). Outils : *à compléter*.
+- **Travail réalisé et outils utilisés :** J-7 remplacé directement dans `count`, `count_raw` restant vide comme trace (B2) ; `src/data/zeros_criteria.py` (A2) ; `src/data/zeros_years.py` (B1) ; fiche `reports/experiments/E1-historique.md` (A5). Outils : *à compléter*.
 - **Expérience ou contrôle effectué :** sur `flux-20261115`, A2 retrouve exactement les statuts de l'inventaire avec la règle actuelle (95 / 17 / 1 avant réservation) ; avec une part de zéros > 1 %, 5 % ou 10 % : 15, 9 ou 8 `robustness`. B1 : 17 suites, 1 seule comparable un an avant (13 mois de données).
 - **Versions et liens :** fiches `E1-historique.md`, `E1-zeros-apprentissage.md`.
 - **Résultat et analyse critique :** outils prêts mais non lancés sur l'historique ; chiffres de l'historique repris de la passation, à revérifier.

@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 
-from src.data.fill_j7 import FILLED_COLUMN, fill_j7, j7_timestamps
+from src.data.fill_j7 import fill_j7, j7_timestamps
 from src.data.zeros import long_zero_mask
 
 
@@ -23,44 +23,44 @@ def frame(start: str, values, cid: str = "c1") -> pd.DataFrame:
     )
 
 
-def test_heure_vide_remplacee_par_j7_dans_une_nouvelle_colonne():
+def test_heure_vide_remplacee_directement_dans_count():
     values = list(range(1, 24 * 8 + 1))
     values[24 * 7 + 5] = None  # même heure J-7 : values[5] = 6
     out, rep = fill_j7(frame("2026-03-02", values))
     row = out.iloc[24 * 7 + 5]
-    assert row[FILLED_COLUMN] == 6
-    assert np.isnan(row["count"])  # count inchangé
+    assert row["count"] == 6
     assert row["quality_flags"] == ["missing"]  # aucun drapeau ajouté
     assert not row["is_observed"] and not row["is_scoreable"]  # jamais en évaluation
     assert rep["n_hours_filled"] == 1 and rep["n_hours_left_empty"] == 0
+    assert "count_filled_j7" not in out.columns
 
 
-def test_heure_mesuree_recopiee_telle_quelle():
+def test_heure_mesuree_inchangee():
     values = [float(i % 24) for i in range(24 * 8)]
     values[24 * 7 + 2] = None
     df = frame("2026-03-02", values)
     out, _ = fill_j7(df)
     mesure = df["is_scoreable"]
-    assert out.loc[mesure, FILLED_COLUMN].equals(df.loc[mesure, "count"])
-    assert out["count"].equals(df["count"])
+    assert out.loc[mesure, "count"].equals(df.loc[mesure, "count"])
+    assert out["is_scoreable"].equals(df["is_scoreable"])
 
 
 def test_j7_sans_mesure_reste_vide():
     values = list(range(1, 24 * 15 + 1))
     values[7] = None  # aucune heure J-7 dans le fichier
     values[24 * 7 + 5] = None  # J-7 = values[5] = 6, mesurée
-    values[24 * 14 + 5] = None  # J-7 sans mesure (elle-même remplacée) ; J-14 = 6 non utilisée
+    values[24 * 14 + 5] = None  # J-7 elle-même remplacée, donc non mesurée ; J-14 non utilisée
     out, rep = fill_j7(frame("2026-03-02", values))
-    assert np.isnan(out.iloc[7][FILLED_COLUMN])
-    assert out.iloc[24 * 7 + 5][FILLED_COLUMN] == 6
-    assert np.isnan(out.iloc[24 * 14 + 5][FILLED_COLUMN])
+    assert np.isnan(out.iloc[7]["count"])
+    assert out.iloc[24 * 7 + 5]["count"] == 6
+    assert np.isnan(out.iloc[24 * 14 + 5]["count"])
     assert rep["n_hours_filled"] == 1 and rep["n_hours_left_empty"] == 2
 
 
 def test_rien_hors_periode_active():
     values = [None] * 24 * 7 + [5.0] * 24 + [None] * 24 * 8
     out, rep = fill_j7(frame("2026-03-02", values))
-    assert out[FILLED_COLUMN].notna().sum() == 24  # avant la 1re et après la dernière mesure
+    assert out["count"].notna().sum() == 24  # avant la 1re et après la dernière mesure
     assert rep["n_hours_filled"] == 0
 
 
@@ -71,7 +71,7 @@ def test_ligne_non_recue_creee_puis_remplie():
     assert rep["n_rows_created"] == 1
     assert len(out) == 24 * 8
     row = out[out["ts"] == pd.Timestamp("2026-03-09 03:00", tz="UTC")].iloc[0]
-    assert row[FILLED_COLUMN] == 3 and np.isnan(row["count"])
+    assert row["count"] == 3 and not row["is_observed"]
     assert row["quality_flags"] == ["missing"]
 
 
@@ -86,12 +86,11 @@ def test_j7_heure_de_paris_au_changement_d_heure():
 
 
 def test_zero_remplace_ne_rallonge_pas_une_suite():
-    # 20 zéros, 1 heure vide remplacée par un 0 de J-7, 20 zéros : pas de suite >= 24 h,
-    # même si l'on donne count_filled_j7 comme count à l'étude des zéros.
+    # 20 zéros, 1 heure vide remplacée par un 0 de J-7, 20 zéros : pas de suite >= 24 h
     values = [1.0] * 24 * 7 + [0.0] * 20 + [None] + [0.0] * 20 + [1.0] * 30
     values[24 * 7 + 20 - 168] = 0.0
     out, rep = fill_j7(frame("2026-01-05", values))
     assert rep["n_hours_filled"] == 1
-    used = out.assign(count=out[FILLED_COLUMN])
-    mask = long_zero_mask(used, pd.Timestamp("2027-01-01", tz="UTC"), lag_hours=24)
+    assert out.iloc[24 * 7 + 20]["count"] == 0
+    mask = long_zero_mask(out, pd.Timestamp("2027-01-01", tz="UTC"), lag_hours=24)
     assert not mask.any()

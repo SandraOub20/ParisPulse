@@ -1,11 +1,13 @@
 """Remplacement des heures sans mesure par la même heure une semaine avant (J-7) - E1, Sabrina.
 
 Demande de l'équipe (Nihed, 17/11/2026, tâche B2 de la passation) : remplacer les
-heures sans mesure (`missing` et `empty_value`) par la valeur de J-7, « valeur dans une
-nouvelle colonne, jamais en évaluation ».
+heures sans mesure (`missing` et `empty_value`) par la valeur de J-7. La passation
+proposait une nouvelle colonne ; décision de Sabrina (18/11/2026) : remplacer `count`
+directement, `count_raw` restant vide pour revenir à l'état d'avant traitement.
 
-Règle (décisions de Sabrina, 17/11/2026) :
-- heure visée : sans mesure (`count` vide), pendant la période active du compteur,
+Règle (décisions de Sabrina, 17 et 18/11/2026) :
+- heure visée : drapeau `missing` ou `empty_value` (sans valeur), pendant la période
+  active du compteur,
   c'est-à-dire entre sa première et sa dernière heure observée ; rien avant
   l'installation ni après l'arrêt ;
 - une heure absente du fichier (ligne non reçue) dans cette période est d'abord créée,
@@ -15,16 +17,16 @@ Règle (décisions de Sabrina, 17/11/2026) :
 - si J-7 n'a pas de mesure, ou n'existe pas (heure sautée ou répétée au changement
   d'heure), l'heure reste vide.
 
-Sortie : une nouvelle colonne `count_filled_j7` = `count` pour une heure mesurée, la
-valeur de J-7 pour une heure remplacée, vide sinon. `count`, `count_raw`,
-`is_observed`, `is_scoreable` et `quality_flags` sont inchangés : une valeur remplacée
-n'est ni une observation ni une cible évaluable (`doc/CONTRATS.md` §3 : « Les cibles ne
-sont jamais imputées »). Une heure remplacée se reconnaît à `count` vide et
-`count_filled_j7` rempli.
+Sortie : `count` reçoit la valeur de J-7. `count_raw` reste vide (trace : une heure
+remplacée a `count` rempli et `count_raw` vide), `quality_flags` est inchangé, et
+`is_observed` reste faux : l'heure n'a pas été mesurée. Avec la règle de prepare
+(observée et `count` non vide), `is_scoreable` reste faux : une valeur remplacée n'est
+jamais une cible évaluable (`doc/CONTRATS.md` §3 : « Les cibles ne sont jamais
+imputées »).
 
 counts.csv n'est pas modifié (fichier commun, empreinte SHA-256 dans le manifeste) :
-le résultat est écrit à côté, dans filled_j7.csv (colonnes de counts.csv, puis
-`count_filled_j7`). Fonctionne pour tout instantané (`flux-…`, `hist-…`).
+le résultat est écrit à côté, dans filled_j7.csv, avec les mêmes colonnes.
+Fonctionne pour tout instantané (`flux-…`, `hist-…`).
 
 Usage :
   uv run python -m src.data.fill_j7 --snapshot flux-20261115
@@ -42,9 +44,9 @@ import pandas as pd
 from src.common.config import data_path
 from src.data.quality import TZ_LOCAL
 
-FILLED_COLUMN = "count_filled_j7"
 MISSING_FLAG = "missing"
-FILL_VERSION = "e1-fill-j7/0.2.0"
+TARGET_FLAGS = {"missing", "empty_value"}
+FILL_VERSION = "e1-fill-j7/0.3.0"
 OUTPUT_NAME = "filled_j7.csv"
 REPORT_NAME = "filled_j7_report.json"
 
@@ -96,7 +98,7 @@ def complete_active_grid(counts: pd.DataFrame) -> pd.DataFrame:
 
 
 def fill_j7(counts: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
-    """Ajoute `count_filled_j7` (J-7 pour les heures sans mesure actives). Retourne (copie, bilan)."""
+    """Remplace `count` des heures sans mesure actives par J-7. Retourne (copie, bilan)."""
     df = counts.copy()
     df["quality_flags"] = df["quality_flags"].map(_flags)
     n_before = len(df)
@@ -106,20 +108,22 @@ def fill_j7(counts: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     seen = df.loc[df["is_observed"]].groupby("counter_id")["ts"].agg(["min", "max"])
     bounds = df[["counter_id"]].join(seen, on="counter_id")
     active = (df["ts"] >= bounds["min"]) & (df["ts"] <= bounds["max"])
-    target = active & df["count"].isna()
+    # Heures visées : drapeau missing ou empty_value (décision du 18/11/2026), sans valeur
+    flagged = df["quality_flags"].map(lambda f: bool(set(f) & TARGET_FLAGS))
+    target = active & flagged & df["count"].isna()
 
     measured = df.loc[df["is_scoreable"] & df["count"].notna(), ["counter_id", "ts", "count"]]
     lookup = df.loc[target, ["counter_id"]].assign(ts=j7_timestamps(df.loc[target, "ts"]))
     value = lookup.merge(measured, on=["counter_id", "ts"], how="left")["count"].to_numpy()
-    df[FILLED_COLUMN] = df["count"]
     idx = df.index[target]
     filled = idx[~np.isnan(value)]
-    df.loc[filled, FILLED_COLUMN] = value[~np.isnan(value)]
+    df.loc[filled, "count"] = value[~np.isnan(value)]
+    # is_observed reste faux : is_scoreable (observée et count non vide) reste faux
 
     report = {
         "fill_version": FILL_VERSION,
         "rule": "même heure de Paris J-7, si mesurée ; période active seulement ; "
-        f"valeur dans {FILLED_COLUMN}, count inchangé, jamais en évaluation",
+        "count remplacé, count_raw vide, is_observed et is_scoreable faux",
         "n_rows_created": int(n_created),
         "n_hours_without_value_active": int(target.sum()),
         "n_hours_filled": int(len(filled)),
@@ -156,12 +160,13 @@ def main(argv: list[str] | None = None) -> int:
     for col in ("source_file_id", "snapshot_id"):
         out[col] = out.groupby("counter_id")[col].transform("first")
     out["count_raw"] = out["count_raw"].fillna("")
-    out["count"] = out["count_text"].fillna("")
+    # Texte d'origine pour les heures mesurées ; valeur J-7 pour les heures remplacées
+    text = out["count_text"].fillna("")
+    out["count"] = text.where(text != "", out["count"].map(_number))
     for col in ("is_observed", "is_scoreable"):
         out[col] = out[col].map(lambda b: "true" if b else "false")
     out["quality_flags"] = out["quality_flags"].map(json.dumps)
-    out[FILLED_COLUMN] = out[FILLED_COLUMN].map(_number)
-    out[columns + [FILLED_COLUMN]].to_csv(folder / OUTPUT_NAME, index=False)
+    out[columns].to_csv(folder / OUTPUT_NAME, index=False)
 
     report["snapshot_id"] = args.snapshot
     report["input"] = "counts.csv"

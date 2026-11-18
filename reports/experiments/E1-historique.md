@@ -87,7 +87,7 @@ Ces scripts prennent l'instantané en paramètre ; ils sont prêts à être lanc
 | A3 - les 431 alertes | `uv run python -m src.data.alerts_review --snapshot hist-20261117` | Retrouve la fiche de Tasnim : 229 alertes = 113 heures perdues au passage à l'heure d'hiver + 108 journées non publiées + 8 pics (4 sens du soir, 2 faibles volumes, 1 panne, 1 à examiner : Pont des Invalides). |
 | A2 - critère des zéros | `uv run python -m src.data.zeros_criteria --snapshot hist-20261117` | L'option 1 retrouve exactement l'inventaire (95 / 17 / 1 avant réservation). Avec une part de zéros > 1 %, 5 % ou 10 % au lieu d'« au moins une suite » : 15, 9 ou 8 `robustness`. |
 | B1 - mêmes dates un an avant | `uv run python -m src.data.zeros_years --snapshot hist-20261117 --annees 1 2` | 17 suites ; 1 seule comparable un an avant (13 mois de données), sans zéros aux mêmes dates. |
-| B2 - remplacement J-7 | `uv run python -m src.data.fill_j7 --snapshot hist-20261117` | 13 589 heures remplacées dans `count_filled_j7`, 2 116 laissées vides. |
+| B2 - remplacement J-7 | `uv run python -m src.data.fill_j7 --snapshot hist-20261117` | 13 589 heures remplacées directement dans `count` (`count_raw` reste vide), 2 116 laissées vides. |
 | B7 - étude A/B des zéros | `uv run python -m src.data.zeros_experiment --snapshot hist-20261117 --coupure … --debut … --fin …` | Dates de découpage sur 3 ans à fixer (A6) ; modèle d'E2 à brancher. |
 
 Les seuils 1 %, 5 % et 10 % ne sont que des exemples pour la discussion.
