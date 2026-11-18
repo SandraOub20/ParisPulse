@@ -3,7 +3,7 @@
 - **Date, équipe, responsables et partenaires :** 15/11/2026, E1, Nihed (source complémentaire) ; partenaires E2 (sites connus, ablation du contexte), E3 (nouveaux sites, même contexte pour les variantes), E4 (règle de disponibilité). Données d'entrée : comptages de Tasnim (`acquire.py`, `prepare.py`).
 - **Question et hypothèse :** quelles informations externes, connues au moment de prévoir, peut-on joindre aux comptages sans créer ni perdre de lignes et sans utiliser le futur ? Hypothèse : le calendrier (jours fériés, vacances) et la météo expliquent une partie des écarts au profil hebdomadaire ; leur intérêt réel sera mesuré par E2.
 - **Références :** sujet, « Ajouter une source complémentaire » et « Les règles communes pour comparer les méthodes » ; `doc/CONTRATS.md` §4 (contexte) ; `doc/PROTOCOLE_EVALUATION.md` §2 (information autorisée).
-- **Instantané, protocole, code et paramètres :** `src/data/context.py` (`e1-context/0.1.0`), protocole **proposé, non validé**. Instantané `flux-20261115` (export complet du 15/11/2026) : 113 compteurs, 1 071 127 lignes de comptage (grille commune, `e1-prepare/0.3.0`, régénérée le 17/11/2026), du 16/10/2025 00:00 au 14/11/2026 22:00 UTC. Le premier jour du brut (15/10/2025), rogné par la source, est écarté. Premier essai sur un seul compteur (Totem 73 bd de Sébastopol S-N, 9 500 heures). Paramètres : prévision de J-2, délai de publication d'un run 6 h, latence des observations 24 h, lus dans la section `context` de `config/project.yaml` (commit `f6ef4d8`) pour être validés par E4 sans modifier le code.
+- **Instantané, protocole, code et paramètres :** `src/data/context.py` (`e1-context/0.2.0` depuis le 18/11/2026 : calendrier sur une seule ligne par jour, nom dans la colonne `label` ; `e1-context/0.1.0` avant), protocole **proposé, non validé**. Instantané `flux-20261115` (export complet du 15/11/2026) : 113 compteurs, 1 071 127 lignes de comptage (grille commune, `e1-prepare/0.3.0`, régénérée le 17/11/2026), du 16/10/2025 00:00 au 14/11/2026 22:00 UTC. Le premier jour du brut (15/10/2025), rogné par la source, est écarté. Premier essai sur un seul compteur (Totem 73 bd de Sébastopol S-N, 9 500 heures). Paramètres : prévision de J-2, délai de publication d'un run 6 h, latence des observations 24 h, lus dans la section `context` de `config/project.yaml` (commit `f6ef4d8`) pour être validés par E4 sans modifier le code.
 
 ## Ce que produit le module
 
@@ -11,7 +11,7 @@
 
 | Fichier | Contenu | Consommateurs |
 | --- | --- | --- |
-| `context.csv` | Colonnes exactes du gabarit, format long : une ligne par source, lieu, validité et variable | E2, E3, E4, E5 |
+| `context.csv` | Colonnes exactes du gabarit, format long : une ligne par source, lieu, validité et variable ; pour le calendrier, le nom du jour férié ou des vacances est dans la colonne `label` de la même ligne (vide sinon et pour la météo) | E2, E3, E4, E5 |
 | `context_sources.json` | Une fiche par source : URL, licence, géographie, fuseau, unités, règle de jointure, rôle, disponibilité | Toutes |
 | `context_join_audit.json` | Lignes avant / après jointure, clés en double, heures sans contexte par variable | E2, E4 |
 
@@ -21,8 +21,8 @@ Les bruts sont conservés intacts dans `data/history/<snapshot_id>/context/` et 
 
 | Source | Variables | Rôle | Licence |
 | --- | --- | --- | --- |
-| Jours fériés métropole, calendrier.api.gouv.fr | `is_holiday`, `holiday_name` | `known_calendar` | Licence Ouverte 2.0, à confirmer |
-| Calendrier scolaire, data.education.gouv.fr, zone C, académie de Paris | `is_school_holiday`, `school_holiday_name` | `known_calendar` | Licence Ouverte 2.0, à confirmer |
+| Jours fériés métropole, calendrier.api.gouv.fr | `is_holiday` (nom dans `label`) | `known_calendar` | Licence Ouverte 2.0, à confirmer |
+| Calendrier scolaire, data.education.gouv.fr, zone C, académie de Paris | `is_school_holiday` (nom dans `label`) | `known_calendar` | Licence Ouverte 2.0, à confirmer |
 | Open-Meteo, Previous Runs API, prévision de J-2, point Hôtel de Ville | `temp_prev` (°C), `rain_prev` (mm), `wind_prev` (m/s) | `forecast_bulletin` | CC BY 4.0 |
 | Météo-France, données horaires, Paris-Montsouris (75114001) | `temp_obs` (°C), `rain_obs` (mm), `wind_obs` (m/s) | `past_observation` | Licence Ouverte 2.0 |
 
@@ -49,10 +49,11 @@ Le sujet autorise une prévision météo **publiée avant** le moment où l'on p
 
 ## Contrôles réalisés
 
-Automatiques, dans `tests/test_data_context.py` (15 tests, sources synthétiques au format réel) :
+Automatiques, dans `tests/test_data_context.py` (20 tests au 18/11/2026, sources synthétiques au format réel) :
 
 - colonnes identiques au gabarit `doc/templates/context.csv`, booléens `true`/`false`, clé unique (un doublon est refusé) ;
-- jours fériés : une ligne par jour et par variable, valeurs explicites `false` hors jours fériés ;
+- jours fériés : une seule ligne par jour, valeurs explicites `false` hors jours fériés, nom dans `label` (vide hors jours fériés) ; le nom est aussi présent après jointure (`is_holiday_label`) ;
+- conversion d'un `context.csv` de l'ancien format (`--migrer`) : lignes de nom retirées, nom passé dans `label`, valeurs inchangées ;
 - vacances : zone C seulement, enseignants exclus, académie de Paris prioritaire, doublons fusionnés, jour de reprise exclu, jour de 25 heures compris ;
 - météo observée : station filtrée, virgule décimale lue, heures en UTC, disponibilité à +24 h ;
 - prévision : unité du vent contrôlée (m/s), règle J-2 / J-1 vérifiée sur 24 horizons ;
@@ -60,15 +61,15 @@ Automatiques, dans `tests/test_data_context.py` (15 tests, sources synthétiques
 - jointure sur un jour de 25 heures : aucune ligne créée ni perdue ; heures sans contexte comptées.
 - hypothèses de disponibilité lues dans `config/project.yaml`, valeurs par défaut sinon, délai bien appliqué.
 
-Sur données réelles (`flux-20261115`, 113 compteurs, relancé le 15/11/2026) :
+Sur données réelles (`flux-20261115`, 113 compteurs ; chiffres vérifiés le 18/11/2026 sur le `context.csv` converti en `e1-context/0.2.0`) :
 
 | Contrôle | Résultat |
 | --- | --- |
 | Lignes de comptage avant / après jointure | 1 071 127 / 1 071 127 ; 0 clé en double ; statut `ok` |
-| Lignes de `context.csv` | 58 436 (format long) |
-| Calendrier | 397 jours, 0 ligne de comptage sans valeur ; 13 jours fériés, tous corrects |
+| Lignes de `context.csv` | 57 556 (format long ; 58 348 avant la conversion du 18/11, qui retire les 2 × 396 lignes de nom sans changer aucune valeur) |
+| Calendrier | 396 jours (16/10/2025 au 15/11/2026), 0 ligne de comptage sans valeur ; 13 jours fériés, tous corrects |
 | Vacances zone C 2025-2026 | Toussaint 18/10–02/11, Noël 20/12–04/01, hiver 21/02–08/03, printemps 18/04–03/05, pont de l'Ascension 14–17/05, été à partir du 04/07 : conformes au calendrier officiel |
-| Météo prévue (J-2) | 9 505 heures par variable, 0 ligne de comptage sans valeur |
+| Météo prévue (J-2) | 9 481 heures par variable, 0 ligne de comptage sans valeur |
 | Météo observée | 9 480 heures pour la température et le vent, 9 361 pour la pluie. Lignes de comptage sans valeur : 113 (0,01 %, une seule heure, le 31/10/2025) pour la température et le vent, 13 560 (1,3 %) pour la pluie. Avant le 17/11, la grille commençait le 15/10/2025 et ces nombres étaient de 2 260 et 15 707. Manques de la station, signalés, non remplacés |
 | Unités plausibles (premier essai) | température −4,2 à 40,5 °C (observée), vent moyen 3,0 m/s (observé) et 2,4 m/s (prévu), pluie max 25,9 mm/h (observée) et 8,8 mm/h (prévue) |
 | Alignement horaire prévue / observée (premier essai) | corrélation des températures 0,960 (−2 h), 0,978 (−1 h), **0,987 (0 h)**, 0,985 (+1 h), 0,972 (+2 h) : maximum sans décalage |

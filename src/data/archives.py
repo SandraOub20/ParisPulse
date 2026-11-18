@@ -19,8 +19,9 @@ seule grille UTC, puis `prepare.py` le prépare comme le flux.
   publie la somme sous l'ancien identifiant. Chaque compteur du flux = son canal + son
   canal jumeau, jumeau trouvé sur la période commune archive / flux (au moins 99 %
   d'heures identiques). Avant l'apparition du jumeau, le canal seul.
-- R2 : les lignes sans identifiant de compteur (un total horaire dans l'archive 2025)
-  sont écartées et comptées.
+- R2 : les lignes sans identifiant de compteur (une par heure dans les archives 2024
+  et 2025 ; agrégat de nature inconnue, ce n'est pas la somme des compteurs : vérifié
+  le 18/11/2026, fiche E1-historique, A4) sont écartées et comptées.
 - R3 (option A) : seuls les compteurs du flux sont gardés ; les compteurs présents
   seulement dans l'archive sont listés dans le manifeste, hors grille.
 - Les archives ne servent qu'avant le début du flux ; le flux fait foi ensuite.

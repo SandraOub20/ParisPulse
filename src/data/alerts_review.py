@@ -42,7 +42,7 @@ from src.common.config import data_path
 from src.data.prepare import check_peaks, hourly_profile
 from src.data.quality import TZ_LOCAL, SelectionCriteria, load_counters, load_counts
 
-NETWORK_SHARE = 0.9  # même valeur que network_gap_share de quality.SelectionCriteria
+NETWORK_SHARE = SelectionCriteria.network_gap_share  # seuil défini une seule fois (quality.py)
 DST_RE = re.compile(r"Jour de changement d'heure (\d{4}-\d{2}-\d{2}) : (\d+)/(\d+) heures")
 PEAK_RE = re.compile(r"Pics en semaine à (\d+) h et (\d+) h")
 

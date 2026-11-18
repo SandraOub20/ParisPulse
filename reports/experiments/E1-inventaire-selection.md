@@ -4,7 +4,7 @@
 - **Question et hypothèse :** quel réseau observe-t-on dans le flux courant, et quels compteurs peut-on utiliser, avec quel rôle ? Hypothèse de travail : une partie des compteurs a un historique court, des manques ou de longues suites de zéros. On les garde visibles, on les écarte de l'apprentissage seulement quand la série ne permet pas de construire un cas, et on met de côté des sites entiers pour E3.
 - **Références :** `doc/CONTRATS.md` §2 (inventaire), `doc/PROTOCOLE_EVALUATION.md` §3-4 (séparations temporelles et spatiales), sujet p. 3 (« Étudier le réseau avant de choisir les compteurs »).
 - **Instantané, protocole, code et paramètres :** `src/data/quality.py` (`e1-quality/0.1.0`), protocole **proposé, non validé**. Instantané de référence de l'équipe : **`flux-20261115`** :
-  - export CSV complet du flux courant, préparé avec la boucle `uv run python -m src.data.acquire --tout` (grille commune, `e1-prepare/0.2.0`, branche `team1-nihed`) ;
+  - export CSV complet du flux courant, préparé avec la boucle `uv run python -m src.data.acquire --tout` (grille commune, `e1-prepare/0.2.0`, branche `team1-nihed`), puis régénéré par Nihed le 17/11/2026 en `e1-prepare/0.3.0` (grille à partir du premier jour UTC complet, 16/10/2025 00:00 UTC) ; l'inventaire actuel (`inventory_quality.csv`, `selection_summary.json`) est calculé sur ce `counts.csv` (même SHA-256 dans `selection_summary.json`, champ `inputs`) ;
   - colonnes `id_compteur, nom_compteur, id, name, sum_counts, date, installation_date, coordinates`, `timezone=UTC` ;
   - nombre de lignes et SHA-256 du brut : dans `data/manifests/flux-20261115.json` (`files[role=raw]`).
 
@@ -81,16 +81,22 @@ Ils sont dans `tests/test_data_quality.py`, sur un réseau synthétique :
 - clé `(counter_id, timestamp)` dupliquée refusée ;
 - jour de passage à l'heure d'hiver (25 h) avec une heure absente signalé comme incomplet.
 
-Après passage sur données réelles, deux tests ont été ajoutés (13), puis deux autres le 15/11 pour l'écriture des groupes (15 au total) : deux sens à 80 m restent ensemble, et un trou commun au réseau est détecté. Sur l'instantané réel, on a aussi vérifié qu'aucun groupe utilisé n'a deux rôles et qu'aucun site réservé n'a de site d'apprentissage à moins de **164 m**.
+Après passage sur données réelles, deux tests ont été ajoutés (13), puis deux autres le 15/11 pour l'écriture des groupes (15 au total) : deux sens à 80 m restent ensemble, et un trou commun au réseau est détecté. Le 17/11, deux tests ont été ajoutés pour les distances des voisins (`alias_candidates` et `nearby_sites_300m` en dictionnaire JSON `{site: mètres}`) : 17 au total. Sur l'instantané réel, on a aussi vérifié qu'aucun groupe utilisé n'a deux rôles et qu'aucun site réservé n'a de site d'apprentissage à moins de **164 m**.
 
 ## Résultats mesurés (`flux-20261115`, période de sélection jusqu'au 30/09/2026)
 
 Les chiffres ci-dessous ont été mesurés d'abord sur `flux-20261114` (fenêtre ouverte le 14/10/2025), puis contrôlés sur `flux-20261116` (fenêtre ouverte le 16/10/2025). Ils sont stables à l'unité près. Seuls changent les nombres qui dépendent du bord de la fenêtre : compteurs à plus de 340 jours d'historique (102, puis 108) et historique de la rue d'Aubervilliers (128 j, puis 126 j). Les statuts, les groupes et les rôles ne changent pas.
 
+**Revérifié le 18/11/2026 sur `flux-20261115` en `e1-prepare/0.3.0`** (tâche C2 de la passation), à partir de `inventory_quality.csv`, `selection_summary.json` et `counters.csv` : statuts (74 / 17 / 15 / 6 / 1), 58 groupes (47 / 7 / 4), 82 `site_id`, 21 groupes à plusieurs `site_id`, listes des sites réservés, contrôle de Pont National, distance minimale de 164 m, manques (médiane 0,6 %, maximum 8,7 %), volumes, profils et jours de changement d'heure : **inchangés**. Quatre chiffres changent avec la fenêtre au premier jour complet ; ils sont corrigés ci-dessous :
+- historique : médiane de 348 jours observés (350 jours entre la première et la dernière mesure) ; 102 compteurs ont plus de 340 jours observés, 108 plus de 340 jours d'historique ;
+- rue d'Aubervilliers : 127 jours observés ;
+- Denfert-Rochereau NE-SO (exclu) : 7 207 heures, toutes dans une suite de zéros ;
+- le trou du premier jour de la fenêtre glissante n'existe plus : la grille commence au premier jour UTC complet.
+
 ### Le réseau
 
 - **113 compteurs** répartis sur **82 `site_id`**. Tous ont des coordonnées.
-- **Historique** : médiane de 349 jours observés ; 102 compteurs ont plus de 340 jours.
+- **Historique** : médiane de 348 jours observés (350 jours entre la première et la dernière mesure) ; 102 compteurs ont plus de 340 jours observés (108 plus de 340 jours d'historique).
 - **Manques en fonctionnement** : médiane 0,6 %, maximum 8,7 %. Environ 53 heures sont absentes pour presque tous les compteurs à la fois (voir les trous communs ci-dessous).
 - **Volumes** : médiane de 62 passages/h, de 0 à 393. Tertiles à 50 et 75 passages/h.
 - **Profils** : 87 compteurs pendulaires, 23 mixtes, 2 loisirs, 1 indéterminé. Ratio semaine / week-end médian 1,52, pointe / journée médian 2,01.
@@ -108,10 +114,10 @@ Les chiffres ci-dessous ont été mesurés d'abord sur `flux-20261114` (fenêtre
 
 Au total, **58 groupes** : 47 + 7 + 4 = 58, puisque le groupe de l'exclu est aussi un groupe `S_train`. Les versions précédentes de cette fiche donnaient « 68 » et « 9 » : ce sont des nombres de `site_id`, comptés avant que les groupes candidats soient écrits partout.
 
-- **Exclu** : 106 avenue Denfert-Rochereau NE-SO. 100 % des heures sont dans une suite de zéros (5 973 h). L'autre sens du même lieu est gardé.
+- **Exclu** : 106 avenue Denfert-Rochereau NE-SO. 100 % des heures sont dans une suite de zéros (7 207 h en `e1-prepare/0.3.0` ; 5 973 h dans les versions précédentes de cette fiche). L'autre sens du même lieu est gardé.
 - **Robustesse, 17 compteurs** :
   - 10 avec au moins une suite de zéros ≥ 24 h. Les plus longues : boulevard Jourdan E-O (3 613 h), boulevard Masséna SO-NE (587 h), Porte de Bagnolet (356-357 h, **les deux sens en même temps**), Batignolles (117-120 h, les deux sens), Ménilmontant et Cours la Reine (88 h) ;
-  - 4 séries interrompues : rue d'Aubervilliers, arrêtée en février 2026 avec 128 jours d'historique, et quai François Mauriac, arrêté 87 jours avant la fin ;
+  - 4 séries interrompues : rue d'Aubervilliers, arrêtée en février 2026 avec 127 jours observés, et quai François Mauriac, arrêté 87 jours avant la fin ;
   - 3 à faible volume (< 5 passages/h) : boulevard Diderot E-O et porte de Charenton, dans les deux sens.
 
   Que des zéros apparaissent dans les deux sens au même moment fait penser à une panne de capteur, mais les fichiers ne permettent pas de l'établir.
@@ -146,7 +152,7 @@ uv run python -c "import pandas as pd;k=pd.read_csv('data/processed/flux-2026111
 
 | Début (heure de Paris) | Durée | Période |
 | --- | --- | --- |
-| premier jour de la fenêtre glissante (14/10/2025 sur `-20261114`, 16/10/2025 sur `-20261116`), plusieurs heures | 8 à 12 h au total | début de la fenêtre glissante |
+| premier jour de la fenêtre glissante (14/10/2025 sur `-20261114`, 16/10/2025 sur `-20261116`), plusieurs heures | 8 à 12 h au total | début de la fenêtre glissante ; n'existe plus en `e1-prepare/0.3.0` (grille au premier jour UTC complet) |
 | 26/10/2025 02:00 | 1 h | heure répétée du passage à l'heure d'hiver |
 | 02/07/2026 et 06/07/2026 00:00 | 2 h + 2 h | validation |
 | 22/08/2026 | 24 h | validation |
@@ -172,9 +178,9 @@ Cette correction s'appuie **uniquement sur les coordonnées et les noms**, jamai
 - Les jours fériés et les vacances scolaires ne sont pas pris en compte dans le profil. `context.py` (membre 3) pourra raffiner `profile_type`.
 - Le flux couvre 13 mois glissants. Le seuil de 180 jours suppose que l'instantané commence vers octobre 2025, comme prévu au protocole.
 - Le protocole n'est **pas encore validé** par le professeur. Les listes de sites deviennent définitives seulement après cette validation, et avant toute comparaison de modèles. Elles ne sont pas encore recopiées dans `config/project.yaml`, qui relève d'E4.
-- Le boulevard Jourdan E-O a 46 % de ses heures dans des suites de zéros, juste sous le seuil d'exclusion de 50 % : il est classé en robustesse. Ce cas limite est à examiner avec E2 (garder ou écarter la période de zéros en apprentissage, travail du membre 4).
+- Le boulevard Jourdan E-O a 46 % de ses heures dans des suites de zéros, juste sous le seuil d'exclusion de 50 % : il est classé en robustesse. Ce cas limite est à examiner avec E2 (garder la période de zéros en apprentissage ou la remplacer par l'année d'avant, travail du membre 4, fiche EXP-E1-04).
 - La fenêtre glissante commence vers mi-octobre 2025 (le 14/10 pour `-20261114`, le 16/10 pour `-20261116`). Le seuil de 180 jours ne concerne en pratique que les séries arrêtées tôt.
-- Le premier jour de l'instantané est incomplet pour tout le réseau : c'est un effet du bord de la fenêtre glissante, pas une panne.
+- Le premier jour de l'instantané était incomplet pour tout le réseau : c'était un effet du bord de la fenêtre glissante, pas une panne. Depuis `e1-prepare/0.3.0`, ce premier jour est écarté de la grille (gardé dans le brut).
 
 ### Décision à défendre : des critères fixés avant le test
 

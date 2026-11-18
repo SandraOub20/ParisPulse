@@ -21,7 +21,9 @@
 | Lignes / identifiants | 860 190 / 101 | 1 505 640 / 179 | 1 502 954 / 172 |
 | Dates avec fuseau | oui | oui | oui |
 | Doublons / conflits | 0 | 0 | 0 |
-| Particularités | colonnes en plus (photos) | une ligne « total » par heure, sans identifiant | idem, et nombres écrits « 1 007 » |
+| Particularités | colonnes en plus (photos) | une ligne par heure sans identifiant (agrégat, voir A4 ci-dessous) | idem, et nombres écrits « 1 007 » |
+
+**Vérifié le 18/11/2026 (Sabrina)** sur les archives retéléchargées dans `archive-20261117` : lignes, identifiants, formats et doublons identiques au tableau ; 49 canaux jumeaux, 7 renommages et 17 542 lignes sans identifiant retrouvés avec `archives.find_twins` et `archives.archive_long`.
 
 Les archives brutes restent intactes (`data/history/archive-20261117/archives/`) ; un fichier déjà présent n'est jamais retéléchargé sans `--force` (`archives.py`).
 
@@ -41,11 +43,25 @@ Selon la passation, le raccord en janvier 2024 est continu (même baisse saisonn
 | --- | --- |
 | R1 | Compteur = canal + canal jumeau, depuis l'apparition du jumeau. Jumeau trouvé automatiquement sur la période commune : au moins 99 % d'heures identiques au flux. Avant l'apparition du jumeau, le canal seul. |
 | R1 bis | Compteur renommé : ses heures manquantes sont prises sous son autre identifiant (même seuil de 99 %). |
-| R2 | Lignes sans identifiant (le « total » horaire, 17 542 lignes) écartées et comptées. |
+| R2 | Lignes sans identifiant (17 542 lignes, une par heure en 2024 et 2025) écartées et comptées. Ce n'est **pas** le total des compteurs (A4 ci-dessous). |
 | R3 (option A) | Seuls les 113 compteurs du flux sont gardés ; les 26 anciens compteurs présents seulement dans les archives sont listés dans le manifeste, hors grille. |
 | Priorité | Archives avant le 16/10/2025, flux ensuite. |
 
 Pour `hist-…`, `prepare.py` lit le brut et la fenêtre dans le bloc `history` du manifeste, sans écarter de premier jour ; rien ne change pour `flux-…`.
+
+### A4 - Les lignes sans identifiant ne sont pas le total (Sabrina, 18/11/2026)
+
+La passation les décrivait comme « le total horaire ». Vérification sur les archives : pour chaque heure, valeur de la ligne sans identifiant comparée à la somme des compteurs identifiés à la même heure.
+
+| Archive | Lignes sans identifiant | Heures égales à la somme | Rapport médian « sans identifiant / somme » |
+| --- | --- | --- | --- |
+| 2023 | 0 | - | - |
+| 2024 | 8 783 (une par heure) | 0 sur 8 783 | 0,32 |
+| 2025 | 8 759 (une par heure) | 0 sur 8 759 | 0,33 |
+
+- Ces lignes n'ont ni nom, ni site, ni coordonnées (`null, null`), seulement une date et un comptage. Exemple : 01/01/2024 00:00 UTC, 953 contre 3 361 pour les 162 compteurs mesurés.
+- Aucun compteur seul, aucune famille d'identifiants (`1000…`, `3000…`) et aucun type de canal (`101` à `104`) ne donne cette valeur. Elle suit pourtant l'activité du réseau (corrélation de 0,98 avec certains compteurs).
+- **Conclusion :** agrégat horaire de nature inconnue. R2 reste juste (sans identifiant, impossible de rattacher ces lignes à un compteur) ; aucun chiffre de l'historique ne change. Le mot « total » est à retirer du contrat (A8).
 
 ## Résultat : `hist-20261117`
 
@@ -88,7 +104,9 @@ Ces scripts prennent l'instantané en paramètre ; ils sont prêts à être lanc
 | A2 - critère des zéros | `uv run python -m src.data.zeros_criteria --snapshot hist-20261117` | L'option 1 retrouve exactement l'inventaire (95 / 17 / 1 avant réservation). Avec une part de zéros > 1 %, 5 % ou 10 % au lieu d'« au moins une suite » : 15, 9 ou 8 `robustness`. |
 | B1 - mêmes dates un an avant | `uv run python -m src.data.zeros_years --snapshot hist-20261117 --annees 1 2` | 17 suites ; 1 seule comparable un an avant (13 mois de données), sans zéros aux mêmes dates. |
 | B2 - remplacement J-7 | `uv run python -m src.data.fill_j7 --snapshot hist-20261117` | 13 589 heures remplacées directement dans `count` (`count_raw` reste vide), 2 116 laissées vides. |
-| B7 - étude A/B des zéros | `uv run python -m src.data.zeros_experiment --snapshot hist-20261117 --coupure … --debut … --fin …` | Dates de découpage sur 3 ans à fixer (A6) ; modèle d'E2 à brancher. |
+| B7 - étude des zéros, A (garder) / C (année d'avant) | `uv run python -m src.data.zeros_experiment --snapshot hist-20261117 --coupure … --debut … --fin …` | C ne remplace aucune heure sur le flux à la coupure du 01/07/2026 (année d'avant hors de l'instantané) : l'étude se fera sur l'historique. Dates de découpage sur 3 ans à fixer (A6) ; modèle d'E2 à brancher. |
+| Zéros : année d'avant | `uv run python -m src.data.fill_zeros_year --snapshot hist-20261117` | Suites de 24 h ou plus de zéros mesurés : chaque heure reçoit les mêmes date et heure un an avant si cette valeur est > 0, et n'est plus une cible ; 0, vide ou inconnu un an avant : le 0 reste. Sur le flux : 17 suites (13 224 h), 137 h remplacées, 13 087 h sans année d'avant. Avec les archives, Jourdan E-O et Denfert-Rochereau étaient déjà à zéro un an avant. |
+| Chaîne complète | `uv run python -m src.data.fill_counts --snapshot hist-20261117` | Une version par budget (1, 3, 7 jours) : sites réservés à E3 rendus nouveaux (installés au début du support de la première origine d'évaluation : 01/07/2026 pour dev, 01/10/2026 pour test, moins 24 h de délai et le budget), puis J-7 et année d'avant ; sorties `counts_filled_<budget>j.csv` et `counters_filled_<budget>j.csv`. Sur le flux : 21 compteurs, 11 sites ; 159 950 / 158 942 / 157 286 heures mesurées cachées et 11 440 / 11 800 / 11 812 h remplies par J-7 (1 / 3 / 7 jours). |
 
 Les seuils 1 %, 5 % et 10 % ne sont que des exemples pour la discussion.
 
@@ -97,8 +115,8 @@ Les seuils 1 %, 5 % et 10 % ne sont que des exemples pour la discussion.
 ## Limites et points à confirmer
 
 - Tous les chiffres de l'historique sont à revérifier sur les données, dès réception du zip.
-- R2 : vérifier que les lignes sans identifiant sont bien le total des compteurs à la même heure (tâche A4, archives brutes nécessaires).
+- R2 : fait (A4, ci-dessus) ; les lignes sans identifiant ne sont pas le total des compteurs, leur nature reste inconnue.
 - Les 431 alertes ne sont pas encore examinées (A3) : l'historique ne doit pas être partagé avant A1 à A3.
 - Le tirage des sites réservés à E3 change entre les deux instantanés (10 / 5 contre 15 / 6) : à voir avec E3 (Q6), sans modifier `quality.py` d'ici là (B5).
-- Dates de découpage sur 3 ans (`train_until`, `validation_until`, `test_start`) : à fixer par Nihed avec E4 (A6).
+- Dates de découpage sur 3 ans (`train_until`, `validation_until`, `test_start`) : à fixer avec E4 (A6).
 - Contrat de données à mettre à jour (A8, Nihed) : R1 à R3 remplacent A8 ; Q3, Q8, Q14.

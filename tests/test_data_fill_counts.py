@@ -41,17 +41,19 @@ def test_j7_pour_les_heures_sans_mesure_et_annee_d_avant_pour_les_zeros():
     assert o.loc["2025-06-10 08:00", "count"] == 55.0  # J-7
     assert not o.loc["2025-06-10 08:00", "is_scoreable"]
     assert o.loc["2025-03-10 05:00", "count"] == 77.0  # année d'avant
+    assert not o.loc["2025-03-10 05:00", "is_scoreable"]  # jamais une cible
     assert (o.loc[RUN[0] : RUN[1], "count"] > 0).all()
     assert rep["j7"]["n_hours_filled"] == 1
     assert rep["zero_runs_year_before"]["n_hours_replaced"] == 48
 
 
-def test_vide_recopie_de_l_annee_d_avant_non_rempli_par_j7():
-    # un an avant la 1re heure de la suite : heure sans mesure -> recopiée vide
+def test_vide_un_an_avant_le_zero_est_garde():
+    # un an avant la 1re heure de la suite : heure sans mesure -> le 0 reste
     df = frame(missing=["2024-03-10 00:00"])
     out, _ = fill_counts(df)
     o = out.set_index("ts")
-    assert np.isnan(o.loc["2025-03-10 00:00", "count"])  # vide, pas de J-7 (pas de drapeau)
+    assert o.loc["2025-03-10 00:00", "count"] == 0.0  # pas une case vide, pas de J-7
+    assert o.loc["2025-03-10 00:00", "is_scoreable"]  # zéro observé : reste une cible
 
 
 def test_chaque_remplacement_lit_les_donnees_d_origine():

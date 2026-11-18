@@ -45,3 +45,14 @@ Entrées reliées aux commits de la branche `Team1-sabrina` et aux fiches de `re
 - **Décision ou adaptation :** critère A2 non choisi (Zeineb puis E4) ; interprétation de « year − 1 » à confirmer avec Nihed.
 - **Partenaire, retour reçu et usage vérifié :** *à renseigner*.
 - **Prochaine étape :** recevoir `hist-20261117` (zip et manifeste), puis A3, A2, A4, B1, J-7 et B7 sur l'historique.
+
+## 18/11/2026 (soir) - Relecture complète, données remplies conformes au sujet et au contrat
+
+- **Question ou objectif personnel :** vérifier que le code et les fiches d'E1 n'ont ni erreur ni contradiction avec le sujet et le contrat, et corriger.
+- **Travail réalisé et outils utilisés :** relecture du sujet, de la documentation et du code d'E1 ; `fill_zeros_year.py` (`e1-fill-zeros-year/0.2.0`) : l'année d'avant ne remplace un zéro que si elle est > 0, et la valeur remplacée n'est plus une cible ; `zeros.py` et `zeros_experiment.py` (`e1-zeros/0.2.0`) : étude A (garder) / C (année d'avant) à la place de A / B ; `new_sites.py` (`e1-new-sites/0.2.0`) et `fill_counts.py` : une version des données par budget (1, 3, 7 jours), sites installés au début du support de la première origine d'évaluation ; fiche d'inventaire revérifiée en `e1-prepare/0.3.0` (tâche C2) ; fiches contexte, historique et README corrigées. Outils : *à compléter*.
+- **Expérience ou contrôle effectué :** 134 tests verts. Sur `flux-20261115` : C ne remplace aucune heure à la coupure du 01/07/2026 (année d'avant hors de l'instantané) ; données livrées : 137 heures remplacées par l'année d'avant, 13 087 gardées à 0 (année d'avant inconnue) ; 21 compteurs réservés sur 11 sites, installés pour 7 jours le 23/06/2026 (dev) et le 23/09/2026 (test), heure de Paris.
+- **Versions et liens :** fiches `E1-zeros-apprentissage.md`, `E1-historique.md`, `E1-inventaire-selection.md` ; sorties `data/processed/flux-20261115/counts_filled_<budget>j.csv` (hors Git).
+- **Résultat et analyse critique :** quatre points contraires au sujet ou au contrat corrigés : un zéro n'est jamais remplacé par une case vide ; une valeur remplacée n'est jamais une cible ; le traitement appliqué aux données (année d'avant) est celui que l'étude mesure avec E2 et E4 ; les sites nouveaux ont des jours à prévoir après leur historique local, et seul le budget change d'une version à l'autre. Limite : l'étude A/C ne peut se faire que sur l'historique.
+- **Décision ou adaptation :** décisions de Sabrina du 18/11/2026 (points ci-dessus), à présenter aux autres équipes après la livraison.
+- **Partenaire, retour reçu et usage vérifié :** *à renseigner*.
+- **Prochaine étape :** recevoir le brut du flux, assembler `hist-20261117`, puis lancer les outils sur l'historique.

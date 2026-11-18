@@ -1,19 +1,22 @@
 """Longues suites de zéros remplacées par les mêmes dates de l'année d'avant - E1, Sabrina.
 
-Décision E1 (Sabrina, 18/11/2026) : chaque heure d'une suite d'au moins 24 h de zéros
-mesurés reçoit la valeur du même compteur, à la même date et à la même heure de Paris
-un an avant :
-- la valeur est recopiée telle quelle, y compris un 0 ou une case vide ;
-- `count` est remplacé directement ; `count_raw` garde la valeur d'origine (0), ce qui
-  sert de trace : une heure remplacée a `count` différent de `count_raw` ;
-- `is_scoreable` suit la règle de prepare (observée et `count` non vide) ;
-- si les mêmes dates un an avant sont avant le début de l'instantané ou avant la
-  première mesure du compteur (pas encore installé), l'heure n'est pas modifiée
-  (valeur inconnue) et elle est comptée à part.
+Décisions E1 (Sabrina, 18/11/2026) : chaque heure d'une suite d'au moins 24 h de zéros
+mesurés est comparée au même compteur, à la même date et à la même heure de Paris un an
+avant :
+- valeur > 0 un an avant : `count` reçoit cette valeur ; `count_raw` garde le 0 d'origine
+  (trace : une heure remplacée a `count` différent de `count_raw`) ; `is_scoreable`
+  devient faux : la valeur remplacée sert d'entrée, jamais de cible (`doc/CONTRATS.md`
+  §3 : « Les cibles ne sont jamais imputées ») ; `is_observed` reste vrai (un 0 a bien
+  été mesuré) ;
+- 0 un an avant : rien ne change ;
+- case vide un an avant : le 0 est gardé (sujet : « ne remplacez pas automatiquement les
+  zéros par des valeurs manquantes ») ;
+- un an avant inconnu (avant le début de l'instantané, ou avant la première mesure du
+  compteur, pas encore installé) : rien ne change.
 
-À savoir : la détection des suites est rétrospective (elle lit toute la série), et
-`doc/CONTRATS.md` §3 dit que les cibles ne sont jamais imputées ; une valeur remplacée
-peut donc servir de cible. Décision à présenter aux autres équipes à la livraison.
+À savoir : ici, la détection des suites est rétrospective (elle lit toute la série). Dans
+l'étude A/C (`zeros.py`), la même règle est appliquée avec une détection sans fuite, à la
+coupure d'apprentissage.
 
 À lancer sur l'historique (`hist-…`), qui contient l'année d'avant. counts.csv n'est pas
 modifié : le résultat est écrit dans filled_zeros_year.csv, avec les mêmes colonnes.
@@ -34,7 +37,7 @@ import pandas as pd
 from src.common.config import data_path
 from src.data.zeros_years import MIN_RUN_HOURS, long_runs, shift_years
 
-FILL_VERSION = "e1-fill-zeros-year/0.1.0"
+FILL_VERSION = "e1-fill-zeros-year/0.2.0"
 OUTPUT_NAME = "filled_zeros_year.csv"
 REPORT_NAME = "filled_zeros_year_report.json"
 
@@ -52,52 +55,60 @@ def run_hours(runs: pd.DataFrame) -> pd.DataFrame:
     return pd.concat(parts, ignore_index=True)
 
 
+def year_before(
+    counts: pd.DataFrame, counter_id: pd.Series, ts: pd.Series
+) -> tuple[np.ndarray, np.ndarray]:
+    """Même compteur, mêmes date et heure de Paris un an avant. Retourne (connue, valeur).
+
+    `connue` est faux avant le début de `counts` ou avant la première mesure du compteur ;
+    `valeur` est NaN pour une case vide ou une ligne absente.
+    """
+    prev = pd.Series([shift_years(t, 1) for t in ts], dtype="datetime64[ns, UTC]")
+    cid = counter_id.reset_index(drop=True)
+    installed = counts.loc[counts["is_observed"].astype(bool)].groupby("counter_id")["ts"].min()
+    known = (prev >= counts["ts"].min()) & (prev >= cid.map(installed))
+    idx = pd.MultiIndex.from_frame(pd.DataFrame({"counter_id": cid, "ts": prev}))
+    value = counts.set_index(["counter_id", "ts"])["count"].reindex(idx)
+    return known.to_numpy(), value.to_numpy(dtype=float)
+
+
 def fill_zero_runs(counts: pd.DataFrame, min_run: int = MIN_RUN_HOURS) -> tuple[pd.DataFrame, dict]:
-    """Remplace `count` des suites de zéros par l'année d'avant. Retourne (copie, bilan).
+    """Remplace `count` des suites de zéros par l'année d'avant si elle est > 0. Retourne (copie, bilan).
 
     `counts` : colonnes `counter_id`, `ts` (UTC), `count`, `is_observed`, `is_scoreable`.
     """
     df = counts.copy()
     runs = long_runs(df, min_run)
     hours = run_hours(runs)
-    first = df["ts"].min()
     report = {
         "fill_version": FILL_VERSION,
-        "rule": "suites >= 24 h de zéros mesurés ; même date et heure de Paris un an avant, "
-        "recopiée telle quelle (0 et vide compris) ; count remplacé, count_raw inchangé",
+        "rule": "suites >= 24 h de zéros mesurés ; même date et heure de Paris un an avant ; "
+        "valeur > 0 : count remplacé, is_scoreable faux, count_raw inchangé ; "
+        "0, vide ou inconnu un an avant : le 0 est gardé",
         "n_runs": int(len(runs)),
         "n_counters": int(runs["counter_id"].nunique()) if len(runs) else 0,
         "n_hours_in_runs": int(len(hours)),
     }
     if hours.empty:
-        report.update({"n_hours_replaced": 0, "n_hours_before_snapshot": 0, "replaced_by": {}})
+        kept = {"0 un an avant": 0, "vide un an avant": 0, "un an avant inconnu": 0}
+        report.update({"n_hours_replaced": 0, "n_hours_kept": kept})
         return df, report
 
-    hours["prev"] = [shift_years(t, 1) for t in hours["ts"]]
-    # Inconnu : avant le début de l'instantané, ou avant la première mesure du compteur
-    # (compteur pas encore installé : ce n'est pas une case vide)
-    installed = df.loc[df["is_observed"].astype(bool)].groupby("counter_id")["ts"].min()
-    since = hours["counter_id"].map(installed)
-    known = (hours["prev"] >= first) & (hours["prev"] >= since)
-    key = df.set_index(["counter_id", "ts"])
-    prev_idx = pd.MultiIndex.from_frame(hours.loc[known, ["counter_id", "prev"]])
-    prev = key["count"].reindex(prev_idx).to_numpy()  # NaN : vide ou ligne absente
-
-    target = pd.MultiIndex.from_frame(hours.loc[known, ["counter_id", "ts"]])
+    known, value = year_before(df, hours["counter_id"], hours["ts"])
+    replace = known & (value > 0)  # NaN (vide) n'est jamais > 0 : le 0 est gardé
+    target = pd.MultiIndex.from_frame(hours.loc[replace, ["counter_id", "ts"]])
     pos = df.reset_index().set_index(["counter_id", "ts"]).loc[target, "index"].to_numpy()
-    df.loc[pos, "count"] = prev
-    df.loc[pos, "is_scoreable"] = df.loc[pos, "is_observed"].astype(bool) & ~np.isnan(prev)
+    df.loc[pos, "count"] = value[replace]
+    df.loc[pos, "is_scoreable"] = False  # entrée seulement, jamais une cible
 
-    replaced_by = {
-        "valeur > 0": int((prev > 0).sum()),
-        "0": int((prev == 0).sum()),
-        "vide": int(np.isnan(prev).sum()),
-    }
     report.update(
         {
-            "n_hours_replaced": int(known.sum()),
-            "n_hours_before_snapshot": int((~known).sum()),
-            "replaced_by": replaced_by,
+            "n_hours_replaced": int(replace.sum()),
+            "n_hours_kept": {
+                "0 un an avant": int((known & (value == 0)).sum()),
+                "vide un an avant": int((known & np.isnan(value)).sum()),
+                "un an avant inconnu": int((~known).sum()),
+            },
         }
     )
     return df, report

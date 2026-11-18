@@ -30,16 +30,20 @@ def series(start: str, end: str, value=10.0, zeros=(), missing=(), override=None
 RUN = ("2025-03-10 00:00", "2025-03-11 23:00")  # 48 h de zéros
 
 
-def test_suite_remplacee_par_l_annee_d_avant():
+def test_suite_remplacee_par_l_annee_d_avant_et_plus_une_cible():
     c = series("2024-01-01", "2025-12-31", zeros=[RUN], override={"2024-03-10 05:00": 77.0})
     out, rep = fill_zero_runs(c)
     run = out.set_index("ts").loc[RUN[0] : RUN[1]]
     assert (run["count"] > 0).all()
     assert run.loc["2025-03-10 05:00", "count"] == 77.0  # même heure, un an avant
-    assert rep["n_hours_replaced"] == 48 and rep["replaced_by"]["valeur > 0"] == 48
+    assert not run["is_scoreable"].any()  # valeur remplacée : entrée, jamais cible
+    assert run["is_observed"].all()  # le 0 a bien été mesuré
+    assert rep["n_hours_replaced"] == 48
+    hors = out.set_index("ts").drop(index=run.index)
+    assert hors["is_scoreable"].all()  # les autres heures ne changent pas
 
 
-def test_zero_et_vide_recopies_tels_quels():
+def test_zero_ou_vide_un_an_avant_le_zero_est_garde():
     c = series(
         "2024-01-01",
         "2025-12-31",
@@ -48,17 +52,24 @@ def test_zero_et_vide_recopies_tels_quels():
     )
     out, rep = fill_zero_runs(c)
     run = out.set_index("ts").loc[RUN[0] : RUN[1]]
-    assert (run.loc["2025-03-10 00:00":"2025-03-10 03:00", "count"] == 0).all()
-    assert run.loc["2025-03-11 10:00":"2025-03-11 11:00", "count"].isna().all()
-    assert not run.loc["2025-03-11 10:00", "is_scoreable"]  # vide : non évaluable
-    assert rep["replaced_by"] == {"valeur > 0": 42, "0": 4, "vide": 2}
+    gardes = run.loc["2025-03-10 00:00":"2025-03-10 03:00"]
+    vides = run.loc["2025-03-11 10:00":"2025-03-11 11:00"]
+    for kept in (gardes, vides):
+        assert (kept["count"] == 0).all()  # jamais un zéro remplacé par une case vide
+        assert kept["is_scoreable"].all()  # rien n'est remplacé : le zéro reste une cible
+    assert rep["n_hours_replaced"] == 42
+    assert rep["n_hours_kept"] == {
+        "0 un an avant": 4,
+        "vide un an avant": 2,
+        "un an avant inconnu": 0,
+    }
 
 
 def test_annee_d_avant_hors_instantane_inchangee():
     c = series("2025-01-01", "2025-12-31", zeros=[RUN])
     out, rep = fill_zero_runs(c)
     assert (out.set_index("ts").loc[RUN[0] : RUN[1], "count"] == 0).all()
-    assert rep["n_hours_replaced"] == 0 and rep["n_hours_before_snapshot"] == 48
+    assert rep["n_hours_replaced"] == 0 and rep["n_hours_kept"]["un an avant inconnu"] == 48
 
 
 def test_suite_courte_et_heures_hors_suite_inchangees():
