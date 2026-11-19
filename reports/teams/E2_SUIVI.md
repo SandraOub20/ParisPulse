@@ -40,18 +40,18 @@ Documents de référence : [sujet](../../ParisPulse_Sujet_etudiants.pdf), [archi
 
 ## 2. État d'avancement
 
-_Dernière mise à jour : 2026-11-19 - MOD-002._
+_Dernière mise à jour : 2026-11-19 - MOD-003._
 
 | Étape (README E2) | État | Renvoi |
 | --- | --- | --- |
 | 0. Revue de cohérence sujet / architecture / contrats / `src/models` | 🟡 Revue faite, incohérences en partie traitées (§10) | MOD-001, MOD-002 |
 | 0. Squelette de code `src/models` (signatures, types, docstrings) | ✅ Fait | MOD-001 |
 | 1. Série réelle E1 + origine et données autorisées E4 | ⏳ En attente partenaires | - |
-| 2. Référence 168 h + repli causal (`baseline.py`) | 🔲 À coder | - |
-| 3. Vérification manuelle + raccord E4/E5 | 🔲 | - |
+| 2. Référence 168 h + repli causal (`baseline.py`) | ✅ Codée et testée sur cas synthétique ; repli N = 4 provisoire (D-03) | MOD-003 |
+| 3. Vérification manuelle + raccord E4/E5 | 🟡 Vérification manuelle faite (synthétique) ; raccord E4/E5 à faire | MOD-003 |
 | 4. Variables communes (`features.py`) | 🔲 | - |
 | 5. Méthode justifiée + variante explicative (`train.py`) | 🔲 | - |
-| 6. Calcul exécutable et exports, recalcul autre origine (`predict.py`) | 🔲 | - |
+| 6. Calcul exécutable et exports, recalcul autre origine (`predict.py`) | 🟡 Exports `.pred.csv` / `.runs.csv` faits ; `build_inputs`, `predict_24h` à faire | MOD-003 |
 | 7. Cas difficile, extension, test final après gel | 🔲 | - |
 
 Légende : ✅ fait et vérifié · 🟡 en cours · ⏳ bloqué/en attente · 🔲 non commencé.
@@ -89,7 +89,7 @@ counts.csv (E1) --build_inputs (available_at <= origin)--> ForecastInputs --asse
   --> ForecastResult --to_forecast_frame / to_run_row--> <method_run_id>.pred.csv / .runs.csv
 ```
 
-Fonctions réellement implémentées à ce jour : `target_timestamps()` uniquement. Toutes les autres lèvent `NotImplementedError("E2 : ...")`.
+Fonctions réellement implémentées à ce jour (MOD-003) : `target_timestamps()` ; dans `baseline.py`, `weekly_reference`, `admissible_history`, `lookup_lagged`, `fallback_value` ; dans `schemas.py`, `ForecastResult.is_complete`, `to_forecast_frame`, `to_run_row` ; dans `predict.py`, `write_predictions`, `write_runs`. Toutes les autres lèvent `NotImplementedError("E2 : ...")`. Tests : [tests/test_known_baseline.py](../../tests/test_known_baseline.py).
 
 ---
 
@@ -108,6 +108,22 @@ Fonctions réellement implémentées à ce jour : `target_timestamps()` uniqueme
 - **Vérifications effectuées** : commandes lancées, résultats observés (ou "aucune").
 - **Points ouverts** : ce qui reste incertain ou à valider.
 ```
+
+### MOD-003 - 2026-11-19 - Référence hebdomadaire, repli, exports et cas construit à la main (Corrige MOD-001, MOD-002)
+
+- **Auteur** : emmanuelle-nh-nguyen (assistée par Claude Code).
+- **Branche / commit** : `Team2` / non commité.
+- **Quoi** :
+  - [baseline.py](../../src/models/known/baseline.py) : `weekly_reference` (y(t − 168 h) par jointure sur timestamp, repli par horizon, statuts `ok` / `fallback` / `unavailable`, coût d'inférence), `admissible_history` (un seul compteur, dates UTC avec fuseau obligatoires, doublons refusés, filtre `interval_end <= information_cutoff`), `lookup_lagged`, `fallback_value`. Repli proposé pour D-03 avec N = 4 : médiane des 4 dernières observations admissibles de même jour et même heure locale, puis moyenne des 28 dernières de même heure locale, sinon `y_pred` vide et statut `unavailable`. Codes stables pour E4/E5 : `method_used` ∈ {`weekly_naive`, `profile_median_dow_hour`, `profile_mean_hour`} ; `status_reason` ∈ {`lag168_missing`, `lag168_missing;no_fallback_history`}. Statut du cas : `unavailable` si un horizon manque, sinon `fallback` si un horizon est en repli, sinon `ok`.
+  - [schemas.py](../../src/models/schemas.py) : `ForecastResult.is_complete` (24 horizons distincts, `y_pred` finies ≥ 0), `to_forecast_frame` (colonnes `FORECAST_COLUMNS`), `to_run_row` (colonnes `CASE_RUNS_COLUMNS`). Fichier passé au formateur Ruff.
+  - [predict.py](../../src/models/known/predict.py) : `write_predictions` et `write_runs` aux conventions CONTRATS §1 (UTC ISO avec fuseau, `true`/`false`, cellule vide = absent), refus des clés en double et des cas sans 24 lignes.
+  - [tests/test_known_baseline.py](../../tests/test_known_baseline.py) : cas synthétique construit à la main (origine 2025-03-29T23:00Z, jour du passage à l'heure d'été) avec zéro observé, `count` manquant, ligne absente de la grille et lignes futures présentes dans le fichier ; valeurs attendues calculées à la main dans la docstring.
+  - Correction de MOD-001 et MOD-002 : leur travail est commité dans `690b7bd` sur la branche `Team2` (et non `Team2-squelette` / non commité).
+- **Pourquoi** : premier livrable E2 (sujet p. 6 : référence vérifiée sur un petit cas construit, puis raccordée aux données, au score et à l'application), réalisable sans attendre `counts.csv` d'E1.
+- **Fichiers** : [baseline.py](../../src/models/known/baseline.py), [schemas.py](../../src/models/schemas.py), [predict.py](../../src/models/known/predict.py), [tests/test_known_baseline.py](../../tests/test_known_baseline.py), ce fichier.
+- **Impact partenaires / contrats** : aucune colonne CSV modifiée. Nouveaux arguments nommés optionnels `method_run_id=` et `fallback_weeks=` de `weekly_reference`, `fallback_weeks=` de `fallback_value`. À présenter : à E4 et E5 les codes `method_used` / `status_reason` et la règle de statut du cas ; à E1 la règle d'admissibilité provisoire et le refus des timestamps sans fuseau ou en double ; à E3 la réutilisation possible de `weekly_reference` comme référence au même budget local.
+- **Vérifications effectuées** : `./run.sh test` : 14 tests passés (Python 3.11, `.venv` du projet, uv 0.13.1). `ruff check src tests` : aucun problème. `ruff format --check` : seul [registry.py](../../src/models/registry.py) reste non formaté (déjà le cas avant ce changement, non modifié ici). Valeurs vérifiées à la main : h1 = 32223, h7 = 0.0 (zéro observé), h12 = 31261 et h17 = 31266 (replis), h24 = 32322. Une perturbation des lignes postérieures à la coupure ne change aucune prévision. Données synthétiques uniquement : aucune performance sur Paris n'est mesurée.
+- **Points ouverts** : N = 4 et la règle de repli à valider avec E4/E5 (D-03) ; I3 (168 h UTC contre heure locale du repli) visible dans le test, non tranché ; règle d'admissibilité provisoire en attendant C3/M2 (D-08) ; les chaînes de dates sans décalage sont lues comme UTC par pandas ; `build_inputs`, `predict_24h`, `Case.from_row` et le raccord réel avec E4/E5 restent à faire.
 
 ### MOD-002 - 2026-11-19 - Revue des incohérences critiques ; corrections C1 et C2 (Corrige MOD-001)
 
@@ -153,11 +169,12 @@ Prioriser dans l'ordre. Cocher avec le renvoi `MOD-NNN` uniquement une fois vér
 - [ ] Mettre `uv` à jour, lancer `./run.sh check` et `ruff` sur `src/models`.
 - [ ] Faire adopter (ou amender) `schemas.py` par E1/E3/E4/E5 puis le migrer dans `src/common/contracts.py`.
 - [ ] Obtenir d'E1 un premier `counts.csv` réel et d'E4 un premier `cases.csv`.
-- [ ] Implémenter `lookup_lagged` (jointure par timestamp, pas par position).
-- [ ] Implémenter `fallback_value` (règle à figer, cf. D-03) et `weekly_reference`.
-- [ ] Implémenter `ForecastResult.is_complete`, `to_forecast_frame`, `to_run_row`.
+- [x] Implémenter `lookup_lagged` (jointure par timestamp, pas par position). MOD-003
+- [x] Implémenter `fallback_value` (règle provisoire N = 4, à figer, cf. D-03) et `weekly_reference`. MOD-003
+- [x] Implémenter `ForecastResult.is_complete`, `to_forecast_frame`, `to_run_row`. MOD-003
 - [ ] Implémenter `build_inputs`, `assert_causal`, `predict_24h` (variante `reference`).
-- [ ] Vérifier 3 à 5 valeurs à la main sur un petit cas construit (zéro observé, heure absente, changement d'heure).
+- [x] Vérifier 3 à 5 valeurs à la main sur un petit cas construit (zéro observé, heure absente, changement d'heure). MOD-003
+- [ ] Formater [registry.py](../../src/models/registry.py) (`ruff format`), seul fichier qui fait encore échouer `./run.sh check`.
 - [ ] Produire un premier `.pred.csv` / `.runs.csv` et le faire consommer par E4 et E5 (preuve d'usage).
 
 ### Étude principale
@@ -186,7 +203,7 @@ Prioriser dans l'ordre. Cocher avec le renvoi `MOD-NNN` uniquement une fois vér
 | --- | --- | --- | --- | --- | --- |
 | D-01 | 2026-11-19 | Contrats communs | Ouvert | `src/common/contracts.py` est vide ; `schemas.py` proposé comme base. À valider avec les 5 équipes. | E2 → toutes |
 | D-02 | 2026-11-19 | Signature `predict_24h` | Proposé | Signature imposée conservée ; ajout de `context=` (le contrat §5-6 prévoit un contexte admissible absent de la signature). | E2, E5 |
-| D-03 | 2026-11-19 | Repli de la référence | Ouvert | Proposition : médiane même heure locale / même jour sur N semaines admissibles, puis moyenne même heure locale, sinon `unavailable`. Valeur de N à fixer. | E2, E4, E5 |
+| D-03 | 2026-11-19 | Repli de la référence | Ouvert | Proposition : médiane même heure locale / même jour sur N semaines admissibles, puis moyenne même heure locale, sinon `unavailable`. Valeur de N à fixer. MOD-003 : implémenté avec N = 4 (moyenne sur 28 observations au second niveau), paramètre `fallback_weeks` ; à valider avec E4/E5. | E2, E4, E5 |
 | D-04 | 2026-11-19 | Prophet | Proposé | Variante optionnelle seulement (`prophet_reference`), non déclarée dans `pyproject.toml`, jamais obligatoire. Ajout de la dépendance à décider. | E2 |
 | D-05 | 2026-11-19 | Expérience deep learning | Ouvert | Responsabilité E2 ou E3 à attribuer explicitement (ARCHITECTURE §6). `torch` disponible dans le groupe `dl` (CPU). | E2, E3 |
 | D-06 | 2026-11-19 | Latence et décalage 168 h | Vérifié | Avec `publication_lag_hours = 24`, y(t−168 h) reste disponible pour les 24 horizons (dernière source disponible à origin − 120 h). | E2 |
@@ -251,7 +268,7 @@ Statuts : ✅ corrigé · ⏸️ reporté (décision prise) · 🔲 à traiter.
 | --- | --- | --- | --- |
 | I1 | `schemas.py` est dans `src/models/` alors que le contrat commun relève de `src/common/contracts.py` ; risque de divergence si E4 ou E5 définissent leur propre `Case`. | ARCHITECTURE §5 ; D-01 | 🔲 |
 | I2 | `TrainedModel` ne suit pas `model_metadata.example.json` : noms différents (`donor_site_groups`, `label_interval`, `train_seconds`) ; il manque `excluded_site_groups` (preuve attendue par E3), `weights_sha256`, `minimum_history_hours`, `supported_scenarios`, `fallback`. | CONTRATS §6 ; gabarit métadonnées | 🔲 |
-| I3 | Référence décalée de 168 h UTC, mais repli en heure locale, et le plan dit « même heure une semaine avant » : décalage d'une heure en semaine de changement d'heure. Règle à choisir, documenter et tester. | Plan §7 ; PROTOCOLE §2 | 🔲 |
+| I3 | Référence décalée de 168 h UTC, mais repli en heure locale, et le plan dit « même heure une semaine avant » : décalage d'une heure en semaine de changement d'heure. Règle à choisir, documenter et tester. | Plan §7 ; PROTOCOLE §2 | 🔲 Écart rendu visible par le test de MOD-003 (repli à 11Z, valeur principale à 10Z) ; règle non tranchée |
 | I4 | `MIN_HISTORY_HOURS = 168` est ambigu : avec 24 h de latence, il faut la fenêtre [origin − 168 h, origin − 145 h], pas « 168 h d'historique ». Utilisée par `check_eligibility`, elle refuserait la référence alors que son repli peut répondre. | Sujet p. 2 (méthode simple toujours utilisable) | 🔲 |
 | I5 | MOD-001 concluait « aucune incohérence critique » et a été vérifiée avec Python 3.13 au lieu de 3.11 ; ruff non exécuté. | Règles de ce fichier | 🟡 Conclusion corrigée par MOD-002 ; vérification 3.11 + ruff à faire |
 
@@ -260,7 +277,7 @@ Statuts : ✅ corrigé · ⏸️ reporté (décision prise) · 🔲 à traiter.
 | ID | Incohérence | Statut |
 | --- | --- | --- |
 | M1 | `check_eligibility` exige `fit_cutoff < origin`, le protocole admet `<=` (un modèle gelé au 01/09 00:00 serait refusé pour l'origine du 01/09 00:00) ; `MethodSpec.fit_cutoff` est une chaîne au lieu d'un `Timestamp`. Le §9 de ce fichier reprend aussi `<`. | 🔲 |
-| M2 | `ForecastInputs.information_cutoff` mal défini : comparé à `available_at` (= `origin`) ou à `interval_end` (= `origin − latence`) selon les docstrings. Lié à C3. | 🔲 |
+| M2 | `ForecastInputs.information_cutoff` mal défini : comparé à `available_at` (= `origin`) ou à `interval_end` (= `origin − latence`) selon les docstrings. Lié à C3. | 🟡 MOD-003 : `weekly_reference` compare `interval_end` à `information_cutoff` = `origin − latence` (provisoire, à confirmer avec D-08) |
 | M3 | Expérience deep learning non planifiée concrètement dans le squelette (D-05 ouvert), alors qu'elle est obligatoire. | 🔲 |
 
 ### Points vérifiés cohérents

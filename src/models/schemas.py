@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+import numpy as np
 import pandas as pd
 
 HORIZON_HOURS = 24
@@ -26,15 +27,42 @@ PredictionStatus = Literal["ok", "fallback", "unavailable", "error"]
 
 # En-têtes des gabarits (doc/templates/forecasts.csv et case_runs.csv).
 FORECAST_COLUMNS: list[str] = [
-    "case_id", "method_run_id", "model_run_id", "counter_id", "origin", "scenario",
-    "horizon", "target_timestamp", "y_pred", "variant", "method_used",
-    "prediction_status", "status_reason", "fit_cutoff", "support_id", "adaptation_id",
-    "snapshot_id", "context_version", "protocol_id", "feature_version",
+    "case_id",
+    "method_run_id",
+    "model_run_id",
+    "counter_id",
+    "origin",
+    "scenario",
+    "horizon",
+    "target_timestamp",
+    "y_pred",
+    "variant",
+    "method_used",
+    "prediction_status",
+    "status_reason",
+    "fit_cutoff",
+    "support_id",
+    "adaptation_id",
+    "snapshot_id",
+    "context_version",
+    "protocol_id",
+    "feature_version",
 ]
 CASE_RUNS_COLUMNS: list[str] = [
-    "case_id", "method_run_id", "model_run_id", "status", "status_reason",
-    "preparation_seconds", "inference_seconds", "adaptation_seconds", "wait_seconds",
-    "cache_hit", "memory_mb", "hardware", "protocol_id", "snapshot_id",
+    "case_id",
+    "method_run_id",
+    "model_run_id",
+    "status",
+    "status_reason",
+    "preparation_seconds",
+    "inference_seconds",
+    "adaptation_seconds",
+    "wait_seconds",
+    "cache_hit",
+    "memory_mb",
+    "hardware",
+    "protocol_id",
+    "snapshot_id",
 ]
 
 
@@ -116,15 +144,68 @@ class ForecastResult:
 
     def is_complete(self) -> bool:
         """Vrai si les 24 horizons distincts ont une prévision finie non négative."""
-        raise NotImplementedError("E2/E4 : vérifier 24 horizons distincts et y_pred valides")
+        preds = self.predictions
+        if len(preds) != HORIZON_HOURS:
+            return False
+        if sorted(preds["horizon"].tolist()) != list(range(1, HORIZON_HOURS + 1)):
+            return False
+        values = pd.to_numeric(preds["y_pred"], errors="coerce").to_numpy(dtype=float)
+        return bool(np.isfinite(values).all() and (values >= 0).all())
 
     def to_forecast_frame(self) -> pd.DataFrame:
-        """Convertir au format doc/templates/forecasts.csv (colonnes FORECAST_COLUMNS)."""
-        raise NotImplementedError("E2 : remplir les colonnes de contexte et de traçabilité")
+        """Convertir au format doc/templates/forecasts.csv (colonnes FORECAST_COLUMNS).
+
+        Les dates restent des Timestamp UTC ; leur écriture ISO est faite par l'export.
+        Les horizons sans prévision gardent y_pred manquant (jamais 0).
+        """
+        case = self.case
+        frame = self.predictions[
+            [
+                "horizon",
+                "target_timestamp",
+                "y_pred",
+                "method_used",
+                "prediction_status",
+                "status_reason",
+            ]
+        ].copy()
+        frame = frame.assign(
+            case_id=case.case_id,
+            method_run_id=self.method_run_id,
+            model_run_id=self.model_run_id,
+            counter_id=case.counter_id,
+            origin=case.origin,
+            scenario=case.scenario,
+            variant=self.variant,
+            fit_cutoff=self.fit_cutoff,
+            support_id=self.support_id,
+            adaptation_id=self.adaptation_id,
+            snapshot_id=case.snapshot_id,
+            context_version=self.context_version,
+            protocol_id=case.protocol_id,
+            feature_version=self.feature_version,
+        )
+        return frame.sort_values("horizon")[FORECAST_COLUMNS].reset_index(drop=True)
 
     def to_run_row(self) -> dict[str, Any]:
         """Convertir en une ligne au format doc/templates/case_runs.csv."""
-        raise NotImplementedError("E2 : remplir CASE_RUNS_COLUMNS depuis self.cost")
+        cost = self.cost
+        return {
+            "case_id": self.case.case_id,
+            "method_run_id": self.method_run_id,
+            "model_run_id": self.model_run_id,
+            "status": self.status,
+            "status_reason": self.status_reason,
+            "preparation_seconds": cost.preparation_seconds,
+            "inference_seconds": cost.inference_seconds,
+            "adaptation_seconds": cost.adaptation_seconds,
+            "wait_seconds": cost.wait_seconds,
+            "cache_hit": cost.cache_hit,
+            "memory_mb": cost.memory_mb,
+            "hardware": cost.hardware,
+            "protocol_id": self.case.protocol_id,
+            "snapshot_id": self.case.snapshot_id,
+        }
 
 
 def target_timestamps(origin: pd.Timestamp, horizon_hours: int = HORIZON_HOURS) -> pd.DataFrame:
