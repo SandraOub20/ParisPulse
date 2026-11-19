@@ -12,9 +12,9 @@ de chaque prévision. Valeurs attendues calculées à la main :
 | 7  | 2025-03-30 05:00  | 2025-03-23 05:00 = 0  | 0.0, ok (zéro observé conservé)           |
 | 12 | 2025-03-30 10:00  | count manquant        | repli : dimanche 12:00 locale =           |
 |    |                   |                       | 23/03 11Z, 16/03 11Z, 09/03 11Z, 02/03 11Z |
-|    |                   |                       | médiane(32311, 31611, 30911, 20211)=31261 |
+|    |                   |                       | médiane(32311, 31611, 30911, 30211)=31261 |
 | 17 | 2025-03-30 15:00  | ligne absente         | repli : dimanche 17:00 locale = 16Z       |
-|    |                   |                       | médiane(32316, 31616, 30916, 20216)=31266 |
+|    |                   |                       | médiane(32316, 31616, 30916, 30216)=31266 |
 | 24 | 2025-03-30 22:00  | 2025-03-23 22:00      | 32322, ok                                 |
 
 Le repli suit l'heure locale (11Z en CET) alors que la valeur principale suit 168 h UTC
@@ -230,6 +230,58 @@ def test_exports_follow_templates(tmp_path):
     assert runs["case_id"].tolist() == ["C1", "C2"]
     assert runs["status"].tolist() == ["fallback", "unavailable"]
     assert set(runs["cache_hit"]) == {"false"}
+
+
+def test_profile_hand_computed_values():
+    """Médiane de t-168, t-336, t-504, t-672 h (sources UTC, mêmes données que ci-dessus).
+
+    h1  : 22/03 23Z, 15/03 23Z, 08/03 23Z, 01/03 23Z -> médiane(32223, 31523, 30823, 30123)
+          = (30823 + 31523) / 2 = 31173
+    h7  : 23/03 05Z = 0, 31605, 30905, 30205 -> médiane = (30205 + 30905) / 2 = 30555
+    h12 : 23/03 10Z manquant, 31610, 30910, 30210 -> médiane de 3 = 30910, sans repli
+    h17 : 23/03 15Z absent de la grille, 31615, 30915, 30215 -> 30915, sans repli
+    """
+    result = baseline.weekly_profile_reference(make_inputs(make_history()))
+    preds = by_horizon(result)
+
+    assert preds.loc[1, "y_pred"] == 31173.0
+    assert preds.loc[7, "y_pred"] == 30555.0
+    assert preds.loc[12, "y_pred"] == 30910.0
+    assert preds.loc[17, "y_pred"] == 30915.0
+    assert (preds["prediction_status"] == "ok").all()
+    assert (preds["method_used"] == baseline.PROFILE_METHOD_NAME).all()
+    assert result.variant == baseline.PROFILE_VARIANT
+    assert result.method_run_id == "weekly_profile_median-0.1.0"
+    assert result.status == "ok" and result.is_complete()
+
+
+def test_profile_with_one_week_equals_weekly_naive():
+    history = make_history()
+    naive = baseline.weekly_reference(make_inputs(history)).predictions["y_pred"]
+    profile = baseline.weekly_profile_reference(make_inputs(history), n_weeks=1)
+    pd.testing.assert_series_equal(naive, profile.predictions["y_pred"])
+
+
+def test_profile_falls_back_then_reports_unavailable():
+    origin = pd.Timestamp("2025-01-15T23:00", tz=UTC)
+    timestamps = pd.date_range("2025-01-12T23:00", "2025-01-14T22:00", freq="h", tz=UTC)
+    history = pd.DataFrame({"timestamp": timestamps, "count": 15.0})
+    result = baseline.weekly_profile_reference(make_inputs(history, make_case(origin=origin)))
+    assert (result.predictions["method_used"] == baseline.FALLBACK_HOUR).all()
+    assert (result.predictions["status_reason"] == baseline.REASON_PROFILE_MISSING).all()
+
+    empty = pd.DataFrame({"timestamp": pd.DatetimeIndex([], tz=UTC), "count": []})
+    result = baseline.weekly_profile_reference(make_inputs(empty))
+    assert result.status == "unavailable" and result.predictions["y_pred"].isna().all()
+
+
+def test_profile_ignores_future_rows():
+    history = make_history()
+    reference = baseline.weekly_profile_reference(make_inputs(history)).predictions["y_pred"]
+    perturbed = history.copy()
+    perturbed.loc[perturbed["interval_end"] > ORIGIN - LAG, "count"] = -1.0
+    changed = baseline.weekly_profile_reference(make_inputs(perturbed)).predictions["y_pred"]
+    pd.testing.assert_series_equal(reference, changed)
 
 
 def test_export_refuses_duplicate_case(tmp_path):

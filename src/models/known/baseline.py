@@ -22,6 +22,10 @@ Repli (proposition D-03, N = FALLBACK_WEEKS à valider avec E4/E5), par horizon 
 2. sinon moyenne des 7 x N dernières observations admissibles de même heure locale ;
 3. sinon aucune prévision (y_pred manquant, statut unavailable).
 La valeur principale suit 168 h UTC alors que le repli suit l'heure locale (I3, à trancher).
+
+Deux références recalculables, sans apprentissage, vérifiables à la main :
+- weekly_reference (weekly_naive) : y(t - 168 h) ;
+- weekly_profile_reference (weekly_profile_median) : médiane de y(t - k x 168 h), k = 1..4.
 """
 
 from __future__ import annotations
@@ -48,11 +52,18 @@ MIN_HISTORY_HOURS = 168
 LOCAL_TZ = "Europe/Paris"
 FALLBACK_WEEKS = 4
 
+# Référence profil : médiane des mêmes heures UTC sur plusieurs semaines.
+PROFILE_METHOD_NAME = "weekly_profile_median"
+PROFILE_METHOD_VERSION = "0.1.0"
+PROFILE_VARIANT = "reference_profile"
+PROFILE_WEEKS = 4
+
 # Valeurs de method_used et de status_reason (codes stables lus par E4/E5).
 FALLBACK_DOW_HOUR = "profile_median_dow_hour"
 FALLBACK_HOUR = "profile_mean_hour"
 REASON_LAG_MISSING = "lag168_missing"
 REASON_NO_FALLBACK = "lag168_missing;no_fallback_history"
+REASON_PROFILE_MISSING = "profile_weeks_missing"
 
 
 def weekly_reference(
@@ -73,6 +84,59 @@ def weekly_reference(
     Statut du cas : unavailable si au moins un horizon est sans prévision, sinon fallback si
     au moins un horizon a utilisé le repli, sinon ok.
     """
+    return _seasonal_reference(
+        inputs,
+        variant,
+        lags=(SEASONAL_LAG,),
+        method_name=METHOD_NAME,
+        method_version=METHOD_VERSION,
+        missing_reason=REASON_LAG_MISSING,
+        method_run_id=method_run_id,
+        fallback_weeks=fallback_weeks,
+    )
+
+
+def weekly_profile_reference(
+    inputs: ForecastInputs,
+    variant: Variant = PROFILE_VARIANT,
+    *,
+    method_run_id: str | None = None,
+    n_weeks: int = PROFILE_WEEKS,
+    fallback_weeks: int = FALLBACK_WEEKS,
+) -> ForecastResult:
+    """Prévoir y(t) = médiane de y(t - k x 168 h), k = 1..n_weeks, jointure par timestamp.
+
+    Plus robuste qu'une seule semaine à une journée atypique (pluie, grève, panne). La
+    médiane porte sur les semaines observées et admissibles (zéros compris) ; avec une seule
+    semaine disponible, elle vaut la référence hebdomadaire. Sans aucune des n_weeks semaines,
+    même chaîne de repli que weekly_reference. Mêmes lags UTC que weekly_reference (I3).
+    """
+    if n_weeks < 1:
+        raise ValueError("n_weeks doit valoir au moins 1")
+    return _seasonal_reference(
+        inputs,
+        variant,
+        lags=tuple(SEASONAL_LAG * k for k in range(1, n_weeks + 1)),
+        method_name=PROFILE_METHOD_NAME,
+        method_version=PROFILE_METHOD_VERSION,
+        missing_reason=REASON_PROFILE_MISSING,
+        method_run_id=method_run_id,
+        fallback_weeks=fallback_weeks,
+    )
+
+
+def _seasonal_reference(
+    inputs: ForecastInputs,
+    variant: Variant,
+    *,
+    lags: tuple[pd.Timedelta, ...],
+    method_name: str,
+    method_version: str,
+    missing_reason: str,
+    method_run_id: str | None,
+    fallback_weeks: int,
+) -> ForecastResult:
+    """Médiane des valeurs aux lags donnés (une seule = valeur elle-même), puis repli."""
     started = time.perf_counter()
     case = inputs.case
     cutoff = _as_utc_timestamp(inputs.information_cutoff, "information_cutoff")
@@ -82,16 +146,19 @@ def weekly_reference(
 
     history = admissible_history(inputs.history, cutoff, counter_id=case.counter_id)
     targets = target_timestamps(origin)
-    lagged = lookup_lagged(history, targets["target_timestamp"], SEASONAL_LAG)
+    lagged = pd.concat(
+        [lookup_lagged(history, targets["target_timestamp"], lag) for lag in lags], axis=1
+    )
+    primary = lagged.median(axis=1, skipna=True)
 
     y_pred: list[float] = []
     method_used: list[str | None] = []
     statuses: list[PredictionStatus] = []
     reasons: list[str | None] = []
-    for target, value in zip(targets["target_timestamp"], lagged, strict=True):
+    for target, value in zip(targets["target_timestamp"], primary, strict=True):
         if pd.notna(value):
             y_pred.append(float(value))
-            method_used.append(METHOD_NAME)
+            method_used.append(method_name)
             statuses.append("ok")
             reasons.append(None)
             continue
@@ -100,12 +167,12 @@ def weekly_reference(
             y_pred.append(np.nan)
             method_used.append(None)
             statuses.append("unavailable")
-            reasons.append(REASON_NO_FALLBACK)
+            reasons.append(f"{missing_reason};no_fallback_history")
         else:
             y_pred.append(fb_value)
             method_used.append(fb_method)
             statuses.append("fallback")
-            reasons.append(REASON_LAG_MISSING)
+            reasons.append(missing_reason)
 
     predictions = targets.assign(
         y_pred=y_pred,
@@ -120,7 +187,7 @@ def weekly_reference(
     )
     return ForecastResult(
         case=case,
-        method_run_id=method_run_id or f"{METHOD_NAME}-{METHOD_VERSION}",
+        method_run_id=method_run_id or f"{method_name}-{method_version}",
         model_run_id=None,
         variant=variant,
         predictions=predictions,

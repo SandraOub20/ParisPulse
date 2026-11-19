@@ -40,14 +40,14 @@ Documents de référence : [sujet](../../ParisPulse_Sujet_etudiants.pdf), [archi
 
 ## 2. État d'avancement
 
-_Dernière mise à jour : 2026-11-19 - MOD-003._
+_Dernière mise à jour : 2026-11-19 - MOD-004._
 
 | Étape (README E2) | État | Renvoi |
 | --- | --- | --- |
 | 0. Revue de cohérence sujet / architecture / contrats / `src/models` | 🟡 Revue faite, incohérences en partie traitées (§10) | MOD-001, MOD-002 |
 | 0. Squelette de code `src/models` (signatures, types, docstrings) | ✅ Fait | MOD-001 |
 | 1. Série réelle E1 + origine et données autorisées E4 | ⏳ En attente partenaires | - |
-| 2. Référence 168 h + repli causal (`baseline.py`) | ✅ Codée et testée sur cas synthétique ; repli N = 4 provisoire (D-03) | MOD-003 |
+| 2. Référence 168 h + repli causal (`baseline.py`) | ✅ Codée et testée sur cas synthétique ; repli N = 4 provisoire (D-03) ; seconde référence médiane 4 semaines | MOD-003, MOD-004 |
 | 3. Vérification manuelle + raccord E4/E5 | 🟡 Vérification manuelle faite (synthétique) ; raccord E4/E5 à faire | MOD-003 |
 | 4. Variables communes (`features.py`) | 🔲 | - |
 | 5. Méthode justifiée + variante explicative (`train.py`) | 🔲 | - |
@@ -89,7 +89,7 @@ counts.csv (E1) --build_inputs (available_at <= origin)--> ForecastInputs --asse
   --> ForecastResult --to_forecast_frame / to_run_row--> <method_run_id>.pred.csv / .runs.csv
 ```
 
-Fonctions réellement implémentées à ce jour (MOD-003) : `target_timestamps()` ; dans `baseline.py`, `weekly_reference`, `admissible_history`, `lookup_lagged`, `fallback_value` ; dans `schemas.py`, `ForecastResult.is_complete`, `to_forecast_frame`, `to_run_row` ; dans `predict.py`, `write_predictions`, `write_runs`. Toutes les autres lèvent `NotImplementedError("E2 : ...")`. Tests : [tests/test_known_baseline.py](../../tests/test_known_baseline.py).
+Fonctions réellement implémentées à ce jour (MOD-003) : `target_timestamps()` ; dans `baseline.py`, `weekly_reference`, `weekly_profile_reference` (MOD-004), `admissible_history`, `lookup_lagged`, `fallback_value` ; dans `schemas.py`, `ForecastResult.is_complete`, `to_forecast_frame`, `to_run_row` ; dans `predict.py`, `write_predictions`, `write_runs`. Toutes les autres lèvent `NotImplementedError("E2 : ...")`. Tests : [tests/test_known_baseline.py](../../tests/test_known_baseline.py).
 
 ---
 
@@ -109,10 +109,24 @@ Fonctions réellement implémentées à ce jour (MOD-003) : `target_timestamps()
 - **Points ouverts** : ce qui reste incertain ou à valider.
 ```
 
-### MOD-003 - 2026-11-19 - Référence hebdomadaire, repli, exports et cas construit à la main (Corrige MOD-001, MOD-002)
+### MOD-004 - 2026-11-19 - Seconde référence : médiane hebdomadaire sur 4 semaines (Corrige MOD-003)
 
 - **Auteur** : emmanuelle-nh-nguyen (assistée par Claude Code).
 - **Branche / commit** : `Team2` / non commité.
+- **Quoi** :
+  - [baseline.py](../../src/models/known/baseline.py) : nouvelle référence `weekly_profile_reference` (méthode `weekly_profile_median`, variante `reference_profile`) : médiane de y(t − k × 168 h), k = 1..4, jointure par timestamp, sur les semaines observées et admissibles (zéros compris). Sans aucune des 4 semaines, même chaîne de repli que `weekly_naive`, avec `status_reason` = `profile_weeks_missing`. Le calcul commun aux deux références est factorisé dans `_seasonal_reference` ; `weekly_reference` garde un comportement identique (tests MOD-003 inchangés et passants).
+  - [tests/test_known_baseline.py](../../tests/test_known_baseline.py) : valeurs calculées à la main sur le même cas (h1 = 31173, h7 = 30555 avec le zéro observé, h12 = 30910 et h17 = 30915 sur 3 semaines sans repli) ; égalité avec `weekly_naive` pour `n_weeks=1` ; repli puis `unavailable` ; insensibilité aux lignes postérieures à la coupure.
+  - Corrige MOD-003 : la docstring du test écrivait 20211 et 20216 pour les comptages du 2 mars (codés 30211 et 30216). Les résultats attendus (31261, 31266) étaient justes, la médiane de 4 valeurs ne dépendant que des deux centrales.
+- **Pourquoi** : renforcer la référence (une seule semaine est sensible à une journée atypique) et préparer une échelle de références simples, chaque marche constituant une petite ablation. Prophet écarté comme référence : non vérifiable à la main, ajustement par cas, historique long requis, dépendance supplémentaire (voir D-10).
+- **Fichiers** : [baseline.py](../../src/models/known/baseline.py), [tests/test_known_baseline.py](../../tests/test_known_baseline.py), ce fichier.
+- **Impact partenaires / contrats** : aucune colonne modifiée. Nouvelles valeurs à communiquer à E4/E5 : `method_used` = `weekly_profile_median`, `variant` = `reference_profile`, `status_reason` = `profile_weeks_missing` (et `profile_weeks_missing;no_fallback_history`). Utilisable par E3 comme référence au même budget local.
+- **Vérifications effectuées** : `./run.sh test` : 18 tests passés. `ruff check src tests` : aucun problème ; `ruff format --check` : seul `registry.py` reste non formaté (inchangé). Une première valeur attendue (h7) était fausse dans le test ; la vérification à la main a confirmé la valeur du code (30555). Données synthétiques uniquement.
+- **Points ouverts** : nombre de semaines (4) à fixer avant les comparaisons, sur validation ; choix de la référence officielle (`weekly_naive` seule ou les deux) à décider avec E4 ; I3 inchangé (lags en UTC) ; référence ajustée au niveau récent proposée, non codée.
+
+### MOD-003 - 2026-11-19 - Référence hebdomadaire, repli, exports et cas construit à la main (Corrige MOD-001, MOD-002)
+
+- **Auteur** : emmanuelle-nh-nguyen (assistée par Claude Code).
+- **Branche / commit** : `Team2` / `e88fb0b`.
 - **Quoi** :
   - [baseline.py](../../src/models/known/baseline.py) : `weekly_reference` (y(t − 168 h) par jointure sur timestamp, repli par horizon, statuts `ok` / `fallback` / `unavailable`, coût d'inférence), `admissible_history` (un seul compteur, dates UTC avec fuseau obligatoires, doublons refusés, filtre `interval_end <= information_cutoff`), `lookup_lagged`, `fallback_value`. Repli proposé pour D-03 avec N = 4 : médiane des 4 dernières observations admissibles de même jour et même heure locale, puis moyenne des 28 dernières de même heure locale, sinon `y_pred` vide et statut `unavailable`. Codes stables pour E4/E5 : `method_used` ∈ {`weekly_naive`, `profile_median_dow_hour`, `profile_mean_hour`} ; `status_reason` ∈ {`lag168_missing`, `lag168_missing;no_fallback_history`}. Statut du cas : `unavailable` si un horizon manque, sinon `fallback` si un horizon est en repli, sinon `ok`.
   - [schemas.py](../../src/models/schemas.py) : `ForecastResult.is_complete` (24 horizons distincts, `y_pred` finies ≥ 0), `to_forecast_frame` (colonnes `FORECAST_COLUMNS`), `to_run_row` (colonnes `CASE_RUNS_COLUMNS`). Fichier passé au formateur Ruff.
@@ -239,7 +253,7 @@ Notes à enrichir au fil du projet ; elles serviront directement à la rédactio
 - **Question et périmètre** : sites connus, prévision 24 h, information disponible à l'origine uniquement (latence simulée J−1).
 - **Choix d'architecture** : interface unique `ForecastInputs → ForecastResult` partagée E2/E3, registre de méthodes avec repli déclaré, séparation sortie brute / résultat système après repli (CONTRATS §7).
 - **Garanties de causalité** : jointure par timestamp, `available_at <= origin`, `fit_cutoff < origin`, labels joints séparément, sites réservés exclus par `site_group_id`.
-- **Référence** : naïf hebdomadaire 168 h ; justification : saisonnalité hebdomadaire des passages vélo, recalculable sans apprentissage.
+- **Référence** : naïf hebdomadaire 168 h ; justification : saisonnalité hebdomadaire des passages vélo, recalculable sans apprentissage. Seconde référence : médiane des 4 mêmes heures des semaines précédentes, moins sensible à une journée atypique (MOD-004). Prophet écarté comme référence : non vérifiable à la main, ajustement par cas, historique long nécessaire.
 - **Méthodes et ablations** : _à compléter_.
 - **Résultats, limites, coûts** : _à compléter (citer `scores.csv`)_.
 - **Ce qui n'a pas marché et pourquoi** : _à compléter - une absence de gain est une conclusion valable_.
