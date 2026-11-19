@@ -84,9 +84,53 @@ class Case:
     support_end: pd.Timestamp | None = None
 
     @classmethod
-    def from_row(cls, row: pd.Series) -> Case:
-        """Construire un cas depuis une ligne de cases.csv (conversion UTC à vérifier)."""
-        raise NotImplementedError("E2/E4 : parser cases.csv et convertir les dates en UTC")
+    def from_row(cls, row: pd.Series | dict[str, Any]) -> Case:
+        """Construire un cas depuis une ligne de cases.csv.
+
+        Cellule vide ou NaN = absent. Les dates doivent porter un fuseau (refus sinon) et
+        sont converties en UTC ; ``local_budget_hours`` est converti en entier.
+        """
+        get = row.get
+
+        def text(name: str) -> str | None:
+            value = get(name)
+            if value is None or (isinstance(value, float) and np.isnan(value)) or value == "":
+                return None
+            return str(value)
+
+        def required(name: str) -> str:
+            value = text(name)
+            if value is None:
+                raise ValueError(f"cases.csv : colonne {name} vide")
+            return value
+
+        def stamp(name: str, needed: bool = False) -> pd.Timestamp | None:
+            value = required(name) if needed else text(name)
+            if value is None:
+                return None
+            ts = pd.Timestamp(value)
+            if ts.tzinfo is None:
+                raise ValueError(f"cases.csv : {name} sans fuseau ({value})")
+            return ts.tz_convert("UTC")
+
+        scenario = required("scenario")
+        if scenario not in ("known_site", "new_site"):
+            raise ValueError(f"cases.csv : scénario inconnu {scenario!r}")
+        budget = text("local_budget_hours")
+        return cls(
+            case_id=required("case_id"),
+            counter_id=required("counter_id"),
+            site_group_id=text("site_group_id"),
+            origin=stamp("origin", needed=True),
+            scenario=scenario,
+            protocol_id=required("protocol_id"),
+            snapshot_id=required("snapshot_id"),
+            temporal_split=text("temporal_split"),
+            spatial_role=text("spatial_role"),
+            local_budget_hours=int(float(budget)) if budget is not None else None,
+            support_start=stamp("support_start"),
+            support_end=stamp("support_end"),
+        )
 
 
 @dataclass
@@ -230,5 +274,41 @@ def assert_causal(inputs: ForecastInputs) -> None:
 
     À contrôler : ``available_at <= origin`` pour l'historique et le contexte, et pour un
     nouveau site, historique strictement inclus dans [support_start, support_end].
+
+    Règle provisoire (C3/M2) : une mesure est admissible si ``interval_end <=
+    information_cutoff``, avec ``information_cutoff = origin - latence <= origin``. Une
+    ligne de contexte sans ``available_at`` est connue à l'avance (calendrier).
+    Lève ``ValueError`` à la première violation.
     """
-    raise NotImplementedError("E2/E3 avec E4 : implémenter les contrôles de causalité")
+    origin = inputs.case.origin
+    cutoff = inputs.information_cutoff
+    if origin.tzinfo is None or cutoff.tzinfo is None:
+        raise ValueError("origin et information_cutoff doivent porter un fuseau")
+    if cutoff > origin:
+        raise ValueError(f"information_cutoff {cutoff} postérieure à l'origine {origin}")
+
+    history = inputs.history
+    if len(history):
+        if "interval_end" in history.columns:
+            ends = pd.to_datetime(history["interval_end"], utc=True)
+        else:
+            ends = pd.to_datetime(history["timestamp"], utc=True) + pd.Timedelta(hours=1)
+        if (ends > cutoff).any():
+            raise ValueError(f"historique postérieur à la coupure : {ends.max().isoformat()}")
+        if "available_at" in history.columns:
+            available = pd.to_datetime(history["available_at"], utc=True)
+            if (available > origin).any():
+                raise ValueError("historique avec available_at postérieur à l'origine")
+        case = inputs.case
+        if case.scenario == "new_site" and (case.support_start or case.support_end):
+            starts = pd.to_datetime(history["timestamp"], utc=True)
+            if case.support_start is not None and (starts < case.support_start).any():
+                raise ValueError("historique antérieur au support local autorisé")
+            if case.support_end is not None and (ends > case.support_end).any():
+                raise ValueError("historique postérieur au support local autorisé")
+
+    context = inputs.context
+    if context is not None and len(context) and "available_at" in context.columns:
+        available = pd.to_datetime(context["available_at"], utc=True, format="ISO8601")
+        if (available > origin).any():
+            raise ValueError("contexte avec available_at postérieur à l'origine")

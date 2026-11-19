@@ -40,18 +40,18 @@ Documents de référence : [sujet](../../ParisPulse_Sujet_etudiants.pdf), [archi
 
 ## 2. État d'avancement
 
-_Dernière mise à jour : 2026-11-19 - MOD-004._
+_Dernière mise à jour : 2026-11-19 - MOD-005._
 
 | Étape (README E2) | État | Renvoi |
 | --- | --- | --- |
 | 0. Revue de cohérence sujet / architecture / contrats / `src/models` | 🟡 Revue faite, incohérences en partie traitées (§10) | MOD-001, MOD-002 |
 | 0. Squelette de code `src/models` (signatures, types, docstrings) | ✅ Fait | MOD-001 |
-| 1. Série réelle E1 + origine et données autorisées E4 | ⏳ En attente partenaires | - |
+| 1. Série réelle E1 + origine et données autorisées E4 | 🟡 `hist-20261117` d'E1 reçu et vérifié ; cas `proto-v0` d'E4 provisoires, 3 écarts signalés (§8) | MOD-005 |
 | 2. Référence 168 h + repli causal (`baseline.py`) | ✅ Codée et testée sur cas synthétique ; repli N = 4 provisoire (D-03) ; seconde référence médiane 4 semaines | MOD-003, MOD-004 |
-| 3. Vérification manuelle + raccord E4/E5 | 🟡 Vérification manuelle faite (synthétique) ; raccord E4/E5 à faire | MOD-003 |
+| 3. Vérification manuelle + raccord E4/E5 | 🟡 Vérifié à la main sur cas synthétique et sur 11 valeurs réelles ; consommation par E4/E5 à obtenir | MOD-003, MOD-005 |
 | 4. Variables communes (`features.py`) | 🔲 | - |
 | 5. Méthode justifiée + variante explicative (`train.py`) | 🔲 | - |
-| 6. Calcul exécutable et exports, recalcul autre origine (`predict.py`) | 🟡 Exports `.pred.csv` / `.runs.csv` faits ; `build_inputs`, `predict_24h` à faire | MOD-003 |
+| 6. Calcul exécutable et exports, recalcul autre origine (`predict.py`) | 🟡 Chaîne complète et commande `python -m src.models.known.predict` ; 10 858 cas de validation calculés (E2-TECH-001) ; recalcul par E5 à faire | MOD-003, MOD-005 |
 | 7. Cas difficile, extension, test final après gel | 🔲 | - |
 
 Légende : ✅ fait et vérifié · 🟡 en cours · ⏳ bloqué/en attente · 🔲 non commencé.
@@ -89,7 +89,7 @@ counts.csv (E1) --build_inputs (available_at <= origin)--> ForecastInputs --asse
   --> ForecastResult --to_forecast_frame / to_run_row--> <method_run_id>.pred.csv / .runs.csv
 ```
 
-Fonctions réellement implémentées à ce jour (MOD-003) : `target_timestamps()` ; dans `baseline.py`, `weekly_reference`, `weekly_profile_reference` (MOD-004), `admissible_history`, `lookup_lagged`, `fallback_value` ; dans `schemas.py`, `ForecastResult.is_complete`, `to_forecast_frame`, `to_run_row` ; dans `predict.py`, `write_predictions`, `write_runs`. Toutes les autres lèvent `NotImplementedError("E2 : ...")`. Tests : [tests/test_known_baseline.py](../../tests/test_known_baseline.py).
+Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_timestamps()`, `Case.from_row`, `assert_causal` ; dans `baseline.py`, `weekly_reference`, `weekly_profile_reference` (MOD-004), `admissible_history`, `lookup_lagged`, `fallback_value` ; dans `schemas.py`, `ForecastResult.is_complete`, `to_forecast_frame`, `to_run_row` ; dans `predict.py`, `counts_history_loader`, `build_inputs`, `predict_24h` (variantes `reference`, `reference_profile`), `run_experiment`, `error_result`, `select_cases`, `train_site_counters`, `write_predictions`, `write_runs` et la commande `main`. Toutes les autres lèvent `NotImplementedError("E2 : ...")`. Tests : [tests/test_known_baseline.py](../../tests/test_known_baseline.py), [tests/test_known_predict.py](../../tests/test_known_predict.py).
 
 ---
 
@@ -109,10 +109,44 @@ Fonctions réellement implémentées à ce jour (MOD-003) : `target_timestamps()
 - **Points ouverts** : ce qui reste incertain ou à valider.
 ```
 
+### MOD-005 - 2026-11-19 - Chaîne complète sur données réelles : chargement, filtrage causal, predict_24h, commande (Corrige MOD-004)
+
+- **Auteur** : kid-emmanuelle.
+- **Branche / commit** : `Team2` / non commité.
+- **Quoi** :
+  - [schemas.py](../../src/models/schemas.py) : `Case.from_row` (cellules vides = absent, dates avec fuseau obligatoires puis UTC, scénario contrôlé) ; `assert_causal` (coupure ≤ origine, `interval_end` ≤ coupure, `available_at` ≤ origine pour l'historique et le contexte, support local pour un nouveau site).
+  - [predict.py](../../src/models/known/predict.py) :
+    - `counts_history_loader` lit `counts.csv` une fois. Avec `values="measured"` (D-11), l'entrée vaut la mesure publiée seulement ; la valeur d'E1 est gardée dans `count_e1`.
+    - `build_inputs` : coupure = origine − latence de la configuration ; contexte gardé si `available_at` vide ou ≤ origine ; refus de `new_site` (E3).
+    - `predict_24h` : variantes `reference` et `reference_profile`, refus explicite des autres, temps de préparation mesuré.
+    - `run_experiment` : un cas en échec reste présent, avec 24 lignes vides et le statut `error`.
+    - `select_cases` / `train_site_counters` : sites connus `S_train` d'E1 seulement, décompte des cas écartés, `snapshot_id` remplacé par l'instantané lu.
+    - Commande `python -m src.models.known.predict`, qui refuse le bloc `test` sauf `--allow-test`.
+  - [tests/test_known_predict.py](../../tests/test_known_predict.py) : 8 tests synthétiques (lecture des cas, valeurs mesurées contre estimées, repli sur une estimation E1, filtrage du futur et du contexte tardif, fuites refusées, cas en échec conservé).
+  - Essai technique [E2-TECH-001](../experiments/E2-TECH-001.md) : 10 858 cas de validation, pour chaque référence.
+  - Corrige MOD-004 : son commit est `8bf5f7f` (et non « non commité »).
+- **Pourquoi** : données d'E1 reçues ; première prévision réelle à transmettre à E4 et E5 (sujet p. 4 et 6).
+- **Fichiers** : [schemas.py](../../src/models/schemas.py), [predict.py](../../src/models/known/predict.py), [tests/test_known_predict.py](../../tests/test_known_predict.py), [E2-TECH-001.md](../experiments/E2-TECH-001.md), ce fichier.
+- **Impact partenaires / contrats** :
+  - `predict_24h` garde la signature imposée et ajoute les arguments nommés `method_run_id=` et `publication_lag_hours=`. L'historique complet du compteur peut lui être passé : il le refiltre.
+  - `build_inputs` lit par défaut la latence dans la configuration.
+  - À présenter : à E1 D-11 ; à E4 les 3 écarts de `proto-v0` (§8) ; à E5 la commande, les deux variantes et le statut `error`.
+- **Vérifications effectuées** :
+  - `./run.sh test` : 166 tests passés, dont 26 E2. `ruff check src tests` sans problème ; `ruff format --check` : seul `registry.py` reste non formaté (inchangé).
+  - Empreintes SHA-256 des fichiers livrés conformes au manifeste.
+  - Sur données réelles : 10 858 cas sur 10 858 complets pour chaque variante, aucune erreur, aucune clé en double, aucune valeur négative. 11 valeurs recalculées indépendamment depuis `counts.csv`, toutes identiques.
+  - Bloc test jamais calculé.
+- **Points ouverts** :
+  - MAE à calculer par E4.
+  - D-11 à faire valider par E1/E4.
+  - Écarts `proto-v0` à corriger par E4, puis recalcul.
+  - C3/M2 (pas d'`available_at` dans `counts.csv`), I3 et l'ajustement au niveau récent restent ouverts.
+  - Contexte non utilisé par les références.
+
 ### MOD-004 - 2026-11-19 - Seconde référence : médiane hebdomadaire sur 4 semaines (Corrige MOD-003)
 
-- **Auteur** : emmanuelle-nh-nguyen (assistée par Claude Code).
-- **Branche / commit** : `Team2` / non commité.
+- **Auteur** : kid-emmanuelle.
+- **Branche / commit** : `Team2` / `8bf5f7f`.
 - **Quoi** :
   - [baseline.py](../../src/models/known/baseline.py) : nouvelle référence `weekly_profile_reference` (méthode `weekly_profile_median`, variante `reference_profile`) : médiane de y(t − k × 168 h), k = 1..4, jointure par timestamp, sur les semaines observées et admissibles (zéros compris). Sans aucune des 4 semaines, même chaîne de repli que `weekly_naive`, avec `status_reason` = `profile_weeks_missing`. Le calcul commun aux deux références est factorisé dans `_seasonal_reference` ; `weekly_reference` garde un comportement identique (tests MOD-003 inchangés et passants).
   - [tests/test_known_baseline.py](../../tests/test_known_baseline.py) : valeurs calculées à la main sur le même cas (h1 = 31173, h7 = 30555 avec le zéro observé, h12 = 30910 et h17 = 30915 sur 3 semaines sans repli) ; égalité avec `weekly_naive` pour `n_weeks=1` ; repli puis `unavailable` ; insensibilité aux lignes postérieures à la coupure.
@@ -125,7 +159,7 @@ Fonctions réellement implémentées à ce jour (MOD-003) : `target_timestamps()
 
 ### MOD-003 - 2026-11-19 - Référence hebdomadaire, repli, exports et cas construit à la main (Corrige MOD-001, MOD-002)
 
-- **Auteur** : emmanuelle-nh-nguyen (assistée par Claude Code).
+- **Auteur** : kid-emmanuelle.
 - **Branche / commit** : `Team2` / `e88fb0b`.
 - **Quoi** :
   - [baseline.py](../../src/models/known/baseline.py) : `weekly_reference` (y(t − 168 h) par jointure sur timestamp, repli par horizon, statuts `ok` / `fallback` / `unavailable`, coût d'inférence), `admissible_history` (un seul compteur, dates UTC avec fuseau obligatoires, doublons refusés, filtre `interval_end <= information_cutoff`), `lookup_lagged`, `fallback_value`. Repli proposé pour D-03 avec N = 4 : médiane des 4 dernières observations admissibles de même jour et même heure locale, puis moyenne des 28 dernières de même heure locale, sinon `y_pred` vide et statut `unavailable`. Codes stables pour E4/E5 : `method_used` ∈ {`weekly_naive`, `profile_median_dow_hour`, `profile_mean_hour`} ; `status_reason` ∈ {`lag168_missing`, `lag168_missing;no_fallback_history`}. Statut du cas : `unavailable` si un horizon manque, sinon `fallback` si un horizon est en repli, sinon `ok`.
@@ -182,14 +216,16 @@ Prioriser dans l'ordre. Cocher avec le renvoi `MOD-NNN` uniquement une fois vér
 
 - [ ] Mettre `uv` à jour, lancer `./run.sh check` et `ruff` sur `src/models`.
 - [ ] Faire adopter (ou amender) `schemas.py` par E1/E3/E4/E5 puis le migrer dans `src/common/contracts.py`.
-- [ ] Obtenir d'E1 un premier `counts.csv` réel et d'E4 un premier `cases.csv`.
+- [x] Obtenir d'E1 un premier `counts.csv` réel et d'E4 un premier `cases.csv`. MOD-005 (`cases.csv` provisoire, `proto-v0`)
 - [x] Implémenter `lookup_lagged` (jointure par timestamp, pas par position). MOD-003
 - [x] Implémenter `fallback_value` (règle provisoire N = 4, à figer, cf. D-03) et `weekly_reference`. MOD-003
 - [x] Implémenter `ForecastResult.is_complete`, `to_forecast_frame`, `to_run_row`. MOD-003
-- [ ] Implémenter `build_inputs`, `assert_causal`, `predict_24h` (variante `reference`).
+- [x] Implémenter `build_inputs`, `assert_causal`, `predict_24h` (variantes `reference`, `reference_profile`). MOD-005
 - [x] Vérifier 3 à 5 valeurs à la main sur un petit cas construit (zéro observé, heure absente, changement d'heure). MOD-003
 - [ ] Formater [registry.py](../../src/models/registry.py) (`ruff format`), seul fichier qui fait encore échouer `./run.sh check`.
-- [ ] Produire un premier `.pred.csv` / `.runs.csv` et le faire consommer par E4 et E5 (preuve d'usage).
+- [x] Produire un premier `.pred.csv` / `.runs.csv` sur données réelles. MOD-005 (E2-TECH-001)
+- [ ] Le faire consommer par E4 (score) et E5 (affichage) : preuve d'usage à consigner au §8.
+- [ ] Transmettre à E4 les 3 écarts de `proto-v0` (§8) et recalculer sur la version corrigée.
 
 ### Étude principale
 
@@ -222,9 +258,10 @@ Prioriser dans l'ordre. Cocher avec le renvoi `MOD-NNN` uniquement une fois vér
 | D-05 | 2026-11-19 | Expérience deep learning | Ouvert | Responsabilité E2 ou E3 à attribuer explicitement (ARCHITECTURE §6). `torch` disponible dans le groupe `dl` (CPU). | E2, E3 |
 | D-06 | 2026-11-19 | Latence et décalage 168 h | Vérifié | Avec `publication_lag_hours = 24`, y(t−168 h) reste disponible pour les 24 horizons (dernière source disponible à origin − 120 h). | E2 |
 | D-07 | - | Gel des choix avant test final | Ouvert | Date de gel à fixer avec E4 ; aucun réglage sur les dates réservées. | E2, E4 |
-| D-08 | 2026-11-19 | C3 : `available_at`, latence et `site_group_id` | Reporté | Attendre la version finale des données d'E1 avant de choisir où calculer `available_at` et comment joindre `site_group_id`. | E2, E1 |
+| D-08 | 2026-11-19 | C3 : `available_at`, latence et `site_group_id` | Reporté | Attendre la version finale des données d'E1 avant de choisir où calculer `available_at` et comment joindre `site_group_id`. MOD-005 : `hist-20261117` n'a toujours pas `available_at` dans `counts.csv` ; règle provisoire `interval_end <= origin − latence` appliquée dans `build_inputs` ; `site_group_id` lu dans `cases.csv`, sites connus filtrés sur `site_role = S_train` de `inventory_quality.csv`. | E2, E1 |
 | D-09 | 2026-11-19 | C4 : origine de `predict_24h` | Décidé (origine) / Ouvert (cohérence) | La signature `predict_24h(case, history, variant)` est exigée par E5. Sa coexistence avec `ForecastMethod(inputs, variant)` et le double routage seront traités plus tard. | E2, E5 |
 | D-10 | 2026-11-19 | C5 : Prophet | Décidé | Tester d'abord Prophet pour juger de sa viabilité ; son intégration au projet (dépendance, module, bibliographie) ne sera discutée qu'ensuite. Précise D-04. | E2 |
+| D-11 | 2026-11-19 | Valeurs d'entrée des références | Proposé | Entrées = mesure publiée (`count_raw` si `is_observed`), sans les estimations d'E1 (J-7, année précédente) ni le masque rétrospectif `long_zero_run` ; les zéros mesurés restent des entrées. Option `values="e1_filled"` conservée pour l'étude des zéros avec E1. Motif : 5 234 horizons auraient été `ok` sur une estimation (E2-TECH-001). | E2, E1, E4 |
 
 ---
 
@@ -234,7 +271,7 @@ Chaque expérience a sa fiche dans `reports/experiments/` (gabarit [experiment.m
 
 | ID | Date | Question | Variantes comparées | Protocole / snapshot | MAE macro | Cas complets / attendus | Coût | Conclusion | Fiche |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| _aucune pour l'instant_ | | | | | | | | | |
+| E2-TECH-001 | 2026-11-19 | Essai technique : chaîne complète sur données réelles (pas de comparaison) | `weekly_naive`, `weekly_profile_median` | `proto-v0` (non validé) / `hist-20261117`, bloc validation | non calculée (E4) | 10 858 / 10 858 pour chaque variante | ≈ 2 min pour 10 858 cas, CPU portable | Chaîne fonctionnelle ; 6,2 % / 3,5 % d'horizons en repli | [fiche](../experiments/E2-TECH-001.md) |
 
 ---
 
@@ -242,7 +279,8 @@ Chaque expérience a sa fiche dans `reports/experiments/` (gabarit [experiment.m
 
 | Date | Équipe | Objet | Résultat / preuve d'usage |
 | --- | --- | --- | --- |
-| _à compléter_ | | | |
+| 2026-11-19 | E1 | Réception de `hist-20261117` (merge `origin/Team1`) | Empreintes vérifiées contre le manifeste ; données utilisées par E2-TECH-001. À discuter : D-11 (E2 n'utilise pas les valeurs estimées comme entrées des références). |
+| 2026-11-19 | E4 | Lecture de `proto-v0/cases.csv` (branche `Team4-sher`, `2ac02dd`) | Utilisé par E2-TECH-001. **Écarts à transmettre** : (1) 2 compteurs réservés `S_dev_new` par E1 figurent en `known_site` / `S_train` (244 cas écartés par E2) ; (2) `snapshot_id = flux-20261115` au lieu de `hist-20261117` ; (3) validation à partir du 01/06/2026 alors que le protocole proposé indique juillet–août ; 89 compteurs connus contre 97 `S_train` chez E1. |
 
 ---
 
