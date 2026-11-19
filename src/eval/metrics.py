@@ -152,3 +152,248 @@ def calculate_global_metrics(results_df):
         )
 
     return global_results
+
+
+
+def evaluate_model_case(case, model ,y_true, y_pred, is_scoreable):
+    """
+    Evaluate a model with a case (counter + context) given 
+    
+    Parameters
+    ---------
+
+    case :
+        a counter + a context = case
+
+    model : str,
+        model to evaluate (obtained from forecasts.csv)
+    
+    y_true : array, (shape (24xnb_counters_considered,nb_models)) 
+        real values for all models (obtained from counts.csv)
+    
+    y_pred : array, (shape (24)) 
+        model predictions 
+
+    is_scoreable : array(bool)
+        if some values are missing
+
+
+    Returns
+    ---------
+    case : case passed in parameter
+    model : model passed in parameter
+    is_scoreable : is_scoreable passed in parameter
+    n_compared_hours : nomber of hours used for the MAE computed
+    R2 : mean R² over all the predictions from the chosen model
+    MAE : mean MAE over all the predictions from the chosen model
+    RMSE : mean RMSE over all the predictions from the chosen model
+    hourly_MAE : array with the MAEs over hour from the chosen model 
+    hourly_RMSE : array with the RMSEs over hour from the chosen model 
+    """
+
+    if is_scoreable == [False]*24:
+        return {
+            "case": case,
+            "model": model,
+            "is_scoreable": is_scoreable,
+            "n_predictions": 0,
+            "R2": np.nan,
+            "MAE": np.nan,
+            "MAPE": np.nan,
+            "RMSE": np.nan,
+            "hourly_MAE": np.nan,
+            "hourly_RMSE": np.nan
+        }
+    
+    y_true = np.asarray(y_true)
+    y_pred = np.asarray(y_pred)
+
+    y_true_scoreable = y_true[is_scoreable]
+    y_pred_scoreable = y_pred[is_scoreable]
+
+    global_metrics=calculate_metrics(y_true_scoreable,y_pred_scoreable)
+
+    hourly_MAE=[]
+    hourly_RMSE=[]
+
+    for i in range(len(y_true)):
+        if is_scoreable[i]:
+            hourly_metrics=calculate_metrics(y_true[i],y_pred[i])
+            hourly_MAE.append(hourly_metrics["MAE"])
+            hourly_RMSE.append(hourly_metrics["RMSE"])
+        else:
+            hourly_MAE.append(hourly_metrics["MAE"])
+            hourly_RMSE.append(hourly_metrics["RMSE"])
+
+
+    return {
+        "case": case,
+        "model": model,
+        "is_scoreable": is_scoreable,
+        "n_compared_hours" : global_metrics["n_predictions"],
+        "R2": global_metrics["R2"],
+        "MAE": global_metrics["MAE"],
+        "RMSE": global_metrics["RMSE"],
+        "hourly_MAE": hourly_MAE,
+        "hourly_RMSE": hourly_RMSE
+    }
+
+
+
+def evaluate_model(cases, model, forecasts, observations):
+    """
+    Evaluate a model on some cases (counter + context) given
+    
+    Parameters
+    ---------
+
+    cases :
+        some cases to evaluate with the given model
+
+    model : str,
+        model to evaluate (obtained from pred.csv)
+
+    forecasts : pddataframe, (obtained from forecasts.csv) 
+        all models predictions 
+    
+    observations : pddataframe, (obtained from counts.csv) 
+        all real values 
+
+
+    Returns
+    ---------
+    counter_id : the id of the counter of this case
+    origin : the origin of the case, used for the compute of the MAE on the case associated
+    case : case passed in parameter
+    model : model passed in parameter
+    is_scoreable : is_scoreable passed in parameter
+    n_compared_hours : nomber of hours used for the MAE computed
+    R2 : mean R² over all the predictions from the chosen model
+    MAE : mean MAE over all the predictions from the chosen model
+    RMSE : mean RMSE over all the predictions from the chosen model
+    hourly_MAE : array with the MAEs over hour from the chosen model 
+    hourly_RMSE : array with the RMSEs over hour from the chosen model 
+    """
+
+    errors=[]
+    
+    for _,case in cases.iterrows():
+        case_id=case["case_id"]
+        counter_id=case["counter_id"]
+        case_origin=case["origin"]
+        origin = pd.to_datetime(case["origin"],utc=True)
+
+        forecasts["target_timestamp"] = pd.to_datetime(
+            forecasts["target_timestamp"], utc=True
+        )
+
+        observations["target_timestamp"] = pd.to_datetime(
+            observations["target_timestamp"], utc=True
+        )
+
+        end = origin + pd.Timedelta(hours=24)
+
+        #model_run_id or method_run_id ?
+        pred = forecasts.loc[
+            (forecasts["method_run_id"] == model) &
+            (forecasts["counter_id"] == counter_id) &
+            (forecasts["target_timestamp"] >= origin) &
+            (forecasts["target_timestamp"] < end)
+        ].sort_values("target_timestamp")
+
+        obs = observations.loc[
+            (observations["counter_id"] == counter_id) &
+            (observations["timestamp"] >= origin) &
+            (observations["timestamp"] < end)
+        ].sort_values("timestamp")
+
+        y_pred = pred["y_pred"].to_numpy()
+        y_true = obs["count"].to_numpy()
+
+        # Check scoreability
+        is_scoreable=[]
+        for _,obs in obs.iterrows():
+                is_scoreable.append(obs["is_scoreable"])
+        for i in range(len(y_pred)):
+            if is_scoreable[i]==True and y_pred[i]==None:
+                is_scoreable[i]=False
+
+        if len(y_true) != len(y_pred):
+            raise ValueError("Observations and forecasts have different dimensions")
+        else:
+            model_result=evaluate_model_case(case_id,model,y_true,y_pred,is_scoreable)
+        model_result["origin"]=case_origin
+        model_result["counter_id"]=counter_id
+        errors.append()
+
+    return pd.DataFrame(errors)
+
+
+
+def evaluate_cases(cases,forecasts,observations):
+    """
+    Evaluate all the cases given, given forecasts and observations. Basically, g2 pass
+    all the cases/forecasts/observations from known_site, g3 from new_site, g5 for one case
+    (from cases.csv) 
+
+    Parameters
+    ----------
+    cases : dataframe,
+        the cases (counter + origin) that we want to evaluate
+    forecasts : dataframe
+        the forecasts from the same scenario (known_site/new_site) (at least those for these cases)
+    observations : dataframe
+        the observations associated to these forecasts (at least)  
+
+    Returns
+    --------
+    scenario : scenario associated to this counter (known_site/new_site) 
+    counter_id : the id of the counter of this case
+    origin : the origin of the case, used for the compute of the MAE on the case associated
+    case : case passed in parameter
+    model : model passed in parameter
+    is_scoreable : is_scoreable passed in parameter
+    n_compared_hours : nomber of hours used for the MAE computed
+    R2 : mean R² over all the predictions from the chosen model
+    MAE : mean MAE over all the predictions from the chosen model
+    RMSE : mean RMSE over all the predictions from the chosen model
+    hourly_MAE : array with the MAEs over hour from the chosen model 
+    hourly_RMSE : array with the RMSEs over hour from the chosen model 
+    """
+
+    # Check that all cases belong to the same scenario
+    scenarios = cases["scenario"].unique()
+
+    if len(scenarios) != 1:
+        raise ValueError(
+            "Cases must have the same scenario "
+            "(known_site or new_site)."
+        )
+
+    scenario = scenarios[0]
+
+    if scenario not in ["known_site", "new_site"]:
+        raise ValueError(f"Unknown scenario: {scenario}")
+
+    models=forecasts["method_run_id"].loc["scenario"==scenario]
+
+    selected_models = models.loc[
+        models["scenario"] == scenario,
+        "method_run_id"
+    ].unique()
+
+    errors = []
+
+    for model in selected_models:
+
+        model_results = evaluate_model(
+            cases, model, forecasts, observations
+        )
+        model_results["scenario"]=scenario
+
+        errors.append(model_results)
+
+    return pd.DataFrame(errors)
+
+
+
