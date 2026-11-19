@@ -15,6 +15,8 @@ def frame(missing=(), override=None):
     for t, v in (override or {}).items():
         count[t] = v
     flags = pd.Series([[] for _ in ts], index=ts, dtype=object)
+    for t in count[RUN[0] : RUN[1]].index:
+        flags[t] = ["long_zero_run"]  # drapeau posé par prepare.py
     for t in missing:
         count[t] = np.nan
         flags[t] = ["missing"]

@@ -12,19 +12,31 @@ colonne `label` (ex. « Toussaint ») ; un jour ordinaire a `value = false` et `
 vide. Avant, le nom occupait une deuxième ligne (`holiday_name`). `label` est vide pour
 la météo. `--migrer` convertit un context.csv de l'ancien format sans rien retélécharger.
 
+Grèves (`e1-context/0.3.0`, 19/11/2026, tâche B4) : référentiel de Zeineb
+(`data/reference/greves_transport_idf.csv`, un jour par ligne du 01/01/2023 au
+17/11/2026, liste faite à la main, sources dans `greves_transport_idf_sources.csv`).
+`variable = is_strike`, `value = true` si les transports en commun d'Île-de-France sont
+annoncés perturbés ce jour-là ; `label` = portée, intensité et réseaux. Connu au plus tard
+24 h avant (notice `data/reference/README.md`, Code des transports art. L1222-8) :
+`available_at` = minuit (Paris) du jour - 24 h. Hors de la période recensée : pas de
+ligne (valeur inconnue). `--greves` ajoute ces lignes à un context.csv existant, sans
+rien retélécharger.
+
 Sources et rôles (doc/CONTRATS.md §4)
 -------------------------------------
 | context_source_id    | Variables (nom dans `label`)                | Rôle              |
 | -------------------- | ------------------------------------------- | ----------------- |
 | `jours_feries`       | is_holiday                                  | known_calendar    |
 | `vacances_zone_c`    | is_school_holiday                           | known_calendar    |
+| `greves_idf`         | is_strike (connu 24 h avant)                | known_calendar    |
 | `meteo_prevue`       | temp_prev, rain_prev, wind_prev             | forecast_bulletin |
 | `meteo_observee`     | temp_obs, rain_obs, wind_obs                | past_observation  |
 
 Règles de temps
 ---------------
 - Calendrier : une ligne par date locale (Europe/Paris) ; jointure sur la date
-  locale du DÉBUT de l'heure comptée. Connu à l'avance : `available_at` vide.
+  locale du DÉBUT de l'heure comptée. Connu à l'avance : `available_at` vide, sauf
+  pour les grèves (24 h avant).
 - Météo : `valid_time` = fin de l'heure décrite, en UTC (pluie = cumul de l'heure
   qui se termine à `valid_time` ; température et vent = valeur à `valid_time`).
   Jointure sur `interval_end` du comptage, pour décrire la même heure.
@@ -45,6 +57,7 @@ Usage, depuis la racine du dépôt :
   uv run python -m src.data.context --snapshot flux-20261114 --sans-meteo
   uv run python -m src.data.context --snapshot ID --debut 2025-10-11 --fin 2026-11-14
   uv run python -m src.data.context --snapshot flux-20261115 --migrer
+  uv run python -m src.data.context --snapshot hist-20261117 --greves
 """
 
 from __future__ import annotations
@@ -66,7 +79,7 @@ from src.common.config import data_path, load_config, relative_to_root
 from src.data import acquire
 
 TZ_LOCAL = "Europe/Paris"
-CONTEXT_VERSION = "e1-context/0.2.0"
+CONTEXT_VERSION = "e1-context/0.3.0"
 HTTP_TIMEOUT = httpx.Timeout(30.0, read=300.0)
 
 CONTEXT_COLUMNS = [
@@ -95,6 +108,14 @@ SRC_HOLIDAYS = "jours_feries"
 SRC_SCHOOL = "vacances_zone_c"
 SRC_FORECAST = "meteo_prevue"
 SRC_OBSERVED = "meteo_observee"
+SRC_STRIKES = "greves_idf"
+
+# Référentiel des grèves (Zeineb, versionné dans Git) et délai d'annonce
+REFERENCE_DIR = Path(__file__).resolve().parents[2] / "data" / "reference"
+STRIKES_FILE = REFERENCE_DIR / "greves_transport_idf.csv"
+STRIKES_SOURCES_FILE = REFERENCE_DIR / "greves_transport_idf_sources.csv"
+STRIKE_NOTICE_HOURS = 24
+LOC_IDF = "IDF-transports"
 
 # Lieux
 LOC_FRANCE = "FR-metropole"
@@ -152,6 +173,16 @@ SOURCES = {
         "join": "date locale du début de l'heure comptée",
         "role": ROLE_CALENDAR,
     },
+    SRC_STRIKES: {
+        "name": "Référentiel des grèves des transports franciliens (E1, Zeineb, liste manuelle)",
+        "url": "data/reference/greves_transport_idf.csv (sources : greves_transport_idf_sources.csv)",
+        "license": "liste constituée par E1 à partir de pages datées (RATP, Transilien, presse)",
+        "geography": "transports en commun d'Île-de-France (RATP, RER, Transilien)",
+        "timezone": "dates civiles locales (Europe/Paris)",
+        "units": {"is_strike": "bool", "label": "portée, intensité et réseaux, vide sinon"},
+        "join": "date locale du début de l'heure comptée",
+        "role": ROLE_CALENDAR,
+    },
     SRC_FORECAST: {
         "name": "Open-Meteo Previous Runs API, prévision de J-N (Météo-France et autres modèles)",
         "url": URL_FORECAST,
@@ -195,6 +226,12 @@ def availability_text(source_id: str, s: dict) -> str:
     texts = {
         SRC_HOLIDAYS: "Connu à l'avance (fixé par la loi) : admissible pour toute origine.",
         SRC_SCHOOL: "Connu à l'avance (arrêté publié plus d'un an avant) : admissible.",
+        SRC_STRIKES: (
+            f"Connu au plus tard {STRIKE_NOTICE_HOURS} h avant (prévision de trafic, Code des "
+            "transports art. L1222-8 ; notice data/reference/README.md) : available_at = "
+            f"minuit (Paris) du jour - {STRIKE_NOTICE_HOURS} h. Recensement manuel, "
+            "possiblement incomplet (bus 2023-2025, janvier-avril 2025, février-mai 2026)."
+        ),
         SRC_FORECAST: (
             f"Hypothèse : prévision de J-{s['forecast_lead_days']} ; available_at = valid_time - "
             f"{s['forecast_lead_days']}×24 h + {s['run_publication_delay_hours']} h (délai de "
@@ -265,6 +302,49 @@ def holiday_rows(holidays: dict[dt.date, str], days: list[dt.date]) -> list[dict
                 "value": name is not None,
                 "label": name or "",
                 "unit": "bool",
+            }
+        )
+    return rows
+
+
+def parse_strikes(daily: bytes, sources: bytes) -> dict[dt.date, tuple[bool, str]]:
+    """Référentiel des grèves -> {date: (grève, label)} ; label vide un jour sans grève."""
+    days = pd.read_csv(io.BytesIO(daily), dtype=str, keep_default_na=False)
+    src = pd.read_csv(io.BytesIO(sources), dtype=str, keep_default_na=False)
+    labels = {
+        r.date: f"{r.scope}, {r.severity} ({r.networks})" for r in src.itertuples(index=False)
+    }
+    bad = ~days["greve"].isin(["true", "false"])
+    if bad.any():
+        raise ValueError(f"greve hors true/false : {days.loc[bad, 'date'].tolist()[:5]}")
+    return {
+        dt.date.fromisoformat(d): (g == "true", labels.get(d, "") if g == "true" else "")
+        for d, g in zip(days["date"], days["greve"])
+    }
+
+
+def strike_rows(strikes: dict[dt.date, tuple[bool, str]], days: list[dt.date]) -> list[dict]:
+    """Une ligne par jour recensé ; available_at = minuit (Paris) du jour - 24 h."""
+    rows = []
+    for d in days:
+        if d not in strikes:
+            continue  # hors de la période recensée : valeur inconnue, pas de ligne
+        strike, label = strikes[d]
+        midnight = pd.Timestamp(d).tz_localize(TZ_LOCAL).tz_convert("UTC")
+        available = midnight - pd.Timedelta(hours=STRIKE_NOTICE_HOURS)
+        rows.append(
+            {
+                "context_source_id": SRC_STRIKES,
+                "location_id": LOC_IDF,
+                "valid_time": "",
+                "local_date": d.isoformat(),
+                "variable": "is_strike",
+                "value": strike,
+                "label": label,
+                "unit": "bool",
+                "role": ROLE_CALENDAR,
+                "issued_at": "",
+                "available_at": available.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
             }
         )
     return rows
@@ -529,10 +609,14 @@ def validate_context(ctx: pd.DataFrame) -> None:
 
 
 def admissible_context(ctx: pd.DataFrame, origin: pd.Timestamp) -> pd.DataFrame:
-    """Lignes utilisables comme entrées pour une origine : calendrier ou available_at <= origin."""
+    """Lignes utilisables comme entrées pour une origine.
+
+    Calendrier sans `available_at` (connu à l'avance) : toujours ; toute ligne qui a un
+    `available_at` (météo, grèves) : seulement si `available_at <= origin`.
+    """
     origin = pd.Timestamp(origin).tz_convert("UTC")
     avail = pd.to_datetime(ctx["available_at"].replace("", np.nan), utc=True)
-    ok = ctx["role"].eq(ROLE_CALENDAR) | (avail <= origin)
+    ok = (ctx["role"].eq(ROLE_CALENDAR) & avail.isna()) | (avail <= origin)
     return ctx[ok.fillna(False)]
 
 
@@ -641,6 +725,27 @@ def period_from_counts(snapshot_id: str) -> tuple[pd.Timestamp, pd.Timestamp] | 
 
 
 # ----------------------------------------------------------------- orchestration
+def strikes_for(days: list[dt.date]) -> tuple[list[dict], dict]:
+    """Lignes de grève des jours donnés, et fiche de la source."""
+    strikes = parse_strikes(STRIKES_FILE.read_bytes(), STRIKES_SOURCES_FILE.read_bytes())
+    rows = strike_rows(strikes, days)
+    covered = {dt.date.fromisoformat(r["local_date"]) for r in rows}
+    missing = [d for d in days if d not in covered]
+    alerts = []
+    if missing:
+        alerts.append(
+            f"{len(missing)} jour(s) hors du référentiel (du {min(missing)} au {max(missing)}) : "
+            "pas de ligne, valeur inconnue."
+        )
+    sheet = {
+        "raw_file": [relative_to_root(STRIKES_FILE), relative_to_root(STRIKES_SOURCES_FILE)],
+        "n_days": len(rows),
+        "n_strike_days": sum(1 for r in rows if r["value"] is True),
+        "alerts": alerts,
+    }
+    return rows, sheet
+
+
 def build_context(
     snapshot_id: str,
     start: pd.Timestamp,
@@ -680,6 +785,11 @@ def build_context(
     covered = periods[(periods["end"] > first_day) & (periods["start"] <= last_day)]
     if covered.empty:
         sheets[SRC_SCHOOL]["alerts"].append("Aucune période de vacances sur la période.")
+
+    s_rows, s_sheet = strikes_for(days)
+    rows += s_rows
+    sheets[SRC_STRIKES] = s_sheet
+    raw_files += [STRIKES_FILE, STRIKES_SOURCES_FILE]
 
     if meteo:
         f_alerts, segments, seg_rows = [], [], []
@@ -863,9 +973,17 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="convertir context.csv existant au format à une ligne (sans téléchargement)",
     )
+    ap.add_argument(
+        "--greves",
+        action="store_true",
+        help="ajouter les grèves (référentiel E1) à context.csv existant (sans téléchargement)",
+    )
     args = ap.parse_args(argv)
     if args.migrer:
         migrate(args.snapshot)
+        return 0
+    if args.greves:
+        add_strikes(args.snapshot)
         return 0
     run(args.snapshot, args.debut, args.fin, not args.sans_meteo, args.lead, args.force)
     return 0
@@ -916,6 +1034,69 @@ def migrate(snapshot_id: str) -> None:
     acquire.write_manifest(manifest)
     print(f"context.csv : {len(old)} -> {len(new)} lignes ({CONTEXT_VERSION})")
     print(new.groupby(["context_source_id", "variable"]).size().to_string())
+
+
+def with_strikes(ctx: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """context.csv avec les lignes de grève des jours de son calendrier (remplacées si présentes)."""
+    base = migrate_calendar(ctx)
+    base = base[base["context_source_id"] != SRC_STRIKES]
+    days = sorted(
+        {dt.date.fromisoformat(d) for d in base.loc[base["role"] == ROLE_CALENDAR, "local_date"]}
+    )
+    rows, sheet = strikes_for(days)
+    out = pd.concat([base, _frame(rows)], ignore_index=True)
+    out["context_version"] = CONTEXT_VERSION
+    validate_context(out)
+    return out[CONTEXT_COLUMNS], sheet
+
+
+def add_strikes(snapshot_id: str) -> None:
+    """Ajoute les grèves à context.csv, met à jour la fiche, l'audit et le manifeste."""
+    out_dir = data_path("processed") / snapshot_id
+    path = out_dir / "context.csv"
+    old = pd.read_csv(path, dtype=str, keep_default_na=False)
+    new, sheet = with_strikes(old)
+    new.to_csv(path, index=False)
+    sheets_path = out_dir / "context_sources.json"
+    sheets = json.loads(sheets_path.read_text(encoding="utf-8")) if sheets_path.exists() else {}
+    first = next(iter(sheets.values()), {})
+    settings = first.get("assumptions") or availability_settings()
+    sheets[SRC_STRIKES] = {
+        **sheet,
+        **SOURCES[SRC_STRIKES],
+        "context_source_id": SRC_STRIKES,
+        "retrieved_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+        "availability": availability_text(SRC_STRIKES, settings),
+        "assumptions": settings,
+        "context_version": CONTEXT_VERSION,
+    }
+    for s in sheets.values():
+        s["context_version"] = CONTEXT_VERSION
+    sheets_path.write_text(
+        json.dumps(sheets, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8"
+    )
+    audit_path = out_dir / "context_join_audit.json"
+    counts_path = out_dir / "counts.csv"
+    if counts_path.exists():
+        counts = pd.read_csv(
+            counts_path,
+            dtype=str,
+            keep_default_na=False,
+            usecols=["counter_id", "timestamp", "interval_end"],
+        )
+        _, audit = join_context(counts, new)
+        audit["status"] = "ok"
+        audit_path.write_text(
+            json.dumps(audit, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+    paths = {"context": path, "context_sources": sheets_path, "context_join_audit": audit_path}
+    update_manifest(
+        snapshot_id, paths, [STRIKES_FILE, STRIKES_SOURCES_FILE], {SRC_STRIKES: sheets[SRC_STRIKES]}
+    )
+    print(f"context.csv : {len(old)} -> {len(new)} lignes ({CONTEXT_VERSION})")
+    print(f"Grèves : {sheet['n_days']} jours, dont {sheet['n_strike_days']} de grève")
+    for a in sheet["alerts"]:
+        print(f"Alerte : {a}")
 
 
 if __name__ == "__main__":

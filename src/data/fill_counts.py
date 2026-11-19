@@ -1,36 +1,36 @@
-"""Comptages remplis : J-7 pour les heures sans mesure, année d'avant pour les zéros - E1, Sabrina.
+"""Comptages remplis directement dans counts.csv : sites nouveaux, J-7, année d'avant - E1, Sabrina.
 
-Décisions E1 (Sabrina, 18/11/2026). Une version par budget d'historique local des sites
-réservés à E3 (1, 3 et 7 jours), chacune en deux étapes :
-1. sites réservés à E3 rendus « nouveaux » (`new_sites.py` : installés au début du
-   support local de la première origine d'évaluation, historique antérieur vidé ;
-   counters_filled_<budget>j.csv porte leur date d'installation fictive) ;
+Décisions E1 (Sabrina, 18 et 19/11/2026) : `count` est remplacé directement dans
+counts.csv ; `count_raw` et les drapeaux gardent la trace et permettent de revenir aux
+valeurs d'origine (`original.py`). Deux étapes :
+1. sites réservés à E3 rendus « nouveaux » (`new_sites.py` : 7 jours d'historique local
+   pour tous, installés au début du support local de la première origine d'évaluation,
+   historique antérieur vidé ; counters.csv porte leur date d'installation fictive) ;
 2. remplacements, calculés sur le résultat de l'étape 1 :
 - heures marquées `missing` ou `empty_value` -> même heure de Paris J-7
-  (`fill_j7.fill_j7`) ;
-- heures d'une suite d'au moins 24 h de zéros mesurés -> même date et heure de Paris
-  un an avant, si elle est > 0 (`fill_zeros_year.fill_zero_runs`) ; sinon le 0 reste.
+  (`fill_j7.fill_j7`) ; `count_raw` reste vide, `is_observed` faux ;
+- heures marquées `long_zero_run` -> même date et heure de Paris un an avant, si elle
+  est > 0 (`fill_zeros_year.fill_zero_runs`) ; sinon le 0 reste ;
+  `count_raw` garde le 0.
 
 Une valeur remplacée n'est jamais une cible : `is_scoreable` est faux (`doc/CONTRATS.md`
-§3). Les deux ensembles d'heures sont disjoints (une heure sans mesure n'est pas un zéro
-mesuré), et chaque remplacement lit ses valeurs dans les données d'origine : J-7 ne
-prend jamais une valeur venue de l'année d'avant, et inversement. L'ordre est donc
-sans effet.
+§3). Les deux ensembles d'heures sont disjoints, et chaque remplacement lit ses valeurs
+dans les données d'origine : l'ordre est sans effet.
 
-Seuls les 21 compteurs réservés diffèrent d'une version à l'autre : pour les autres, les
-trois fichiers sont identiques.
+À lancer une seule fois par instantané, APRÈS quality.py, context.py et l'examen des
+alertes (ils lisent les données d'origine) : le manifeste reçoit un bloc `fill`, et un
+second passage est refusé. Ne pas relancer quality.py sur un counts.csv rempli (les sites
+réservés y paraîtraient installés tard) : repartir du counts.csv d'origine (zip de
+l'instantané) ou du brut.
 
-Trace : `count_raw` n'est jamais modifié (vide pour J-7, 0 pour l'année d'avant).
-counts.csv et counters.csv ne sont pas modifiés : sorties dans counts_filled_<budget>j.csv
-et counters_filled_<budget>j.csv, mêmes colonnes ; le brut permet de tout recalculer.
-
-Usage (sur l'historique, qui contient l'année d'avant) :
+Usage :
   uv run python -m src.data.fill_counts --snapshot hist-20261117
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import sys
 from pathlib import Path
@@ -39,13 +39,12 @@ import numpy as np
 import pandas as pd
 
 from src.common.config import data_path
+from src.data import acquire
 from src.data.fill_j7 import fill_j7
 from src.data.fill_zeros_year import fill_zero_runs
-from src.data.new_sites import BUDGET_DAYS, make_new_sites, reserved_counters, update_counters
+from src.data.new_sites import assign_budgets, make_new_sites, update_counters
 
-OUTPUT_NAME = "counts_filled_{days}j.csv"
-COUNTERS_OUTPUT_NAME = "counters_filled_{days}j.csv"
-REPORT_NAME = "counts_filled_report.json"
+REPORT_NAME = "fill_report.json"
 
 
 def fill_counts(counts: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
@@ -81,7 +80,9 @@ def write_counts(out: pd.DataFrame, columns: list[str], path: Path) -> None:
     for col in ("is_observed", "is_scoreable"):
         out[col] = out[col].map(lambda b: "true" if b else "false")
     out["quality_flags"] = out["quality_flags"].map(json.dumps)
-    out[columns].to_csv(path, index=False)
+    tmp = path.with_suffix(".tmp")
+    out[columns].to_csv(tmp, index=False)
+    tmp.replace(path)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -89,6 +90,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--snapshot", required=True, help="identifiant d'instantané")
     args = ap.parse_args(argv)
     folder = data_path("processed") / args.snapshot
+    manifest = acquire.load_manifest(args.snapshot)
+    if manifest.get("fill"):
+        raise SystemExit(
+            f"{args.snapshot} est déjà rempli ({manifest['fill'].get('filled_at')}) : "
+            "repartir du counts.csv d'origine (zip de l'instantané) ou du brut."
+        )
     raw = pd.read_csv(folder / "counts.csv", dtype=str, keep_default_na=False)
     columns = list(raw.columns)
     df = raw.rename(columns={"timestamp": "ts"})
@@ -99,29 +106,35 @@ def main(argv: list[str] | None = None) -> int:
         df[col] = df[col].str.lower().eq("true")
 
     inventory = pd.read_csv(folder / "inventory_quality.csv", dtype=str, keep_default_na=False)
-    reserved = reserved_counters(inventory)
     counters = pd.read_csv(folder / "counters.csv", dtype=str, keep_default_na=False)
+    new, plan, rep_new = make_new_sites(df, assign_budgets(inventory))
+    out, rep = fill_counts(new)
+    rep_new["counters"] = [
+        {**r, "installed_at": r["installed_at"].isoformat()} for r in plan.to_dict("records")
+    ]
     report = {
-        "snapshot_id": args.snapshot,
-        "input": ["counts.csv", "counters.csv", "inventory_quality.csv"],
-        "versions": {},
+        "filled_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+        "rule": "count remplacé directement ; count_raw et drapeaux gardent la trace "
+        "(src/data/original.py) ; valeurs remplacées jamais cibles (is_scoreable faux)",
+        "new_sites": rep_new,
+        **rep,
     }
-    for days in BUDGET_DAYS:
-        new, plan, rep_new = make_new_sites(df, reserved, days)
-        out, rep = fill_counts(new)
-        rep_new["counters"] = [
-            {**r, "installed_at": r["installed_at"].isoformat()} for r in plan.to_dict("records")
-        ]
-        names = [OUTPUT_NAME.format(days=days), COUNTERS_OUTPUT_NAME.format(days=days)]
-        write_counts(out, columns, folder / names[0])
-        update_counters(counters, plan).to_csv(folder / names[1], index=False)
-        report["versions"][f"{days}j"] = {"output": names, "new_sites": rep_new, **rep}
-        print(f"{days} j : {names[0]}, {names[1]} écrits")
 
+    write_counts(out, columns, folder / "counts.csv")
+    update_counters(counters, plan).to_csv(folder / "counters.csv", index=False)
     (folder / REPORT_NAME).write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    print(json.dumps(report, ensure_ascii=False, indent=2))
+    for role, name in (("counts", "counts.csv"), ("counters", "counters.csv"), ("fill_report", REPORT_NAME)):
+        acquire.upsert(manifest["files"], acquire.file_entry(folder / name, role), "path")
+    manifest["fill"] = {k: report[k] for k in ("filled_at", "rule")} | {
+        "report": REPORT_NAME,
+        "warning": "inventory_quality.csv et selection_summary.json décrivent les données "
+        "d'origine ; ne pas relancer quality.py sur ce counts.csv",
+    }
+    acquire.write_manifest(manifest)
+    print(json.dumps({k: v for k, v in report.items() if k != "new_sites"}, ensure_ascii=False, indent=2))
+    print(json.dumps({k: v for k, v in rep_new.items() if k != "counters"}, ensure_ascii=False, indent=2))
     return 0
 
 

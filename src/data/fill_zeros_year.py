@@ -1,8 +1,8 @@
 """Longues suites de zéros remplacées par les mêmes dates de l'année d'avant - E1, Sabrina.
 
-Décisions E1 (Sabrina, 18/11/2026) : chaque heure d'une suite d'au moins 24 h de zéros
-mesurés est comparée au même compteur, à la même date et à la même heure de Paris un an
-avant :
+Décisions E1 (Sabrina, 18 et 19/11/2026) : chaque heure marquée `long_zero_run` dans
+`quality_flags` (suite d'au moins 24 h de zéros mesurés, drapeau de prepare.py) est
+comparée au même compteur, à la même date et à la même heure de Paris un an avant :
 - valeur > 0 un an avant : `count` reçoit cette valeur ; `count_raw` garde le 0 d'origine
   (trace : une heure remplacée a `count` différent de `count_raw`) ; `is_scoreable`
   devient faux : la valeur remplacée sert d'entrée, jamais de cible (`doc/CONTRATS.md`
@@ -14,32 +14,28 @@ avant :
 - un an avant inconnu (avant le début de l'instantané, ou avant la première mesure du
   compteur, pas encore installé) : rien ne change.
 
-À savoir : ici, la détection des suites est rétrospective (elle lit toute la série). Dans
+Sans colonne `quality_flags` (jeux de test), les suites sont recalculées avec la même
+règle (`zeros_years.long_runs`) ; sur `hist-20261117`, les deux donnent exactement les
+mêmes 51 789 heures (vérifié le 19/11/2026).
+
+À savoir : le drapeau `long_zero_run` est rétrospectif (il lit toute la série). Dans
 l'étude A/C (`zeros.py`), la même règle est appliquée avec une détection sans fuite, à la
 coupure d'apprentissage.
 
-À lancer sur l'historique (`hist-…`), qui contient l'année d'avant. counts.csv n'est pas
-modifié : le résultat est écrit dans filled_zeros_year.csv, avec les mêmes colonnes.
-
-Usage :
-  uv run python -m src.data.fill_zeros_year --snapshot hist-20261117
+Appelé par `fill_counts.py` (une seule commande, qui remplit directement counts.csv) ;
+à lancer sur l'historique (`hist-…`), qui contient l'année d'avant.
 """
 
 from __future__ import annotations
 
-import argparse
 import json
-import sys
 
 import numpy as np
 import pandas as pd
 
-from src.common.config import data_path
 from src.data.zeros_years import MIN_RUN_HOURS, long_runs, shift_years
 
-FILL_VERSION = "e1-fill-zeros-year/0.2.0"
-OUTPUT_NAME = "filled_zeros_year.csv"
-REPORT_NAME = "filled_zeros_year_report.json"
+FILL_VERSION = "e1-fill-zeros-year/0.3.0"
 
 
 def run_hours(runs: pd.DataFrame) -> pd.DataFrame:
@@ -53,6 +49,31 @@ def run_hours(runs: pd.DataFrame) -> pd.DataFrame:
             {"counter_id": pd.Series(dtype=str), "ts": pd.Series(dtype="datetime64[ns, UTC]")}
         )
     return pd.concat(parts, ignore_index=True)
+
+
+def _has_long_zero_run(flags) -> bool:
+    if isinstance(flags, list):
+        return "long_zero_run" in flags
+    return isinstance(flags, str) and "long_zero_run" in json.loads(flags or "[]")
+
+
+def flagged_hours(counts: pd.DataFrame, min_run: int = MIN_RUN_HOURS) -> pd.DataFrame:
+    """Heures à traiter : drapeau `long_zero_run` (ou suites recalculées sans drapeaux)."""
+    if "quality_flags" not in counts.columns:
+        return run_hours(long_runs(counts, min_run))
+    flagged = counts["quality_flags"].map(_has_long_zero_run)
+    out = counts.loc[flagged, ["counter_id", "ts"]].sort_values(["counter_id", "ts"])
+    return out.reset_index(drop=True)
+
+
+def count_runs(hours: pd.DataFrame) -> int:
+    """Nombre de suites : heures consécutives d'un même compteur."""
+    if hours.empty:
+        return 0
+    new = hours["counter_id"].ne(hours["counter_id"].shift()) | hours["ts"].diff().ne(
+        pd.Timedelta(hours=1)
+    )
+    return int(new.sum())
 
 
 def year_before(
@@ -78,15 +99,14 @@ def fill_zero_runs(counts: pd.DataFrame, min_run: int = MIN_RUN_HOURS) -> tuple[
     `counts` : colonnes `counter_id`, `ts` (UTC), `count`, `is_observed`, `is_scoreable`.
     """
     df = counts.copy()
-    runs = long_runs(df, min_run)
-    hours = run_hours(runs)
+    hours = flagged_hours(df, min_run)
     report = {
         "fill_version": FILL_VERSION,
-        "rule": "suites >= 24 h de zéros mesurés ; même date et heure de Paris un an avant ; "
+        "rule": "heures marquées long_zero_run ; même date et heure de Paris un an avant ; "
         "valeur > 0 : count remplacé, is_scoreable faux, count_raw inchangé ; "
         "0, vide ou inconnu un an avant : le 0 est gardé",
-        "n_runs": int(len(runs)),
-        "n_counters": int(runs["counter_id"].nunique()) if len(runs) else 0,
+        "n_runs": count_runs(hours),
+        "n_counters": int(hours["counter_id"].nunique()),
         "n_hours_in_runs": int(len(hours)),
     }
     if hours.empty:
@@ -112,41 +132,3 @@ def fill_zero_runs(counts: pd.DataFrame, min_run: int = MIN_RUN_HOURS) -> tuple[
         }
     )
     return df, report
-
-
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    ap.add_argument("--snapshot", required=True, help="identifiant d'instantané (hist-…)")
-    args = ap.parse_args(argv)
-    folder = data_path("processed") / args.snapshot
-    raw = pd.read_csv(folder / "counts.csv", dtype=str, keep_default_na=False)
-    columns = list(raw.columns)
-    df = raw.rename(columns={"timestamp": "ts"})
-    df["ts"] = pd.to_datetime(df["ts"], utc=True, format="ISO8601")
-    df["count_text"] = df["count"]
-    df["count"] = pd.to_numeric(df["count"].replace("", np.nan), errors="coerce")
-    for col in ("is_observed", "is_scoreable"):
-        df[col] = df[col].str.lower().eq("true")
-
-    out, report = fill_zero_runs(df)
-
-    changed = out["count"].ne(df["count"]) & ~(out["count"].isna() & df["count"].isna())
-    out["count"] = np.where(
-        changed, out["count"].map(lambda v: "" if pd.isna(v) else repr(float(v))), out["count_text"]
-    )
-    out["is_scoreable"] = out["is_scoreable"].map(lambda b: "true" if b else "false")
-    out["is_observed"] = out["is_observed"].map(lambda b: "true" if b else "false")
-    out["timestamp"] = out["ts"].map(pd.Timestamp.isoformat)
-    out[columns].to_csv(folder / OUTPUT_NAME, index=False)
-
-    report.update({"snapshot_id": args.snapshot, "input": "counts.csv", "output": OUTPUT_NAME})
-    (folder / REPORT_NAME).write_text(
-        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    for k, v in report.items():
-        print(f"{k} : {v}")
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

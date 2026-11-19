@@ -9,14 +9,15 @@ Deux traitements des heures d'apprentissage, l'évaluation restant identique :
   > 0 ; cette heure n'est alors plus une cible d'apprentissage (`is_scoreable` faux).
   0, vide ou inconnu un an avant : le 0 est gardé. Même règle que `fill_zeros_year.py`
   (décisions de Sabrina du 18/11/2026), appliquée par `fill_counts.py` aux données
-  livrées counts_filled_<budget>j.csv.
+  livrées (counts.csv rempli sur place).
 
 Pas de fuite : à la coupure `F`, seules les heures disponibles à `F` sont lues,
 c'est-à-dire `interval_end + délai de publication <= F` (PROTOCOLE_EVALUATION.md §2,
 `protocol.publication_lag_hours` de la configuration). Le drapeau `long_zero_run` de
 counts.csv, rétrospectif, n'est pas utilisé. Une heure absente (ligne manquante ou
 `count` vide) interrompt une suite, comme dans prepare.py. La valeur d'un an avant est
-publiée bien avant `F`. counts.csv n'est jamais modifié : C travaille sur une copie.
+publiée bien avant `F`. C travaille sur une copie ; le script lit counts.csv avec ses valeurs
+d'origine (`original.load_original_counts`), même s'il a été rempli par fill_counts.py.
 
 C ne remplace une heure que si l'instantané contient l'année d'avant : sur `flux-…`
 (13 mois), les suites d'avant la coupure du 01/07/2026 ont leur année d'avant hors de
@@ -36,7 +37,8 @@ import pandas as pd
 
 from src.common.config import data_path, load_config
 from src.data.fill_zeros_year import year_before
-from src.data.quality import TZ_LOCAL, load_counts
+from src.data.original import load_original_counts
+from src.data.quality import TZ_LOCAL
 
 MIN_RUN_HOURS = 24  # même seuil que prepare.LONG_ZERO_RUN_HOURS
 DEFAULT_LAG_HOURS = 24  # protocol.publication_lag_hours du gabarit de configuration
@@ -186,7 +188,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--snapshot", required=True, help="identifiant d'instantané")
     ap.add_argument("--coupure", required=True, help="date locale de coupure AAAA-MM-JJ")
     args = ap.parse_args(argv)
-    counts = load_counts(data_path("processed") / args.snapshot / "counts.csv")
+    counts = load_original_counts(data_path("processed") / args.snapshot / "counts.csv")
     cutoff = local_midnight(args.coupure)
     summary = treated_summary(counts, cutoff)
     print(f"Coupure {args.coupure} 00:00 (Paris), délai {publication_lag_hours()} h")

@@ -3,7 +3,7 @@
 Tâche B1 de la passation de Nihed (17/11/2026), question Q5 : comparer les suites de
 2023, 2024 et 2025 avec l'année précédente.
 
-Interprétation de « year - 1 » retenue ici, **à confirmer avec Nihed** : pour chaque
+Interprétation de « year - 1 » retenue ici (Sabrina, 18/11/2026, la même que pour remplacer les zéros par l'année d'avant) : pour chaque
 suite d'au moins 24 h de zéros d'un compteur, on regarde le **même compteur** aux
 **mêmes dates de Paris un an avant** (et, avec `--annees 1 2`, deux ans avant), et l'on
 compte :
@@ -28,7 +28,8 @@ import numpy as np
 import pandas as pd
 
 from src.common.config import data_path
-from src.data.quality import TZ_LOCAL, load_counts
+from src.data.original import load_original_counts
+from src.data.quality import TZ_LOCAL
 
 MIN_RUN_HOURS = 24
 
@@ -94,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--annees", type=int, nargs="+", default=[1], help="décalages en années")
     ap.add_argument("--seuil", type=int, default=MIN_RUN_HOURS, help="longueur minimale (h)")
     args = ap.parse_args(argv)
-    counts = load_counts(data_path("processed") / args.snapshot / "counts.csv")
+    counts = load_original_counts(data_path("processed") / args.snapshot / "counts.csv")
     runs = long_runs(counts, args.seuil)
     res = compare_years(counts, runs, args.annees)
     pd.set_option("display.width", 250)

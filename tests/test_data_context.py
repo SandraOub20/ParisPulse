@@ -426,3 +426,46 @@ def test_bascule_unique_vers_le_modele_par_defaut():
     assert [x["location_id"] for x in rows].count("jma") == 20
     assert len({x["valid_time"] for x in rows}) == len(rows) == 25
     assert c.merge_forecast_segments(jma, []) == (jma, None)
+
+
+# ----------------------------------------------------------------- grèves (B4)
+def strikes_files() -> tuple[bytes, bytes]:
+    daily = "date,greve\n2026-11-04,false\n2026-11-05,true\n2026-11-06,false\n"
+    sources = (
+        "date,scope,networks,severity,description,announced_on,source_url,confidence\n"
+        "2026-11-05,interprofessionnel,metro;rer,forte,texte,,https://exemple,haute\n"
+    )
+    return daily.encode(), sources.encode()
+
+
+def test_greves_une_ligne_par_jour_connue_24_h_avant():
+    strikes = c.parse_strikes(*strikes_files())
+    days = [dt.date(2026, 11, d) for d in (3, 4, 5, 6)]
+    ctx = c._frame(c.strike_rows(strikes, days))
+    assert ctx["local_date"].tolist() == ["2026-11-04", "2026-11-05", "2026-11-06"]  # 03 inconnu
+    row = ctx.set_index("local_date").loc["2026-11-05"]
+    assert row["value"] == "true" and row["label"] == "interprofessionnel, forte (metro;rer)"
+    # minuit le 05/11 à Paris = 04/11 23:00 UTC ; connu 24 h avant
+    assert row["available_at"] == "2026-11-03T23:00:00+00:00"
+    assert ctx.set_index("local_date").loc["2026-11-04", "label"] == ""
+    c.validate_context(ctx)
+
+
+def test_greve_admissible_seulement_24_h_avant():
+    ctx = c._frame(c.strike_rows(c.parse_strikes(*strikes_files()), [dt.date(2026, 11, 5)]))
+    hol = c._frame(c.holiday_rows(c.parse_holidays(holidays_json()), [dt.date(2026, 11, 11)]))
+    both = pd.concat([ctx, hol], ignore_index=True)
+    j_moins_2 = pd.Timestamp("2026-11-03", tz=TZ).tz_convert("UTC")
+    j_moins_1 = pd.Timestamp("2026-11-04", tz=TZ).tz_convert("UTC")
+    assert set(c.admissible_context(both, j_moins_2)["variable"]) == {"is_holiday"}
+    assert set(c.admissible_context(both, j_moins_1)["variable"]) == {"is_holiday", "is_strike"}
+
+
+def test_jointure_greves_sur_la_date_de_paris():
+    days = [dt.date(2026, 11, 4), dt.date(2026, 11, 5)]
+    ctx = c._frame(c.strike_rows(c.parse_strikes(*strikes_files()), days))
+    counts = counts_frame("2026-11-04 22:00", 3)  # 22 h, 23 h le 04, puis 00 h le 05 (Paris)
+    out, audit = c.join_context(counts, ctx)
+    assert audit["n_rows_before"] == audit["n_rows_after"]
+    a = out[out["counter_id"] == "A"]["is_strike"].tolist()
+    assert a == ["false", "false", "true"]

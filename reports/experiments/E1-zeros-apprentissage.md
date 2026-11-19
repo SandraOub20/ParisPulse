@@ -7,7 +7,7 @@
 
 ## Évolution du protocole (18/11/2026, avant tout résultat)
 
-Le 15/11, le second traitement était B : **écarter** ces heures des cibles d'apprentissage. Le 18/11, Sabrina a décidé que les données remplies livrées aux autres équipes (`counts_filled_<budget>j.csv`, `src/data/fill_counts.py`) remplacent ces suites par l'année d'avant. Le sujet demande de mesurer l'effet des traitements avec E2 et E4 : l'étude compare donc A au traitement réellement appliqué, **C**, à la place de B. Aucun résultat n'existait : la règle de décision et les analyses complémentaires sont reprises telles quelles, pour C.
+Le 15/11, le second traitement était B : **écarter** ces heures des cibles d'apprentissage. Le 18/11, Sabrina a décidé que les données livrées aux autres équipes remplacent ces suites par l'année d'avant (`src/data/fill_counts.py`, qui remplit directement `counts.csv` depuis le 19/11, sur les heures marquées `long_zero_run`). Le sujet demande de mesurer l'effet des traitements avec E2 et E4 : l'étude compare donc A au traitement réellement appliqué, **C**, à la place de B. Aucun résultat n'existait : la règle de décision et les analyses complémentaires sont reprises telles quelles, pour C.
 
 ## Les deux traitements
 
@@ -28,7 +28,7 @@ Précisions :
 
 ### Détection sans fuite
 
-Le drapeau `long_zero_run` de `counts.csv` est **rétrospectif** : il est calculé sur tout l'instantané, donc avec des heures postérieures à la coupure. Il ne sert **pas** directement. Pour la même raison, l'étude ne lit pas `counts_filled_<budget>j.csv`, dont les suites sont aussi détectées sur toute la série.
+Le drapeau `long_zero_run` de `counts.csv` est **rétrospectif** : il est calculé sur tout l'instantané, donc avec des heures postérieures à la coupure. Il ne sert **pas** directement. Pour la même raison, l'étude ne reprend pas les remplacements de `fill_counts.py`, dont les suites sont aussi détectées sur toute la série : elle relit `counts.csv` avec ses valeurs d'origine (`src/data/original.py`, grâce à `count_raw`) et applique C à la coupure.
 
 Pour une coupure d'apprentissage `F`, la variante C recalcule les suites **uniquement avec les heures disponibles à `F`**, c'est-à-dire celles dont `interval_end + 24 h <= F` (délai de publication `protocol.publication_lag_hours` de `config/project.yaml`, ou du gabarit `config/project.example.yaml` si ce fichier n'existe pas, et règle « toutes les cibles disponibles à `F` » de `PROTOCOLE_EVALUATION.md` §2). Une heure est traitée si elle appartient à au moins 24 h consécutives de zéros parmi ces heures. Une suite qui se prolonge au-delà n'est comptée que par sa partie disponible. La valeur d'un an avant est publiée bien avant `F`. Ce marquage ne sert jamais de variable de prévision.
 
@@ -52,7 +52,7 @@ Compteurs de `S_train` (`retained` et `robustness`). Les sites réservés à E3 
 
 Soit **9 compteurs concernés** (5 822 heures), **tous en `robustness`**. Zeineb les a classés ainsi précisément à cause de ces suites, et ils sont évalués à part du score principal (fiche EXP-E1-02).
 
-**Sur `flux-20261115`, C ne remplace aucune de ces heures** (0 sur 5 822, vérifié le 18/11/2026 avec la même commande) : l'instantané commence le 16/10/2025, et toutes ces suites sont antérieures au 16/10/2026, donc leur année d'avant est hors de l'instantané. Sur le flux, A et C seraient identiques. La comparaison se fera donc sur l'historique `hist-20261117`, qui contient les archives 2023 à 2025. **À confirmer sur l'historique, dès réception** : les heures que C remplace réellement, et les groupes de comparaison. L'inventaire de l'historique n'a pas les mêmes statuts que celui du flux (67 / 30 / 10 / 5 / 1 selon la passation, question Q6 de la fiche `E1-historique.md`).
+**Sur `flux-20261115`, C ne remplace aucune de ces heures** (0 sur 5 822, vérifié le 18/11/2026 avec la même commande) : l'instantané commence le 16/10/2025, et toutes ces suites sont antérieures au 16/10/2026, donc leur année d'avant est hors de l'instantané. Sur le flux, A et C seraient identiques. La comparaison se fera donc sur l'historique `hist-20261117`, qui contient les archives 2023 à 2025. **Mesuré sur `hist-20261117` le 19/11/2026** (`uv run python -m src.data.zeros --snapshot hist-20261117 --coupure 2026-07-01`, valeurs d'origine) : 26 compteurs ont au moins une suite longue à la coupure, soit 50 552 heures, dont **17 770 remplacées par C** (année d'avant > 0) ; les autres gardent leur zéro (0, vide ou inconnu un an avant). Exemples : Jourdan E-O 8 408 h remplacées sur 12 900, Masséna SO-NE 5 456 sur 5 692, Denfert-Rochereau (exclu, hors étude) 1 883 sur 21 583. Ces chiffres comptent tous les compteurs, réservés et exclu compris ; les groupes de comparaison se calculent avec l'inventaire de l'historique (67 `retained`, 30 `robustness`, 10 + 5 réservés, 1 exclu), qui n'a pas les mêmes statuts que celui du flux (question Q6 de la fiche `E1-historique.md`). Le tableau ci-dessus reste celui du flux.
 
 Groupes de comparaison (sur le flux) :
 
@@ -159,7 +159,7 @@ Sur données réelles, **sans modèle ni calcul d'erreur** (15/11/2026) : 91 com
 - Les effectifs sont petits (9 compteurs concernés sur le flux) : la MAE par compteur sera rapportée en plus de la moyenne.
 - La cause des zéros reste inconnue : C suppose que l'année d'avant décrit mieux la fréquentation que la suite de zéros, ce qui n'est pas prouvé.
 - C ne se mesure que sur l'historique : sur le flux, l'année d'avant manque pour toutes les suites d'avant la coupure.
-- Dans les données livrées (`counts_filled_<budget>j.csv`), les suites sont détectées sur toute la série ; dans l'étude, à la coupure. Les heures remplacées peuvent donc différer près de la coupure (Cours la Reine : 79 h sur 88 dans l'étude).
+- Dans les données livrées (`counts.csv` rempli), les suites sont détectées sur toute la série ; dans l'étude, à la coupure. Les heures remplacées peuvent donc différer près de la coupure (Cours la Reine : 79 h sur 88 dans l'étude).
 - La grille commune (étape 2, faite par Nihed le 15/11) et la fenêtre au premier jour complet (`e1-prepare/0.3.0`, 17/11) ne changent aucun chiffre de cette fiche (relancé le 16/11 et le 17/11).
 - Le résultat dépend du modèle d'E2 : un modèle global et un modèle par compteur peuvent réagir différemment.
 

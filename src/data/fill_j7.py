@@ -24,31 +24,22 @@ remplacée a `count` rempli et `count_raw` vide), `quality_flags` est inchangé,
 jamais une cible évaluable (`doc/CONTRATS.md` §3 : « Les cibles ne sont jamais
 imputées »).
 
-counts.csv n'est pas modifié (fichier commun, empreinte SHA-256 dans le manifeste) :
-le résultat est écrit à côté, dans filled_j7.csv, avec les mêmes colonnes.
-Fonctionne pour tout instantané (`flux-…`, `hist-…`).
-
-Usage :
-  uv run python -m src.data.fill_j7 --snapshot flux-20261115
+Appelé par `fill_counts.py` (une seule commande, qui remplit directement counts.csv ;
+`count_raw` et les drapeaux gardent la trace). Fonctionne pour tout instantané.
 """
 
 from __future__ import annotations
 
-import argparse
 import json
-import sys
 
 import numpy as np
 import pandas as pd
 
-from src.common.config import data_path
 from src.data.quality import TZ_LOCAL
 
 MISSING_FLAG = "missing"
 TARGET_FLAGS = {"missing", "empty_value"}
 FILL_VERSION = "e1-fill-j7/0.3.0"
-OUTPUT_NAME = "filled_j7.csv"
-REPORT_NAME = "filled_j7_report.json"
 
 
 def j7_timestamps(ts: pd.Series) -> pd.Series:
@@ -131,53 +122,3 @@ def fill_j7(counts: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         "n_hours_without_value_outside_active": int((~active & df["count"].isna()).sum()),
     }
     return df, report
-
-
-def _number(v) -> str:
-    return "" if pd.isna(v) else repr(float(v))
-
-
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    ap.add_argument("--snapshot", required=True, help="identifiant d'instantané")
-    args = ap.parse_args(argv)
-    folder = data_path("processed") / args.snapshot
-    raw = pd.read_csv(folder / "counts.csv", dtype=str, keep_default_na=False)
-    columns = list(raw.columns)
-
-    df = raw.rename(columns={"timestamp": "ts"})
-    df["ts"] = pd.to_datetime(df["ts"], utc=True, format="ISO8601")
-    df["count_text"] = df["count"]
-    df["count"] = pd.to_numeric(df["count"].replace("", np.nan), errors="coerce")
-    for col in ("is_observed", "is_scoreable"):
-        df[col] = df[col].str.lower().eq("true")
-
-    out, report = fill_j7(df)
-
-    # Colonnes de counts.csv recopiées telles quelles ; lignes créées complétées
-    out["interval_end"] = (out["ts"] + pd.Timedelta(hours=1)).map(pd.Timestamp.isoformat)
-    out["timestamp"] = out["ts"].map(pd.Timestamp.isoformat)
-    for col in ("source_file_id", "snapshot_id"):
-        out[col] = out.groupby("counter_id")[col].transform("first")
-    out["count_raw"] = out["count_raw"].fillna("")
-    # Texte d'origine pour les heures mesurées ; valeur J-7 pour les heures remplacées
-    text = out["count_text"].fillna("")
-    out["count"] = text.where(text != "", out["count"].map(_number))
-    for col in ("is_observed", "is_scoreable"):
-        out[col] = out[col].map(lambda b: "true" if b else "false")
-    out["quality_flags"] = out["quality_flags"].map(json.dumps)
-    out[columns].to_csv(folder / OUTPUT_NAME, index=False)
-
-    report["snapshot_id"] = args.snapshot
-    report["input"] = "counts.csv"
-    report["output"] = OUTPUT_NAME
-    (folder / REPORT_NAME).write_text(
-        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    for k, v in report.items():
-        print(f"{k} : {v}")
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

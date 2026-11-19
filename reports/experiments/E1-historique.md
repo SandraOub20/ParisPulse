@@ -4,14 +4,14 @@
 - **Question :** peut-on ajouter deux années d'archives avant le flux courant, sur une seule grille, sans rupture entre archives et flux ?
 - **Décision de départ :** réunion E1 du 17/11/2026 : ajouter l'historique, d'abord **2 cycles d'un an alignés sur le début du flux** (16/10), et non au 1er janvier.
 - **Sources :** jeu Open Data Paris `comptage-velo-historique-donnees-compteurs` (un fichier par année, pièces jointes « par compteur et par heure »), et flux courant `flux-20261115`.
-- **Statut des chiffres :** sauf mention contraire, les chiffres de cette fiche viennent de la passation de Nihed du 17/11/2026. **Ils sont à revérifier sur les données** : à la date de cette fiche, `hist-20261117` et les archives brutes n'ont pas encore été reçus par Sabrina (zip à partager par Nihed, tâche A7).
+- **Statut des chiffres :** sauf mention contraire, les chiffres de cette fiche viennent de la passation de Nihed du 17/11/2026. Les chiffres de base (lignes, heures, part observée, statuts) ont été revérifiés le 19/11/2026 sur `hist-20261117`, reçu en zip : identiques (section « Outils lancés sur l'historique »).
 
 ## Les deux instantanés
 
 | Instantané | Période (UTC) | Usage |
 | --- | --- | --- |
 | `flux-20261115` | 16/10/2025 → 14/11/2026 (13 mois) | Utilisé par les autres équipes, **inchangé** |
-| `hist-20261117` | 16/10/2023 → 14/11/2026 (3 ans) | Nouveau, **pas encore partagé** |
+| `hist-20261117` | 16/10/2023 → 14/11/2026 (3 ans) | Nouveau, **pas encore partagé** (A1 à A3 faits ; `counts.csv` rempli le 19/11) |
 
 ## Les archives
 
@@ -94,19 +94,48 @@ uv run python -m src.data.quality --snapshot hist-20261117
 
 Sorties attendues selon la passation : 49 jumeaux, 7 renommages, 0 compteur sous 99 %, 17 542 lignes sans identifiant, 26 anciens compteurs, 27 023 h, 96,6 % observées, puis 67 / 30 / 10 / 5 / 1.
 
-## Outils préparés pour l'historique (Sabrina, testés sur `flux-20261115`)
+## Outils lancés sur l'historique (Sabrina, 19/11/2026)
 
-Ces scripts prennent l'instantané en paramètre ; ils sont prêts à être lancés sur `hist-20261117` dès sa réception.
+`hist-20261117` reçu de Nihed en zip le 19/11/2026 : les 8 fichiers de `data/processed/hist-20261117/` ont l'empreinte SHA-256 de son manifeste, et les trois archives qu'il cite ont la même empreinte que celles téléchargées le 18/11. Vérifié : 3 053 599 lignes, 113 compteurs, 27 023 heures (16/10/2023 00:00 → 14/11/2026 22:00 UTC), 96,6 % observées, statuts 67 / 30 / 10 / 5 / 1 : identique à la passation. Contexte converti au format `label` (166 532 → 164 278 lignes), puis grèves ajoutées (B4, ci-dessous).
 
-| Tâche | Commande | Sur `flux-20261115` |
+| Tâche | Commande | Sur `flux-20261115` | Sur `hist-20261117` |
+| --- | --- | --- | --- |
+| A3 - alertes du manifeste | `uv run python -m src.data.alerts_review --snapshot hist-20261117` | 229 alertes = 113 heures perdues au passage à l'heure d'hiver + 108 journées non publiées + 8 pics | 431 alertes = 314 heures perdues au passage à l'heure d'hiver (sur tout le réseau) + 108 journées non publiées + 4 pics du soir (sens des trajets) + **5 manques propres au compteur**, examinés ci-dessous |
+| A2 - critère des zéros | `uv run python -m src.data.zeros_criteria --snapshot hist-20261117` | option 1 = inventaire (95 / 17 / 1 avant réservation) ; seuils 1 %, 5 %, 10 % : 15, 9, 8 `robustness` | option 1 = inventaire (82 / 30 / 1 avant réservation) ; seuils 1 %, 5 %, 10 % : 18, 9, 7 `robustness` |
+| B1 - mêmes dates un an avant | `uv run python -m src.data.zeros_years --snapshot hist-20261117 --annees 1 2` | 17 suites ; 1 seule comparable un an avant | 153 suites. Un an avant : 40 comparables, dont 14 avec des zéros aux mêmes dates ; 113 non comparables (compteur pas encore installé ou avant le 16/10/2023). Deux ans avant : 13 comparables, dont 4 |
+| B7 - étude des zéros, A / C | `uv run python -m src.data.zeros --snapshot hist-20261117 --coupure 2026-07-01` (description), puis `zeros_experiment` avec le modèle d'E2 | C ne remplace aucune heure à la coupure du 01/07/2026 | 26 compteurs avec une suite longue à la coupure, 50 552 h, dont 17 770 remplacées par C. Modèle d'E2 à brancher |
+| Remplissage (B2, zéros, sites nouveaux) | `uv run python -m src.data.fill_counts --snapshot hist-20261117` | non rempli (instantané déjà partagé) | `counts.csv` rempli directement le 19/11/2026 : voir ci-dessous |
+
+### A3 - les 5 manques propres au compteur (examinés le 19/11/2026)
+
+Toutes les autres alertes s'expliquent automatiquement. Ces 5 cas ont été regardés heure par heure dans `counts.csv` (heures de Paris) :
+
+| Compteur | Jour | Ce que montrent les données |
 | --- | --- | --- |
-| A3 - les 431 alertes | `uv run python -m src.data.alerts_review --snapshot hist-20261117` | Retrouve la fiche de Tasnim : 229 alertes = 113 heures perdues au passage à l'heure d'hiver + 108 journées non publiées + 8 pics (4 sens du soir, 2 faibles volumes, 1 panne, 1 à examiner : Pont des Invalides). |
-| A2 - critère des zéros | `uv run python -m src.data.zeros_criteria --snapshot hist-20261117` | L'option 1 retrouve exactement l'inventaire (95 / 17 / 1 avant réservation). Avec une part de zéros > 1 %, 5 % ou 10 % au lieu d'« au moins une suite » : 15, 9 ou 8 `robustness`. |
-| B1 - mêmes dates un an avant | `uv run python -m src.data.zeros_years --snapshot hist-20261117 --annees 1 2` | 17 suites ; 1 seule comparable un an avant (13 mois de données), sans zéros aux mêmes dates. |
-| B2 - remplacement J-7 | `uv run python -m src.data.fill_j7 --snapshot hist-20261117` | 13 589 heures remplacées directement dans `count` (`count_raw` reste vide), 2 116 laissées vides. |
-| B7 - étude des zéros, A (garder) / C (année d'avant) | `uv run python -m src.data.zeros_experiment --snapshot hist-20261117 --coupure … --debut … --fin …` | C ne remplace aucune heure sur le flux à la coupure du 01/07/2026 (année d'avant hors de l'instantané) : l'étude se fera sur l'historique. Dates de découpage sur 3 ans à fixer (A6) ; modèle d'E2 à brancher. |
-| Zéros : année d'avant | `uv run python -m src.data.fill_zeros_year --snapshot hist-20261117` | Suites de 24 h ou plus de zéros mesurés : chaque heure reçoit les mêmes date et heure un an avant si cette valeur est > 0, et n'est plus une cible ; 0, vide ou inconnu un an avant : le 0 reste. Sur le flux : 17 suites (13 224 h), 137 h remplacées, 13 087 h sans année d'avant. Avec les archives, Jourdan E-O et Denfert-Rochereau étaient déjà à zéro un an avant. |
-| Chaîne complète | `uv run python -m src.data.fill_counts --snapshot hist-20261117` | Une version par budget (1, 3, 7 jours) : sites réservés à E3 rendus nouveaux (installés au début du support de la première origine d'évaluation : 01/07/2026 pour dev, 01/10/2026 pour test, moins 24 h de délai et le budget), puis J-7 et année d'avant ; sorties `counts_filled_<budget>j.csv` et `counters_filled_<budget>j.csv`. Sur le flux : 21 compteurs, 11 sites ; 159 950 / 158 942 / 157 286 heures mesurées cachées et 11 440 / 11 800 / 11 812 h remplies par J-7 (1 / 3 / 7 jours). |
+| 106 av. Denfert-Rochereau NE-SO (exclu) | 29/10/2023 | aucune mesure du 27/10/2023 00:00 au 31/10/2023 07:00 (105 h) : panne de plusieurs jours |
+| 72 bd Voltaire NO-SE | 27/10/2024 | heure répétée de 2 h perdue sur tout le réseau, puis aucune mesure de 4 h à 14 h (11 h) |
+| 44 av. des Champs-Élysées SE-NO | 31/03/2024 | aucune mesure du 28/11/2023 au 05/04/2024 08:00 (3 104 h) : arrêt de plusieurs mois |
+| Pont des Invalides (couloir bus) N-S | 27/10/2024 | aucune mesure du 26/10/2024 19:00 au 27/10/2024 00:00, puis des zéros mesurés de 1 h à 9 h (sauf 8 h), et aucune mesure de 10 h à 21 h |
+| 124 bd MacDonald E-O | 31/03/2024 | aucune mesure du 30/03/2024 au 17/05/2024 09:00 (1 161 h) : arrêt de plusieurs semaines |
+
+**Conclusion :** ce sont des pannes du compteur qui tombent un jour de changement d'heure, pas une erreur de traitement du changement d'heure. Les heures sont déjà marquées `missing` ; rien à corriger. Les cinq alertes de l'historique sont donc toutes expliquées, et l'historique peut être partagé (A1 à A3 faits).
+
+### Remplissage de `counts.csv` (décision de Sabrina, 19/11/2026)
+
+`count` est remplacé directement dans `counts.csv` ; `count_raw` et les drapeaux gardent la trace, et `src/data/original.py` retrouve les valeurs d'origine (vérifié le 19/11/2026 : hors sites réservés, `count`, `is_observed` et `is_scoreable` identiques au fichier de Nihed sur les 3 053 599 lignes). Le manifeste porte un bloc `fill`, et un second remplissage est refusé. L'inventaire (`inventory_quality.csv`) décrit les données d'origine : ne pas relancer `quality.py` sur ce fichier.
+
+- **Sites réservés à E3** (B5, sans cahier des charges, modifiable à la demande d'E3) : 15 compteurs sur 9 sites, tous avec 7 jours d'historique local (cas principal du protocole ; E3 raccourcit lui-même à 3 ou 1 jour, sur les mêmes sites) ; installation au début du support de la première origine d'évaluation (01/07/2026 pour dev, 01/10/2026 pour test, moins 24 h de délai et 7 jours) ; 371 917 heures mesurées cachées avant.
+- **J-7** (heures marquées `missing` ou `empty_value`) : 25 500 heures sans mesure en période active ; 18 385 remplies, 7 115 laissées vides (J-7 sans mesure).
+- **Année d'avant** (heures marquées `long_zero_run`) : 153 suites, 51 789 h ; 17 965 remplacées (valeur > 0) ; le 0 reste pour 19 170 h (0 un an avant), 139 h (vide) et 14 515 h (inconnu).
+- Une valeur remplacée n'est jamais une cible (`is_scoreable` faux).
+
+### B4 - Grèves
+
+Référentiel de Zeineb (`data/reference/greves_transport_idf.csv`, branche `team1-zeineb`, fusionnée le 19/11/2026) joint au contexte (`context.py --greves`, `e1-context/0.3.0`) : une ligne par jour, `is_strike` vrai si les transports en commun d'Île-de-France sont annoncés perturbés, la portée, l'intensité et les réseaux dans `label`. Connu au plus tard 24 h avant (notice du référentiel) : `available_at` = minuit (Paris) du jour - 24 h. Historique : 1 127 jours, dont 33 de grève ; flux : 396 jours, dont 11. Jointure : aucune ligne créée ni perdue, aucune heure sans valeur. Limite (notice) : recensement manuel, peut-être incomplet.
+
+### A6 - Dates de découpage
+
+Rien n'a été convenu pour 3 ans dans le dépôt : `config/project.example.yaml` laisse `train_until`, `validation_until` et `test_start` vides. Les outils suivent le protocole proposé (`doc/PROTOCOLE_EVALUATION.md` §3) : coupure d'apprentissage au 01/07/2026, validation juillet-août, diagnostic septembre, test sur les origines d'octobre 2026. L'historique ajoute seulement de l'apprentissage avant le 16/10/2025. À confirmer avec E4.
 
 Les seuils 1 %, 5 % et 10 % ne sont que des exemples pour la discussion.
 
@@ -114,9 +143,9 @@ Les seuils 1 %, 5 % et 10 % ne sont que des exemples pour la discussion.
 
 ## Limites et points à confirmer
 
-- Tous les chiffres de l'historique sont à revérifier sur les données, dès réception du zip.
 - R2 : fait (A4, ci-dessus) ; les lignes sans identifiant ne sont pas le total des compteurs, leur nature reste inconnue.
-- Les 431 alertes ne sont pas encore examinées (A3) : l'historique ne doit pas être partagé avant A1 à A3.
-- Le tirage des sites réservés à E3 change entre les deux instantanés (10 / 5 contre 15 / 6) : à voir avec E3 (Q6), sans modifier `quality.py` d'ici là (B5).
-- Dates de découpage sur 3 ans (`train_until`, `validation_until`, `test_start`) : à fixer avec E4 (A6).
-- Contrat de données à mettre à jour (A8, Nihed) : R1 à R3 remplacent A8 ; Q3, Q8, Q14.
+- Sites réservés à E3 (Q6) : l'historique en a moins que le flux (10 / 5 contre 15 / 6). Des sites réservés sur le flux ont des suites de zéros en 2023-2024 et passent en `robustness` sur l'historique, donc ne sont plus éligibles (ex. Porte des Ternes O-E, quai de la Tournelle NO-SE). À présenter à E3 et E4 ; `quality.py` non modifié (B5).
+- Dates de découpage sur 3 ans : protocole proposé appliqué, à confirmer avec E4 (A6).
+- Contrat de données à mettre à jour (A8) : R1 à R3 remplacent A8 ; Q3, Q8, Q14.
+- Livraison (décision de Sabrina, 19/11/2026) : **un seul instantané, `hist-20261117`**. Il contient, à la suite, les deux années d'archives puis exactement la grille de `flux-20261115` (16/10/2025 → 14/11/2026) : il remplace le flux pour les autres équipes. `flux-20261115` n'est pas rempli et n'est plus livré.
+- `counts.csv` rempli ne suit plus `doc/CONTRATS.md` §3 sur un point : une heure remplie par J-7 a `is_observed=false` mais un `count` rempli (le contrat dit `count=null`). À signaler dans le message de livraison, et à reprendre dans le contrat version 2 (A8).

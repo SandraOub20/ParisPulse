@@ -92,3 +92,15 @@ def test_meme_heure_de_paris_en_ete_et_en_hiver():
     out, _ = fill_zero_runs(c)
     o = out.set_index("ts")["count"]
     assert o["2025-03-10 06:00"] == 11.0 and o["2025-07-10 05:00"] == 22.0
+
+
+def test_seules_les_heures_marquees_long_zero_run_sont_traitees():
+    c = series("2024-01-01", "2025-12-31", zeros=[RUN], override={"2024-03-10 05:00": 77.0})
+    run = (c["ts"] >= pd.Timestamp(RUN[0], tz="UTC")) & (c["ts"] <= pd.Timestamp(RUN[1], tz="UTC"))
+    c["quality_flags"] = [["long_zero_run"] if r else [] for r in run]
+    c.loc[c.index[run][:24], "quality_flags"] = pd.Series([[]] * 24, index=c.index[run][:24])
+    out, rep = fill_zero_runs(c)  # seules les 24 dernières heures portent le drapeau
+    assert rep["n_hours_in_runs"] == 24 and rep["n_runs"] == 1
+    o = out.set_index("ts")["count"]
+    assert (o[RUN[0] : "2025-03-10 23:00"] == 0).all()
+    assert (o["2025-03-11 00:00" : RUN[1]] > 0).all()

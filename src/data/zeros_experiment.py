@@ -43,7 +43,8 @@ import pandas as pd
 
 from src.common.config import data_path
 from src.data import zeros
-from src.data.quality import TZ_LOCAL, load_counts
+from src.data.original import load_original_counts
+from src.data.quality import TZ_LOCAL
 
 HORIZON = 24
 # Même seuil et même définition que quality.py (observed_days = heures / 24, exclu si < 28)
@@ -349,7 +350,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = ap.parse_args(argv)
     folder = data_path("processed") / args.snapshot
-    counts = load_counts(folder / "counts.csv")
+    counts = load_original_counts(folder / "counts.csv")
     inventory = pd.read_csv(folder / "inventory_quality.csv", dtype={"counter_id": str})
     res = run_experiment(
         counts,

@@ -40,7 +40,8 @@ import pandas as pd
 
 from src.common.config import data_path
 from src.data.prepare import check_peaks, hourly_profile
-from src.data.quality import TZ_LOCAL, SelectionCriteria, load_counters, load_counts
+from src.data.original import load_original_counts
+from src.data.quality import TZ_LOCAL, SelectionCriteria, load_counters
 
 NETWORK_SHARE = SelectionCriteria.network_gap_share  # seuil défini une seule fois (quality.py)
 DST_RE = re.compile(r"Jour de changement d'heure (\d{4}-\d{2}-\d{2}) : (\d+)/(\d+) heures")
@@ -75,8 +76,17 @@ def active_mask(counts: pd.DataFrame) -> pd.Series:
     return (counts["ts"] >= b["min"]) & (counts["ts"] <= b["max"])
 
 
-def classify_dst(day: str, counter_id: str, counts: pd.DataFrame, active: pd.Series) -> str:
-    local_day = counts["ts"].dt.tz_convert(TZ_LOCAL).dt.date == pd.Timestamp(day).date()
+def classify_dst(
+    day: str,
+    counter_id: str,
+    counts: pd.DataFrame,
+    active: pd.Series,
+    local_dates: pd.Series | None = None,
+) -> str:
+    """`local_dates` : date de Paris de chaque ligne, calculée une fois par `review`."""
+    if local_dates is None:
+        local_dates = counts["ts"].dt.tz_convert(TZ_LOCAL).dt.date
+    local_day = local_dates == pd.Timestamp(day).date()
     net = counts[local_day & active]
     by_hour = net.groupby("ts")["is_observed"].agg(["sum", "size"])
     if by_hour["sum"].sum() == 0:
@@ -120,11 +130,12 @@ def review(manifest, counts, counters, inventory, criteria=None) -> pd.DataFrame
     c = criteria or SelectionCriteria()
     inv = inventory[inventory["period_role"] == "selection"] if len(inventory) else inventory
     active = active_mask(counts)
+    local_dates = counts["ts"].dt.tz_convert(TZ_LOCAL).dt.date  # une seule conversion
     out = manifest_alerts(manifest)
     cats = []
     for r in out.itertuples():
         if m := DST_RE.search(r.alert):
-            cats.append(classify_dst(m.group(1), r.counter_id, counts, active))
+            cats.append(classify_dst(m.group(1), r.counter_id, counts, active, local_dates))
         elif PEAK_RE.search(r.alert):
             cats.append(classify_peak(r.counter_id, counters, counts, inv, c))
         elif "valeurs distinctes de" in r.alert:
@@ -147,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
     inventory = pd.read_csv(folder / "inventory_quality.csv", dtype={"counter_id": str})
     res = review(
         manifest,
-        load_counts(folder / "counts.csv"),
+        load_original_counts(folder / "counts.csv"),
         load_counters(folder / "counters.csv"),
         inventory,
     )
