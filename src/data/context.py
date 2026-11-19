@@ -12,7 +12,7 @@ colonne `label` (ex. « Toussaint ») ; un jour ordinaire a `value = false` et `
 vide. Avant, le nom occupait une deuxième ligne (`holiday_name`). `label` est vide pour
 la météo. `--migrer` convertit un context.csv de l'ancien format sans rien retélécharger.
 
-Grèves (`e1-context/0.3.0`, 19/11/2026, tâche B4) : référentiel de Zeineb
+Grèves (`e1-context/0.3.0`, 19/11/2026, tâche B4) : référentiel E1
 (`data/reference/greves_transport_idf.csv`, un jour par ligne du 01/01/2023 au
 17/11/2026, liste faite à la main, sources dans `greves_transport_idf_sources.csv`).
 `variable = is_strike`, `value = true` si les transports en commun d'Île-de-France sont
@@ -110,7 +110,7 @@ SRC_FORECAST = "meteo_prevue"
 SRC_OBSERVED = "meteo_observee"
 SRC_STRIKES = "greves_idf"
 
-# Référentiel des grèves (Zeineb, versionné dans Git) et délai d'annonce
+# Référentiel des grèves (E1, versionné dans Git) et délai d'annonce
 REFERENCE_DIR = Path(__file__).resolve().parents[2] / "data" / "reference"
 STRIKES_FILE = REFERENCE_DIR / "greves_transport_idf.csv"
 STRIKES_SOURCES_FILE = REFERENCE_DIR / "greves_transport_idf_sources.csv"
@@ -174,7 +174,7 @@ SOURCES = {
         "role": ROLE_CALENDAR,
     },
     SRC_STRIKES: {
-        "name": "Référentiel des grèves des transports franciliens (E1, Zeineb, liste manuelle)",
+        "name": "Référentiel des grèves des transports franciliens (E1, liste manuelle)",
         "url": "data/reference/greves_transport_idf.csv (sources : greves_transport_idf_sources.csv)",
         "license": "liste constituée par E1 à partir de pages datées (RATP, Transilien, presse)",
         "geography": "transports en commun d'Île-de-France (RATP, RER, Transilien)",

@@ -59,7 +59,7 @@ Valeurs remplacées dans `count` (jamais des cibles : `is_scoreable = false`) :
 - Un **zéro mesuré reste un zéro** et reste une cible.
 - `network_gap` : heure absente pour presque tout le réseau (104 heures) : aucune cible ces heures-là.
 
-**Ajustement du contrat (`doc/CONTRATS.md` §3)** : une heure remplie par J-7 a `is_observed = false` mais un `count` rempli (le contrat actuel dit `count = null`). Ce changement sera intégré à la version 2 du contrat ; si cela vous pose problème, dites-le-nous.
+**Ajustement du contrat (`doc/CONTRATS.md` §3)** : une heure remplie par J-7 a `is_observed = false` mais un `count` rempli (le contrat actuel dit `count = null`). Ce changement sera intégré à la version 2 du contrat.
 
 ## 5. Statuts et sites
 
@@ -80,22 +80,26 @@ Sites réservés à E3 : historique vidé avant une installation fictive, placé
 | `S_dev_new`  | 23/06/2026 00:00    | 01/07/2026 00:00 |
 | `S_test_new` | 23/09/2026 00:00    | 01/10/2026 00:00 |
 
-La date fictive est dans `installation_date` de `counters.csv`. Pour 3 ou 1 jour, garder seulement les derniers jours de ce support.
+La date fictive est dans `installation_date` de `counters.csv`.
 
 ## 6. Contexte
 
 - **Calendrier** (`is_holiday`, `is_school_holiday`, `is_strike`) : une ligne par jour, le nom dans `label` ; jointure sur la **date de Paris** du début de l'heure.
 - **Grèves** (`is_strike`) : transports en commun d'Île-de-France annoncés perturbés ; connues **24 h avant** seulement.
 - **Météo** : prévue (J-2) et observée ; jointure sur `interval_end`. Une observation n'est disponible que 24 h après.
-- Avant de prévoir depuis une origine, ne garder que ce qui était connu : les lignes de `context.csv` dont `available_at` est vide (connu à l'avance) ou antérieur ou égal à l'origine.
+- `available_at` : moment où l'information est connue (vide = connue à l'avance).
 
 ## 7. Découpage temporel
 
-Protocole proposé (`doc/PROTOCOLE_EVALUATION.md` §3), **à confirmer par E4** :
+Dates du protocole proposé (`doc/PROTOCOLE_EVALUATION.md` §3), appliquées pour construire les données (sites réservés) :
 
 | Bloc          | Période                 |
 | ------------- | ----------------------- |
-| Apprentissage | jusqu'au 01/07/2026 ; début à choisir : 11/10/2025 (protocole, écrit pour le flux seul) ou 16/10/2023 (les 3 ans) |
+| Apprentissage | jusqu'au 01/07/2026 (le protocole fait commencer l'apprentissage au 11/10/2025 ; les données commencent au 16/10/2023) |
 | Validation    | juillet – août 2026     |
 | Diagnostic    | septembre 2026          |
 | Test final    | origines d'octobre 2026 |
+
+## 8. Si une décision ne vous convient pas
+
+Envoyez-nous un cahier des charges : quelle donnée, quelle règle exacte (quelles heures, quels compteurs, quelle valeur), et pourquoi. Nous régénérons les données en conséquence.
