@@ -40,7 +40,7 @@ Documents de référence : [sujet](../../ParisPulse_Sujet_etudiants.pdf), [archi
 
 ## 2. État d'avancement
 
-_Dernière mise à jour : 2026-11-19 - MOD-005._
+_Dernière mise à jour : 2026-11-20 - MOD-006._
 
 | Étape (README E2) | État | Renvoi |
 | --- | --- | --- |
@@ -49,7 +49,7 @@ _Dernière mise à jour : 2026-11-19 - MOD-005._
 | 1. Série réelle E1 + origine et données autorisées E4 | 🟡 `hist-20261117` d'E1 reçu et vérifié ; cas `proto-v0` d'E4 provisoires, 3 écarts signalés (§8) | MOD-005 |
 | 2. Référence 168 h + repli causal (`baseline.py`) | ✅ Codée et testée sur cas synthétique ; repli N = 4 provisoire (D-03) ; seconde référence médiane 4 semaines | MOD-003, MOD-004 |
 | 3. Vérification manuelle + raccord E4/E5 | 🟡 Vérifié à la main sur cas synthétique et sur 11 valeurs réelles ; consommation par E4/E5 à obtenir | MOD-003, MOD-005 |
-| 4. Variables communes (`features.py`) | 🔲 | - |
+| 4. Variables communes (`features.py`) | 🟡 `f1.0` codée, testée, jeu d'apprentissage réel construit (E2-TECH-002) ; à présenter à E3 et E1 | MOD-006 |
 | 5. Méthode justifiée + variante explicative (`train.py`) | 🔲 | - |
 | 6. Calcul exécutable et exports, recalcul autre origine (`predict.py`) | 🟡 Chaîne complète et commande `python -m src.models.known.predict` ; 10 858 cas de validation calculés (E2-TECH-001) ; recalcul par E5 à faire | MOD-003, MOD-005 |
 | 7. Cas difficile, extension, test final après gel | 🔲 | - |
@@ -69,9 +69,12 @@ src/models/
                     list_methods/check_eligibility/select_method
   known/
     baseline.py     weekly_reference, lookup_lagged, fallback_value, prophet_reference (optionnel)
-    features.py     calendar_features (heure/jour, toujours présentes), history_features,
-                    context_features (fériés, vacances, météo : seule partie retirée par
-                    l'ablation), build_feature_frame, build_training_frame
+    features.py     f1.0 : calendar_features (horizon, heure/jour/week-end/mois locaux),
+                    history_features (lags 168/336 h, profil 4 semaines, niveaux, tendance,
+                    manques, zéros), context_features par groupes (calendar, strikes,
+                    weather_forecast : seule partie retirée par l'ablation),
+                    build_feature_frame (un cas), build_training_frame (en bloc, même calcul),
+                    training_origins, training_counters
     train.py        TrainConfig, TrainedModel, exclude_reserved_sites, fit, compare_variants,
                     save_model/load_model
     predict.py      build_inputs, predict_24h (signature imposée), run_experiment,
@@ -89,7 +92,7 @@ counts.csv (E1) --build_inputs (available_at <= origin)--> ForecastInputs --asse
   --> ForecastResult --to_forecast_frame / to_run_row--> <method_run_id>.pred.csv / .runs.csv
 ```
 
-Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_timestamps()`, `Case.from_row`, `assert_causal` ; dans `baseline.py`, `weekly_reference`, `weekly_profile_reference` (MOD-004), `admissible_history`, `lookup_lagged`, `fallback_value` ; dans `schemas.py`, `ForecastResult.is_complete`, `to_forecast_frame`, `to_run_row` ; dans `predict.py`, `counts_history_loader`, `build_inputs`, `predict_24h` (variantes `reference`, `reference_profile`), `run_experiment`, `error_result`, `select_cases`, `train_site_counters`, `write_predictions`, `write_runs` et la commande `main`. Toutes les autres lèvent `NotImplementedError("E2 : ...")`. Tests : [tests/test_known_baseline.py](../../tests/test_known_baseline.py), [tests/test_known_predict.py](../../tests/test_known_predict.py).
+Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_timestamps()`, `Case.from_row`, `assert_causal` ; dans `baseline.py`, `weekly_reference`, `weekly_profile_reference` (MOD-004), `admissible_history`, `lookup_lagged`, `fallback_value` ; dans `schemas.py`, `ForecastResult.is_complete`, `to_forecast_frame`, `to_run_row` ; dans `predict.py`, `counts_history_loader`, `build_inputs`, `predict_24h` (variantes `reference`, `reference_profile`), `run_experiment`, `error_result`, `select_cases`, `train_site_counters`, `write_predictions`, `write_runs` et la commande `main` ; tout `features.py` (MOD-006). Toutes les autres lèvent `NotImplementedError("E2 : ...")`. Tests : [tests/test_known_baseline.py](../../tests/test_known_baseline.py), [tests/test_known_predict.py](../../tests/test_known_predict.py), [tests/test_known_features.py](../../tests/test_known_features.py).
 
 ---
 
@@ -108,6 +111,45 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
 - **Vérifications effectuées** : commandes lancées, résultats observés (ou "aucune").
 - **Points ouverts** : ce qui reste incertain ou à valider.
 ```
+
+### MOD-006 - 2026-11-20 - Variables f1.0 (`features.py`), tests et jeu d'apprentissage réel
+
+- **Auteur** : Ania Garoui (assistée par Claude Code).
+- **Branche / commit** : `Team2` / non commité.
+- **Quoi** :
+  - [features.py](../../src/models/known/features.py), `FEATURE_VERSION = "f1.0"` :
+    - calendrier de base, toujours présent : horizon, heure locale, jour, week-end, mois (Europe/Paris) ;
+    - historique, toujours présent : `lag_168h`, `lag_336h` et leurs indicateurs de manque, `profile_median_4w` (même valeur que `reference_profile`), `profile_n_weeks`, `level_24h`, `level_168h`, `level_prev_168h`, `trend_7d_log`, `missing_share_168h`, `hours_since_last_obs`, `zero_run_hours` (zéros mesurés consécutifs, calculés sans regarder le futur) ;
+    - contexte en groupes (`CONTEXT_GROUPS`) : `calendar` (férié, vacances zone C, jointure sur la date locale), `strikes` (grève IDF, date locale, disponible 24 h avant le jour), `weather_forecast` (bulletin J−2, jointure `valid_time = interval_end`). Une ligne publiée après l'origine donne NaN ; une clé en double lève une erreur ; la météo observée n'est jamais lue ;
+    - traçabilité : `feature_version`, `case_id`, `counter_id`, `origin`, `target_timestamp`, `horizon`, `max_input_available_at` (contrôlé `<= origin`).
+  - Un seul calcul pour les deux chemins : `build_feature_frame` (un cas, inférence) et `build_training_frame` (tous les cas d'un compteur en une fois). Le calcul ne lit que le passé admissible même avec l'historique complet.
+  - Nouvelles fonctions : `training_origins` (minuit local, 4 semaines de préchauffage, 24 cibles publiées à `fit_cutoff`), `training_counters` (S_train `retained` + `robustness`, refus d'un groupe partagé avec les sites réservés), `resolve_context_groups`, `feature_columns`.
+  - [tests/test_known_features.py](../../tests/test_known_features.py) : 15 tests synthétiques, avec le passage à l'heure d'été du 30/03/2025.
+  - [registry.py](../../src/models/registry.py) passé au formateur Ruff (mise en forme seulement).
+  - Essai technique [E2-TECH-002](../experiments/E2-TECH-002.md) sur `hist-20261117`.
+- **Pourquoi** : étape 4 du README E2 ; base du modèle sites connus et de l'ablation calendrier (sujet p. 6, plan §5). Plan validé le 2026-11-20 (décisions D-12 à D-16).
+- **Fichiers** : [features.py](../../src/models/known/features.py), [tests/test_known_features.py](../../tests/test_known_features.py), [registry.py](../../src/models/registry.py), [E2-TECH-002.md](../experiments/E2-TECH-002.md), ce fichier.
+- **Impact partenaires / contrats** :
+  - Signatures modifiées :
+    - `context_features(inputs, targets, context_groups=None)` ;
+    - `build_feature_frame(inputs, use_context=True, *, context_groups=None)` ;
+    - `build_training_frame(..., *, context_groups=None, publication_lag_hours=None)`.
+  - `use_context=True` garde le sens « tout le contexte ».
+  - À présenter à E3 : bibliothèque partageable, sans identifiant de compteur ; avec 7 jours de support, les variables au-delà d'une semaine valent NaN.
+  - À présenter à E1 : lecture de `context.csv` (rôles, météo sur `interval_end`, `available_at` des grèves).
+  - Aucune colonne CSV d'échange modifiée.
+- **Vérifications effectuées** :
+  - `pytest` : 181 tests passés, dont 15 nouveaux. `ruff check src tests` et `ruff format --check src tests` sans problème (Python 3.11, `.venv`).
+  - Sur données réelles (E2-TECH-002) : 97 compteurs, 2 075 614 lignes ; aucune entrée disponible après l'origine ; aucune cible publiée après `fit_cutoff`.
+  - Égalité exacte des deux chemins sur 12 couples tirés au hasard.
+  - 4 lignes vérifiées à la main depuis les CSV.
+  - Empreintes SHA-256 conformes au manifeste.
+- **Points ouverts** :
+  - `fit_cutoff` provisoire (01/06 de `proto-v0` contre 01/07 dans le protocole proposé).
+  - I3 (décalages en UTC) non tranché.
+  - Construction en 204 s, optimisable si besoin.
+  - Ablation à faire seulement après validation du protocole.
+  - E3 et E1 à prévenir.
 
 ### MOD-005 - 2026-11-19 - Chaîne complète sur données réelles : chargement, filtrage causal, predict_24h, commande (Corrige MOD-004)
 
@@ -222,14 +264,15 @@ Prioriser dans l'ordre. Cocher avec le renvoi `MOD-NNN` uniquement une fois vér
 - [x] Implémenter `ForecastResult.is_complete`, `to_forecast_frame`, `to_run_row`. MOD-003
 - [x] Implémenter `build_inputs`, `assert_causal`, `predict_24h` (variantes `reference`, `reference_profile`). MOD-005
 - [x] Vérifier 3 à 5 valeurs à la main sur un petit cas construit (zéro observé, heure absente, changement d'heure). MOD-003
-- [ ] Formater [registry.py](../../src/models/registry.py) (`ruff format`), seul fichier qui fait encore échouer `./run.sh check`.
+- [x] Formater [registry.py](../../src/models/registry.py) (`ruff format`), seul fichier qui fait encore échouer `./run.sh check`. MOD-006
 - [x] Produire un premier `.pred.csv` / `.runs.csv` sur données réelles. MOD-005 (E2-TECH-001)
 - [ ] Le faire consommer par E4 (score) et E5 (affichage) : preuve d'usage à consigner au §8.
 - [ ] Transmettre à E4 les 3 écarts de `proto-v0` (§8) et recalculer sur la version corrigée.
 
 ### Étude principale
 
-- [ ] `features.py` : calendrier de base (heure locale, jour), contexte (fériés, vacances, météo admissible), lags, profils, masques de manque ; `FEATURE_VERSION` incrémentée à chaque changement.
+- [x] `features.py` : calendrier de base (heure locale, jour), contexte (fériés, vacances, météo admissible), lags, profils, masques de manque ; `FEATURE_VERSION` incrémentée à chaque changement. MOD-006 (`f1.0`, E2-TECH-002)
+- [ ] Présenter les variables `f1.0` et les nouvelles signatures à E3 (bibliothèque partagée) et à E1 (lecture de `context.csv`) ; consigner leur retour au §8.
 - [ ] Tester Prophet hors intégration (viabilité, coût par cas) avant toute discussion d'ajout au projet (D-10).
 - [ ] Traiter les incohérences restantes du §10 (C3 après version finale des données, C4 avec E5, I1–I5, M1–M3).
 - [ ] Choisir une méthode justifiée par la bibliographie (statistique, tabulaire, réseau compact, modèle partagé...).
@@ -262,6 +305,11 @@ Prioriser dans l'ordre. Cocher avec le renvoi `MOD-NNN` uniquement une fois vér
 | D-09 | 2026-11-19 | C4 : origine de `predict_24h` | Décidé (origine) / Ouvert (cohérence) | La signature `predict_24h(case, history, variant)` est exigée par E5. Sa coexistence avec `ForecastMethod(inputs, variant)` et le double routage seront traités plus tard. | E2, E5 |
 | D-10 | 2026-11-19 | C5 : Prophet | Décidé | Tester d'abord Prophet pour juger de sa viabilité ; son intégration au projet (dépendance, module, bibliographie) ne sera discutée qu'ensuite. Précise D-04. | E2 |
 | D-11 | 2026-11-19 | Valeurs d'entrée des références | Proposé | Entrées = mesure publiée (`count_raw` si `is_observed`), sans les estimations d'E1 (J-7, année précédente) ni le masque rétrospectif `long_zero_run` ; les zéros mesurés restent des entrées. Option `values="e1_filled"` conservée pour l'étude des zéros avec E1. Motif : 5 234 horizons auraient été `ok` sur une estimation (E2-TECH-001). | E2, E1, E4 |
+| D-12 | 2026-11-20 | Ablation par groupes de contexte | Décidé (A. Garoui) | Contexte découpé en `calendar` (fériés, vacances), `strikes`, `weather_forecast` ; `use_context=True` = tous, `context_groups` pour n'en garder qu'une partie. Permet de tester les fériés sans mélanger avec la météo. MOD-006 | E2 → E3 |
+| D-13 | 2026-11-20 | Météo observée | Décidé (A. Garoui) | Jamais en entrée en `f1.0` (rôle `past_observation`) : réservée à l'analyse après coup ; seule la météo prévue J−2 sert. MOD-006 | E2 |
+| D-14 | 2026-11-20 | Décalages des variables | Décidé provisoirement (A. Garoui) | Décalages en heures UTC, comme les références ; l'heure locale est une variable. I3 reste ouvert. MOD-006 | E2 |
+| D-15 | 2026-11-20 | Identité du compteur | Décidé (A. Garoui) | Pas d'identifiant de compteur dans les variables ; niveaux récents à la place. Modèle partagé, réutilisable par E3. MOD-006 | E2, E3 |
+| D-16 | 2026-11-20 | Compteurs d'apprentissage | Décidé (A. Garoui) | Les 97 `S_train` (`retained` + `robustness`) ; option `include_robustness=False` pour les 67 `retained`. MOD-006 | E2, E4 |
 
 ---
 
@@ -272,6 +320,7 @@ Chaque expérience a sa fiche dans `reports/experiments/` (gabarit [experiment.m
 | ID | Date | Question | Variantes comparées | Protocole / snapshot | MAE macro | Cas complets / attendus | Coût | Conclusion | Fiche |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | E2-TECH-001 | 2026-11-19 | Essai technique : chaîne complète sur données réelles (pas de comparaison) | `weekly_naive`, `weekly_profile_median` | `proto-v0` (non validé) / `hist-20261117`, bloc validation | non calculée (E4) | 10 858 / 10 858 pour chaque variante | ≈ 2 min pour 10 858 cas, CPU portable | Chaîne fonctionnelle ; 6,2 % / 3,5 % d'horizons en repli | [fiche](../experiments/E2-TECH-001.md) |
+| E2-TECH-002 | 2026-11-20 | Essai technique : jeu d'apprentissage des variables `f1.0` (pas de modèle) | sans objet | aucun (`fit_cutoff` 01/06/2026 provisoire) / `hist-20261117` | sans objet | 87 826 couples, 2 075 614 lignes | 204 s, 374 Mo | Variables sans fuite, chemins identiques ; prêtes pour un modèle | [fiche](../experiments/E2-TECH-002.md) |
 
 ---
 
@@ -310,7 +359,7 @@ Statuts : ✅ corrigé · ⏸️ reporté (décision prise) · 🔲 à traiter.
 | --- | --- | --- | --- | --- |
 | C1 | « y_pred nul » et « cibles nulles » : confusion possible entre zéro et manquant. Un 0 rendrait le cas complet et fausserait la MAE ; exclure les zéros contredit le sujet. | Sujet p. 3 ; CONTRATS §7 | Appliquer la correction : manquant = NaN, zéro observé conservé. | ✅ MOD-002 |
 | C2 | L'ablation calendrier n'est pas isolée : fériés et vacances dans `calendar_features`, alors que `use_context` ne coupe que `context_features`. | Sujet p. 6 ; plan §5 | Appliquer la correction : fériés et vacances déplacés dans `context_features`. | ✅ MOD-002 |
-| C3 | `counts.csv` n'a ni `available_at` ni `site_group_id` : `build_inputs` et `exclude_reserved_sites` ne peuvent pas être codées telles quelles ; latence fixée à 24 h en dur au lieu de `config/project.yaml`. | CONTRATS §3, §5 ; gabarit `counts.csv` | Attendre la version finale des données avant de choisir (D-08). | ⏸️ |
+| C3 | `counts.csv` n'a ni `available_at` ni `site_group_id` : `build_inputs` et `exclude_reserved_sites` ne peuvent pas être codées telles quelles ; latence fixée à 24 h en dur au lieu de `config/project.yaml`. | CONTRATS §3, §5 ; gabarit `counts.csv` | Attendre la version finale des données avant de choisir (D-08). | ⏸️ En partie levée (MOD-006) : `site_group_id` lu dans `inventory_quality.csv` par `training_counters`, latence lue dans la configuration ; `available_at` toujours absent |
 | C4 | Deux points d'entrée (`predict_24h(case, history, …)` et `ForecastMethod(inputs, variant)`), ambiguïté sur qui filtre l'historique, routage en double (`predict_24h` et `select_method`), alors que le sujet confie l'implémentation du routage à E5. | Sujet p. 9 ; CONTRATS §9 | Signature exigée par E5 ; la cohérence sera traitée plus tard (D-09). | ⏸️ |
 | C5 | Prophet non déclaré dans `pyproject.toml` (calcul non reproductible par l'enseignant), absent de la bibliographie, placé dans `baseline.py`, et ne compte pas comme expérience DL. | Sujet p. 2, 4, 10 | Tester d'abord sa viabilité ; intégration discutée ensuite (D-10). | ⏸️ |
 
@@ -320,9 +369,9 @@ Statuts : ✅ corrigé · ⏸️ reporté (décision prise) · 🔲 à traiter.
 | --- | --- | --- | --- |
 | I1 | `schemas.py` est dans `src/models/` alors que le contrat commun relève de `src/common/contracts.py` ; risque de divergence si E4 ou E5 définissent leur propre `Case`. | ARCHITECTURE §5 ; D-01 | 🔲 |
 | I2 | `TrainedModel` ne suit pas `model_metadata.example.json` : noms différents (`donor_site_groups`, `label_interval`, `train_seconds`) ; il manque `excluded_site_groups` (preuve attendue par E3), `weights_sha256`, `minimum_history_hours`, `supported_scenarios`, `fallback`. | CONTRATS §6 ; gabarit métadonnées | 🔲 |
-| I3 | Référence décalée de 168 h UTC, mais repli en heure locale, et le plan dit « même heure une semaine avant » : décalage d'une heure en semaine de changement d'heure. Règle à choisir, documenter et tester. | Plan §7 ; PROTOCOLE §2 | 🔲 Écart rendu visible par le test de MOD-003 (repli à 11Z, valeur principale à 10Z) ; règle non tranchée |
+| I3 | Référence décalée de 168 h UTC, mais repli en heure locale, et le plan dit « même heure une semaine avant » : décalage d'une heure en semaine de changement d'heure. Règle à choisir, documenter et tester. | Plan §7 ; PROTOCOLE §2 | 🔲 Écart rendu visible par le test de MOD-003 (repli à 11Z, valeur principale à 10Z) ; règle non tranchée. Les variables `f1.0` suivent l'UTC (D-14) |
 | I4 | `MIN_HISTORY_HOURS = 168` est ambigu : avec 24 h de latence, il faut la fenêtre [origin − 168 h, origin − 145 h], pas « 168 h d'historique ». Utilisée par `check_eligibility`, elle refuserait la référence alors que son repli peut répondre. | Sujet p. 2 (méthode simple toujours utilisable) | 🔲 |
-| I5 | MOD-001 concluait « aucune incohérence critique » et a été vérifiée avec Python 3.13 au lieu de 3.11 ; ruff non exécuté. | Règles de ce fichier | 🟡 Conclusion corrigée par MOD-002 ; vérification 3.11 + ruff à faire |
+| I5 | MOD-001 concluait « aucune incohérence critique » et a été vérifiée avec Python 3.13 au lieu de 3.11 ; ruff non exécuté. | Règles de ce fichier | ✅ Conclusion corrigée par MOD-002 ; Python 3.11 et ruff utilisés depuis MOD-003, `ruff format --check` sans problème depuis MOD-006 |
 
 ### Mineures
 

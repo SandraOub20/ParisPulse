@@ -4,6 +4,39 @@ Format : [doc/SUIVI_ET_REMISE.md §4](../../doc/SUIVI_ET_REMISE.md). Entrées le
 
 ---
 
+## 2026-11-20 - Variables `f1.0` pour le modèle sites connus
+
+- **Date et journée** : 2026-11-20
+- **Question / objectif personnel** : construire des variables utilisables par un modèle sites connus, sans information future, identiques à l'apprentissage et à l'inférence, et découpées pour permettre l'ablation « avec / sans calendrier ».
+- **Travail réalisé et outils utilisés** (VS Code, Claude Code, Python 3.11, pandas, numpy, pytest, ruff) :
+  - Relecture du suivi d'équipe (MOD-003 à MOD-005) et vérification des données d'E1 (`hist-20261117`) ; décompression de l'archive.
+  - Plan proposé puis validé (décisions D-12 à D-16) : ablation par groupes de contexte, météo observée exclue, décalages en UTC, pas d'identifiant de compteur, 97 compteurs `S_train`.
+  - Écriture de [features.py](../../src/models/known/features.py) (`f1.0`) : calendrier de base, historique (décalages 168/336 h, profil 4 semaines, niveaux, tendance, manques, zéros), contexte (fériés, vacances, grèves, météo prévue). Un seul calcul sert aux deux chemins (un cas, ou tous les cas d'un compteur). Entrée MOD-006.
+  - 15 tests dans [tests/test_known_features.py](../../tests/test_known_features.py) ; mise en forme de `registry.py`.
+  - Essai technique [E2-TECH-002](../experiments/E2-TECH-002.md) sur les données réelles.
+- **Comparaison ou contrôle effectué** :
+  - Cas construit autour du passage à l'heure d'été (30/03/2025) : heure locale, jointure des fériés sur la date locale (le 30/03 n'a que 23 heures, h24 tombe le 31/03), zéro mesuré contre valeur manquante, bulletin météo ou grève publiés trop tard.
+  - Modifier le futur (comptages et contexte) ne change aucune variable, même sans le filtrage de `build_inputs`.
+  - Égalité des deux chemins de calcul : sur le cas construit et sur 12 couples réels tirés au hasard.
+  - Cohérence avec les références : `lag_168h` = `lookup_lagged`, `profile_median_4w` = `weekly_profile_reference`.
+  - 4 lignes réelles vérifiées en relisant `counts.csv` et `context.csv`.
+- **Données, protocole et versions** : `hist-20261117` (empreintes conformes au manifeste) ; protocole non validé ; `fit_cutoff` provisoire au 01/06/2026 (première origine de validation de `proto-v0`) ; latence 24 h ; branche `Team2`, non commitée.
+- **Résultat obtenu, avec lien vers la preuve** :
+  - 181 tests passés, ruff sans problème.
+  - Jeu d'apprentissage réel : 97 compteurs, 87 826 couples compteur/origine, 2 075 614 lignes, 374 Mo, 204 s ; NaN ≤ 0,33 % sur l'historique, 0 % sur le contexte ([E2-TECH-002](../experiments/E2-TECH-002.md)).
+- **Analyse critique et décision** :
+  - Avec 24 h de latence, un décalage de 24 h n'est pas utilisable pour tous les horizons : seuls les décalages ≥ 48 h le sont. D'où 168 et 336 h.
+  - La météo prévue se joint sur la fin de l'heure (`interval_end`), pas sur son début : une erreur ici aurait décalé la météo d'une heure sans erreur visible.
+  - Les jours fériés sont rares en validation (2 jours) et absents du test d'octobre : l'ablation sur les fériés aura peu d'effectif. Les vacances et les grèves varient davantage.
+  - Le calcul « en bloc » réutilise exactement le calcul « par cas », et un test le prouve : c'est ce qui garantit des variables identiques à l'apprentissage et à l'inférence.
+- **Partenaire / retour reçu / usage vérifié** : aucun pour l'instant. À présenter à E3 (bibliothèque partagée, nouvelles signatures) et à E1 (lecture de `context.csv`).
+- **Prochaine étape** :
+  - Prévenir E3 et E1, et consigner leur retour.
+  - Choisir un premier modèle justifié par la bibliographie et coder `train.py` (I2 : aligner `TrainedModel` sur le gabarit des métadonnées).
+  - Attendre la validation du protocole avant l'ablation avec / sans calendrier.
+
+---
+
 ## 2026-11-19 - Squelette `src/models`, revue de cohérence et premières corrections
 
 - **Date et journée** : 2026-11-19
