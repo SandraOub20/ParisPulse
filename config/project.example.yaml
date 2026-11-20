@@ -12,6 +12,11 @@ paths:
   exports: artifacts/exports
 snapshot_id: null
 context_source: null
+# Source complémentaire E1 (src/data/context.py) : hypothèses de disponibilité à valider par E4.
+context:
+  forecast_lead_days: 2             # prévision météo de J-2 (J-1 utiliserait des bulletins publiés après l'origine)
+  run_publication_delay_hours: 6    # délai maximal supposé entre le calcul et la publication d'une prévision
+  obs_publication_lag_hours: 24     # une observation météo horaire est disponible 24 h après
 protocol:
   id: null
   status: proposed
