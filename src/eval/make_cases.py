@@ -159,4 +159,4 @@ if __name__ == "__main__":
         "cases_sha256": sha256(OUT / "cases.csv"),
     }
     (OUT / "cases_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    print("\nécrit :", OUT / "cases.csv")
+    print("\nécrit :", (OUT / "cases.csv").relative_to(ROOT))
