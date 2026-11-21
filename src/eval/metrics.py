@@ -166,16 +166,16 @@ def evaluate_model_case(case, model ,y_true, y_pred, is_scoreable):
         a counter + a context = case
 
     model : str,
-        model to evaluate (obtained from forecasts.csv)
+        model to evaluate 
     
-    y_true : array, (shape (24xnb_counters_considered,nb_models)) 
-        real values for all models (obtained from counts.csv)
+    y_true : array,  
+        real values for all models 
     
-    y_pred : array, (shape (24)) 
+    y_pred : array, 
         model predictions 
 
     is_scoreable : array(bool)
-        if some values are missing
+        indicates if some values are missing
 
 
     Returns
@@ -396,4 +396,81 @@ def evaluate_cases(cases,forecasts,observations):
     return pd.DataFrame(errors)
 
 
+def evaluation_cases_from_forecasts(forecasts_csv, cases_csv, observations_csv):
+    """
+    Prepare the cases and observations associated to the forecasts passed, then call
+    evaluate_cases to evaluate the cases with the forecasts and observations associated.
+    
+    Parameters
+    ----------
+    forecasts_csv : str
+        path to the CSV file containing the forecasts to evaluate
+    cases_csv : str
+        path to the CSV file containing all the cases 
+    observations_csv : str
+        path to the CSV file containing all the observations 
+
+    Returns
+    -------
+    pandas.DataFrame
+        evaluated_cases function output for the cases and observations associated to the forecasts passed
+    """
+
+    all_cases = pd.read_csv(cases_csv)
+    all_observations = pd.read_csv(observations_csv)
+
+    forecasts = pd.read_csv(forecasts_csv)
+    case_ids = forecasts["case_id"].unique()
+
+    #define which cases are associated with these forecasts (by case_id)
+    cases = all_cases[
+        all_cases["case_id"].isin(case_ids)
+    ].copy()
+
+    counter_ids = cases["counter_id"].unique()
+
+    observations = all_observations[
+        all_observations["counter_id"].isin(counter_ids)
+    ].copy()
+
+    return evaluate_cases(cases, forecasts, observations)
+
+
+def evaluation_cases_from_cases(cases_csv, forecasts_csv, observations_csv):
+    """
+    Prepare the forecasts and observations associated to the cases passed then call 
+    evaluate_cases to evaluate the cases with the forecasts and observations associated.
+    
+    Parameters
+    ----------
+    cases_csv : str
+        path to the CSV file containing the cases to evaluate
+    forecasts_csv : str
+        path to the CSV file containing all the forecasts
+    observations_csv : str
+        path to the CSV file containing all the observations
+
+    Returns
+    -------
+    pandas.DataFrame
+        evaluated_cases function output for the forecasts and observations associated to the cases passed
+    """
+
+    cases = pd.read_csv(cases_csv)
+
+    all_forecasts = pd.read_csv(forecasts_csv)
+    all_observations = pd.read_csv(observations_csv)
+
+    #define which forecasts are associated with these cases (by case_id)
+    forecasts = all_forecasts[
+        all_forecasts["case_id"].isin(cases["case_id"].unique())
+    ].copy()
+
+    counter_ids = cases["counter_id"].unique()
+
+    observations = all_observations[
+        all_observations["counter_id"].isin(counter_ids)
+    ].copy()
+
+    return evaluate_cases(cases, forecasts, observations)
 
