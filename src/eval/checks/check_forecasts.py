@@ -1,8 +1,9 @@
 """Contrôles d'un fichier de prévisions d'E2 / E3.
 
-    uv run python -m src.eval.check_forecasts fichier1.pred.csv [fichier2.pred.csv ...]
-    e.g. uv run python -m src.eval.check_forecasts data/prediction_results/EXP-001/e2-reference_profile-measured.pred.csv data/prediction_results/EXP-001/e2-reference-measured.pred.csv
+uv run python -m src.eval.checks.check_forecasts fichier1.pred.csv [fichier2.pred.csv ...]
+e.g. uv run python -m src.eval.checks.check_forecasts data/prediction_results/EXP-001/e2-reference_profile-measured.pred.csv data/prediction_results/EXP-001/e2-reference-measured.pred.csv
 """
+
 import argparse
 
 import pandas as pd
@@ -32,8 +33,14 @@ pred = pd.concat([pd.read_csv(p, dtype={"counter_id": str}) for p in args.preds]
 
 print("1. Colonnes")
 template = list(pd.read_csv(template_path).columns)
-say(not [c for c in template if c not in pred.columns], f"manquantes : {[c for c in template if c not in pred.columns]}")
-say(not [c for c in pred.columns if c not in template], f"en plus : {[c for c in pred.columns if c not in template]}")
+say(
+    not [c for c in template if c not in pred.columns],
+    f"manquantes : {[c for c in template if c not in pred.columns]}",
+)
+say(
+    not [c for c in pred.columns if c not in template],
+    f"en plus : {[c for c in pred.columns if c not in template]}",
+)
 empty = [c for c in pred.columns if pred[c].isna().all()]
 print("    colonnes vides partout :", empty)
 
@@ -49,9 +56,16 @@ pred["has_value"] = pred["y_pred"].notna()
 hours = pred.groupby(["method_run_id", "case_id"])["has_value"].sum().reset_index(name="h")
 table = []
 for run, g in hours.groupby("method_run_id"):
-    table.append({"méthode": run, "attendus": len(expected), "sans ligne": len(expected - set(g["case_id"])),
-                  "tous vides": int((g["h"] == 0).sum()), "partiels": int(((g["h"] > 0) & (g["h"] < 24)).sum()),
-                  "complets": int((g["h"] == 24).sum())})
+    table.append(
+        {
+            "méthode": run,
+            "attendus": len(expected),
+            "sans ligne": len(expected - set(g["case_id"])),
+            "tous vides": int((g["h"] == 0).sum()),
+            "partiels": int(((g["h"] > 0) & (g["h"] < 24)).sum()),
+            "complets": int((g["h"] == 24).sum()),
+        }
+    )
 print(pd.DataFrame(table).to_string(index=False))
 n = len(set(pred["case_id"]) - expected)
 say(n == 0, f"cas livrés absents de cases.csv : {n}")
@@ -69,10 +83,17 @@ n = (h1["target_timestamp"] != h1["origin"]).sum()
 say(n == 0, f"horizon 1 qui ne commence pas à l'origine : {n}")
 bad = 0
 for _, g in pred.groupby(["case_id", "method_run_id"]):
-    if not (g.sort_values("horizon")["target_timestamp"].diff().dropna() == pd.Timedelta(hours=1)).all():
+    if not (
+        g.sort_values("horizon")["target_timestamp"].diff().dropna() == pd.Timedelta(hours=1)
+    ).all():
         bad += 1
 say(bad == 0, f"cas dont les heures ne se suivent pas : {bad}")
-j = pred.merge(counts, how="left", left_on=["counter_id", "target_timestamp"], right_on=["counter_id", "timestamp"])
+j = pred.merge(
+    counts,
+    how="left",
+    left_on=["counter_id", "target_timestamp"],
+    right_on=["counter_id", "timestamp"],
+)
 n = j["in_counts"].isna().sum()
 say(n == 0, f"heures prévues absentes de counts.csv : {n}")
 
@@ -89,7 +110,10 @@ say(n == 0, f"prévisions de test d'un modèle ajusté après le début du test 
 print("\n5. Mêmes informations pour toutes les méthodes")
 for col in ["snapshot_id", "protocol_id"]:
     n = (~pred[col].astype(str).isin(cases[col])).sum()
-    say(n == 0, f"{col} différent de cases.csv : {n} lignes (valeurs : {sorted(pred[col].astype(str).unique())})")
+    say(
+        n == 0,
+        f"{col} différent de cases.csv : {n} lignes (valeurs : {sorted(pred[col].astype(str).unique())})",
+    )
 new_sites = pred[pred["scenario"] == "new_site"]
 if len(new_sites):
     n = (new_sites.groupby("case_id")["support_id"].nunique() > 1).sum()
