@@ -10,7 +10,7 @@ paths:
   models: artifacts/models
   cache: artifacts/cache
   exports: artifacts/exports
-snapshot_id: null
+snapshot_id: hist-20261117
 context_source: null
 # Source complémentaire E1 (src/data/context.py) : hypothèses de disponibilité à valider par E4.
 context:
@@ -28,10 +28,7 @@ protocol:
   validation_until: 2026-08-31
   test_start: 2026-10-01
   test_end: 2026-11-14
-  site_groups:
-    train: []
-    dev_new: []
-    test_new: []
+  # Les listes de sites (train / dev_new / test_new) restent dans selection_summary.json (E1), pas recopiées ici
   local_budget_hours: [24, 72, 168]
 methods: []
 compute_budget:
