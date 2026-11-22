@@ -229,7 +229,6 @@ data/processed/*
 !data/processed/README.md
 data/manifests/*
 !data/manifests/README.md
-data/prediction_results/*
 !data/prediction_results/README.md
 data/evaluation/*
 !data/evaluation/README.md

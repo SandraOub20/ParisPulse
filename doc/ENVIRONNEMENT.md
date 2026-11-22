@@ -42,19 +42,19 @@ uv run --locked jupyter lab
 | Figures et cartes | Matplotlib, Plotly, Folium |
 | Future application | Streamlit, streamlit-folium |
 | Développement | JupyterLab, ipykernel, pytest, Ruff |
-| Expérience deep learning, installation séparée | PyTorch, groupe `dl` |
+| Expérience deep learning, installation séparée | PyTorch et Chronos-2 (`chronos-forecasting`), groupe `dl` |
 
 Le socle fonctionne sur CPU. PyArrow est aussi installé comme dépendance de Streamlit ; son usage interne reste facultatif. DuckDB et les bibliothèques de modèles supplémentaires pourront être ajoutés si les expériences les justifient.
 
-Pour installer PyTorch :
+Pour installer PyTorch et Chronos-2 :
 
 ```sh
 ./run.sh setup --group dl
-uv run --locked --group dl python -c "import torch; print(torch.__version__)"
+uv run --locked --group dl python -c "import torch, chronos; print(torch.__version__, chronos.__file__)"
 ./run.sh notebook
 ```
 
-Sous Linux/Windows, le groupe utilise l'index officiel des roues CPU ; sous macOS, la distribution standard est utilisée. Aucun poids préentraîné n'est téléchargé. Les commandes `check`, `test` et `notebook` du lanceur réutilisent l'environnement installé, sans le synchroniser à nouveau. Pour les appels directs à `uv run`, préciser `--group dl` si nécessaire. Relancer `setup` sans ce groupe retire les dépendances propres au deep learning.
+Sous Linux/Windows, PyTorch utilise l'index officiel des roues CPU ; sous macOS, la distribution standard est utilisée. Aucun poids préentraîné n'est téléchargé. Les commandes `check`, `test` et `notebook` du lanceur réutilisent l'environnement installé, sans le synchroniser à nouveau. Pour les appels directs à `uv run`, préciser `--group dl` si nécessaire. Relancer `setup` sans ce groupe retire les dépendances propres au deep learning.
 
 ## Éditeur et imports
 

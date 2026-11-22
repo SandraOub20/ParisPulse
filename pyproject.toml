@@ -24,7 +24,7 @@ dev = [
     "pytest>=8,<10",
     "ruff>=0.11,<1",
 ]
-dl = ["torch>=2.6,<3"]
+dl = ["torch>=2.6,<3", "chronos-forecasting>=2.0"]
 
 [tool.uv]
 package = false
