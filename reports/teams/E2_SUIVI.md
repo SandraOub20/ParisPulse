@@ -40,17 +40,17 @@ Documents de référence : [sujet](../../ParisPulse_Sujet_etudiants.pdf), [archi
 
 ## 2. État d'avancement
 
-_Dernière mise à jour : 2026-11-20 - MOD-006._
+_Dernière mise à jour : 2026-11-22 - MOD-007._
 
 | Étape (README E2) | État | Renvoi |
 | --- | --- | --- |
 | 0. Revue de cohérence sujet / architecture / contrats / `src/models` | 🟡 Revue faite, incohérences en partie traitées (§10) | MOD-001, MOD-002 |
 | 0. Squelette de code `src/models` (signatures, types, docstrings) | ✅ Fait | MOD-001 |
-| 1. Série réelle E1 + origine et données autorisées E4 | 🟡 `hist-20261117` d'E1 reçu et vérifié ; cas `proto-v0` d'E4 provisoires, 3 écarts signalés (§8) | MOD-005 |
+| 1. Série réelle E1 + origine et données autorisées E4 | 🟡 `hist-20261117` d'E1 reçu et vérifié ; `proto-v1` d'E4 (branche `Team4`) corrige les 3 écarts de `proto-v0`, protocole toujours « proposed » (§8) | MOD-005, MOD-007 |
 | 2. Référence 168 h + repli causal (`baseline.py`) | ✅ Codée et testée sur cas synthétique ; repli N = 4 provisoire (D-03) ; seconde référence médiane 4 semaines | MOD-003, MOD-004 |
 | 3. Vérification manuelle + raccord E4/E5 | 🟡 Vérifié à la main sur cas synthétique et sur 11 valeurs réelles ; consommation par E4/E5 à obtenir | MOD-003, MOD-005 |
 | 4. Variables communes (`features.py`) | 🟡 `f1.0` codée, testée, jeu d'apprentissage réel construit (E2-TECH-002) ; à présenter à E3 et E1 | MOD-006 |
-| 5. Méthode justifiée + variante explicative (`train.py`) | 🔲 | - |
+| 5. Méthode justifiée + variante explicative (`train.py`) | 🟡 Socle commun `train.py` fait et testé (`fit`, sauvegarde, chargement) ; MLP : données et sauvegarde faites, apprentissage à écrire ; HGB à brancher | MOD-007 |
 | 6. Calcul exécutable et exports, recalcul autre origine (`predict.py`) | 🟡 Chaîne complète et commande `python -m src.models.known.predict` ; 10 858 cas de validation calculés (E2-TECH-001) ; recalcul par E5 à faire | MOD-003, MOD-005 |
 | 7. Cas difficile, extension, test final après gel | 🔲 | - |
 
@@ -75,8 +75,12 @@ src/models/
                     weather_forecast : seule partie retirée par l'ablation),
                     build_feature_frame (un cas), build_training_frame (en bloc, même calcul),
                     training_origins, training_counters
-    train.py        TrainConfig, TrainedModel, exclude_reserved_sites, fit, compare_variants,
-                    save_model/load_model
+    train.py        TrainConfig (train_start, fit_cutoff…), TrainedModel, registre des méthodes
+                    (MethodBackend, register_backend, get_backend), load_training_data,
+                    exclude_reserved_sites, fit (partie commune), save_model/load_model,
+                    make_model_run_id ; compare_variants à faire
+    neural.py       MLP : build_windows (entrées/cibles, même calcul apprentissage et prévision),
+                    MLPNet (placeholder), save_mlp/load_mlp ; fit_mlp / predict_mlp à faire
     predict.py      build_inputs, predict_24h (signature imposée), run_experiment,
                     write_predictions, write_runs
 ```
@@ -92,7 +96,7 @@ counts.csv (E1) --build_inputs (available_at <= origin)--> ForecastInputs --asse
   --> ForecastResult --to_forecast_frame / to_run_row--> <method_run_id>.pred.csv / .runs.csv
 ```
 
-Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_timestamps()`, `Case.from_row`, `assert_causal` ; dans `baseline.py`, `weekly_reference`, `weekly_profile_reference` (MOD-004), `admissible_history`, `lookup_lagged`, `fallback_value` ; dans `schemas.py`, `ForecastResult.is_complete`, `to_forecast_frame`, `to_run_row` ; dans `predict.py`, `counts_history_loader`, `build_inputs`, `predict_24h` (variantes `reference`, `reference_profile`), `run_experiment`, `error_result`, `select_cases`, `train_site_counters`, `write_predictions`, `write_runs` et la commande `main` ; tout `features.py` (MOD-006). Toutes les autres lèvent `NotImplementedError("E2 : ...")`. Tests : [tests/test_known_baseline.py](../../tests/test_known_baseline.py), [tests/test_known_predict.py](../../tests/test_known_predict.py), [tests/test_known_features.py](../../tests/test_known_features.py).
+Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_timestamps()`, `Case.from_row`, `assert_causal` ; dans `baseline.py`, `weekly_reference`, `weekly_profile_reference` (MOD-004), `admissible_history`, `lookup_lagged`, `fallback_value` ; dans `schemas.py`, `ForecastResult.is_complete`, `to_forecast_frame`, `to_run_row` ; dans `predict.py`, `counts_history_loader`, `build_inputs`, `predict_24h` (variantes `reference`, `reference_profile`), `run_experiment`, `error_result`, `select_cases`, `train_site_counters`, `write_predictions`, `write_runs` et la commande `main` ; tout `features.py` (MOD-006) ; dans `train.py`, tout sauf `compare_variants`, et dans `neural.py`, `build_windows`, `MLPNet`, `save_mlp`, `load_mlp` (MOD-007). Toutes les autres lèvent `NotImplementedError("E2 : ...")`. Tests : [tests/test_known_baseline.py](../../tests/test_known_baseline.py), [tests/test_known_predict.py](../../tests/test_known_predict.py), [tests/test_known_features.py](../../tests/test_known_features.py), [tests/test_known_train.py](../../tests/test_known_train.py), [tests/test_known_neural.py](../../tests/test_known_neural.py).
 
 ---
 
@@ -111,6 +115,42 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
 - **Vérifications effectuées** : commandes lancées, résultats observés (ou "aucune").
 - **Points ouverts** : ce qui reste incertain ou à valider.
 ```
+
+### MOD-007 - 2026-11-22 - Socle commun `train.py`, préparation et sauvegarde du MLP (`neural.py`)
+
+- **Auteur** : Idir.
+- **Branche / commit** : `Team2-idir` / non commité.
+- **Quoi** :
+  - [train.py](../../src/models/known/train.py), socle commun à toutes les méthodes :
+    - `fit` choisit une seule fois les compteurs (`training_counters`) et les origines (`training_origins` entre `train_start` et `fit_cutoff`), puis appelle la méthode via un registre (`MethodBackend`, `register_backend`, `get_backend`) ;
+    - `save_model` / `load_model` : `artifacts/models/<model_run_id>/`, `metadata.json` au format du gabarit, SHA-256 des poids, écriture atomique, refus d'écraser ;
+    - `load_training_data` : entrées = mesures seules (D-11), valeur E1 gardée dans `count_e1` ;
+    - nommage `make_model_run_id` : `e2-<méthode>-<ctx|noctx>-<coupure>-s<graine>-<empreinte>` ;
+    - `TrainConfig.train_start` ajouté ; `exclude_reserved_sites` délègue à `training_counters`.
+  - [neural.py](../../src/models/known/neural.py), nouveau :
+    - `build_windows` : un exemple par compteur × origine, 419 entrées (344 sans contexte) : 168 h normalisées par leur niveau, 168 masques, la journée à prévoir, la météo prévue heure par heure ; 24 sorties ;
+    - `MLPNet` (placeholder minimal, 2 × 128), `save_mlp` / `load_mlp` ;
+    - « mlp » déclaré dans le registre, avec `fit=None`.
+  - Tests : [test_known_train.py](../../tests/test_known_train.py) (25), [test_known_neural.py](../../tests/test_known_neural.py) (16).
+  - Prise en main pour l'équipe : [E2_PRISE_EN_MAIN.md](E2_PRISE_EN_MAIN.md).
+- **Pourquoi** : étape 5 du README E2. Faire apprendre le HGB et le MLP sur les mêmes compteurs et les mêmes origines (comparaison équitable), tracer chaque modèle (I2), préparer l'expérience de deep learning (D-05, M3).
+- **Fichiers** : [train.py](../../src/models/known/train.py), [neural.py](../../src/models/known/neural.py), [test_known_train.py](../../tests/test_known_train.py), [test_known_neural.py](../../tests/test_known_neural.py), [E2_PRISE_EN_MAIN.md](E2_PRISE_EN_MAIN.md), ce fichier.
+- **Impact partenaires / contrats** :
+  - Signatures du squelette modifiées : `fit(config, counts, context, inventory, *, include_robustness, publication_lag_hours)`, `load_training_data(snapshot_id, *, root, values)` (sans `protocol_id`), `exclude_reserved_sites(counts, inventory, include_robustness)`.
+  - Le HGB doit se brancher par `register_backend("hgb", …)` (exemple dans la prise en main).
+  - `neural.py` utilise des fonctions internes de `features.py` (`_calendar_core`, `_prepare_context`, `_context_core`) : prévenir avant de les modifier.
+  - `metadata.json` porte `excluded_site_groups` (preuve pour E3).
+  - Aucune colonne CSV d'échange modifiée ; `features.py`, `predict.py`, `registry.py` et `schemas.py` non modifiés.
+- **Vérifications effectuées** :
+  - `pytest` : 222 tests passés, dont 41 nouveaux ; `ruff check` et `ruff format --check` sans problème.
+  - Données réelles : `fit` (méthode espion) reçoit 97 compteurs et 90 736 exemples (15/11/2023 → 29/06/2026), 9 groupes E3 exclus ; `build_windows` en 5 s, 97,7 % d'exemples utilisables ; cas Pont National du 10/03/2026 identique au calcul à la main.
+  - Tests clés : modifier le futur ne change pas les entrées ; calcul en bloc = cas par cas ; invariance d'échelle ; vide ≠ zéro mesuré ; aller-retour de sauvegarde identique ; refus d'un fichier modifié, d'une fiche retouchée, d'entrées rangées autrement, d'un fichier contenant du code.
+  - Contrôle indépendant de `hist-20261117` : grille complète, 0 doublon, raccords janvier 2024 et archives → flux sans cassure.
+- **Points ouverts** :
+  - `fit_mlp` / `predict_mlp` à écrire (proposés à Esther) ; variante `"model"` à brancher dans `predict.py`.
+  - 29 heures aberrantes (> 1 500 vélos/h) gardées comme cibles par E1 ; environ 0,1 % de cibles normalisées très élevées, à traiter dans la perte.
+  - Dates d'apprentissage à écrire dans `config/project.yaml` (D-17).
+  - `training_origins` prend environ 70 s sur les données réelles.
 
 ### MOD-006 - 2026-11-20 - Variables f1.0 (`features.py`), tests et jeu d'apprentissage réel
 
@@ -277,7 +317,11 @@ Prioriser dans l'ordre. Cocher avec le renvoi `MOD-NNN` uniquement une fois vér
 - [ ] Traiter les incohérences restantes du §10 (C3 après version finale des données, C4 avec E5, I1–I5, M1–M3).
 - [ ] Choisir une méthode justifiée par la bibliographie (statistique, tabulaire, réseau compact, modèle partagé...).
 - [ ] Ablation : même modèle avec / sans calendrier ou météo, réglages figés avant le test.
-- [ ] `train.py` : `exclude_reserved_sites` (par `site_group_id`), `fit`, `save_model` avec `metadata.json` + SHA-256.
+- [x] `train.py` : `exclude_reserved_sites` (par `site_group_id`), `fit`, `save_model` avec `metadata.json` + SHA-256. MOD-007
+- [ ] Brancher le HGB sur `train.fit` (`register_backend("hgb", …)`).
+- [ ] MLP : `fit_mlp` (perte MAE sur les cibles mesurées, arrêt anticipé sur les 4 semaines avant `fit_cutoff`, cibles extrêmes) et `predict_mlp` (proposés à Esther).
+- [ ] `predict.py` : variante `"model"` (charger le modèle une fois, repli sur la référence) ; désigner le `model_run_id` utilisé par l'application.
+- [ ] Fiche EXP-E2-03 (MLP contre HGB contre références) avec les décisions figées avant les scores.
 - [ ] Enregistrer la référence et les modèles dans le registre (`register_defaults`).
 - [ ] Recalcul de la référence sur une autre origine avec E5 (`use_cache=False`).
 
@@ -298,7 +342,7 @@ Prioriser dans l'ordre. Cocher avec le renvoi `MOD-NNN` uniquement une fois vér
 | D-02 | 2026-11-19 | Signature `predict_24h` | Proposé | Signature imposée conservée ; ajout de `context=` (le contrat §5-6 prévoit un contexte admissible absent de la signature). | E2, E5 |
 | D-03 | 2026-11-19 | Repli de la référence | Ouvert | Proposition : médiane même heure locale / même jour sur N semaines admissibles, puis moyenne même heure locale, sinon `unavailable`. Valeur de N à fixer. MOD-003 : implémenté avec N = 4 (moyenne sur 28 observations au second niveau), paramètre `fallback_weeks` ; à valider avec E4/E5. | E2, E4, E5 |
 | D-04 | 2026-11-19 | Prophet | Proposé | Variante optionnelle seulement (`prophet_reference`), non déclarée dans `pyproject.toml`, jamais obligatoire. Ajout de la dépendance à décider. | E2 |
-| D-05 | 2026-11-19 | Expérience deep learning | Ouvert | Responsabilité E2 ou E3 à attribuer explicitement (ARCHITECTURE §6). `torch` disponible dans le groupe `dl` (CPU). | E2, E3 |
+| D-05 | 2026-11-19 | Expérience deep learning | Proposé | Responsabilité E2 ou E3 à attribuer explicitement (ARCHITECTURE §6). `torch` disponible dans le groupe `dl` (CPU). MOD-007 : Idir porte un MLP compact sur CPU (préparation des données, réseau, sauvegarde) ; `fit_mlp` / `predict_mlp` proposés à Esther. Réutilisation possible par E3 comme base apprise ailleurs (sites E3 exclus, preuve dans `metadata.json`). À confirmer avec l'équipe et E3. | E2, E3 |
 | D-06 | 2026-11-19 | Latence et décalage 168 h | Vérifié | Avec `publication_lag_hours = 24`, y(t−168 h) reste disponible pour les 24 horizons (dernière source disponible à origin − 120 h). | E2 |
 | D-07 | - | Gel des choix avant test final | Ouvert | Date de gel à fixer avec E4 ; aucun réglage sur les dates réservées. | E2, E4 |
 | D-08 | 2026-11-19 | C3 : `available_at`, latence et `site_group_id` | Reporté | Attendre la version finale des données d'E1 avant de choisir où calculer `available_at` et comment joindre `site_group_id`. MOD-005 : `hist-20261117` n'a toujours pas `available_at` dans `counts.csv` ; règle provisoire `interval_end <= origin − latence` appliquée dans `build_inputs` ; `site_group_id` lu dans `cases.csv`, sites connus filtrés sur `site_role = S_train` de `inventory_quality.csv`. | E2, E1 |
@@ -310,6 +354,8 @@ Prioriser dans l'ordre. Cocher avec le renvoi `MOD-NNN` uniquement une fois vér
 | D-14 | 2026-11-20 | Décalages des variables | Décidé provisoirement (A. Garoui) | Décalages en heures UTC, comme les références ; l'heure locale est une variable. I3 reste ouvert. MOD-006 | E2 |
 | D-15 | 2026-11-20 | Identité du compteur | Décidé (A. Garoui) | Pas d'identifiant de compteur dans les variables ; niveaux récents à la place. Modèle partagé, réutilisable par E3. MOD-006 | E2, E3 |
 | D-16 | 2026-11-20 | Compteurs d'apprentissage | Décidé (A. Garoui) | Les 97 `S_train` (`retained` + `robustness`) ; option `include_robustness=False` pour les 67 `retained`. MOD-006 | E2, E4 |
+| D-17 | 2026-11-22 | Dates d'apprentissage | Proposé | Apprentissage depuis le début des données (16/10/2023, convenu avec E1), coupure `fit_cutoff` au 01/07/2026 pour toutes les méthodes. Non écrit dans `config/project.yaml` d'E4 (pas de date de début), et `PROTOCOLE_EVALUATION.md` indique encore le 11/10/2025. E2-TECH-002 coupe au 01/06 : à aligner. `TrainConfig.train_start` (None = début des données) porte ce choix. MOD-007 | E2, E4 |
+| D-18 | 2026-11-22 | Entrées du MLP | Décidé (Idir) | Normalisation de chaque exemple par la moyenne des heures mesurées de sa fenêtre de 168 h (comme DeepAR), masque des heures manquantes, entrées plafonnées à 10 fois le niveau ; la journée à prévoir donnée une seule fois, la météo prévue heure par heure ; heure implicite dans la position de la sortie. Exemple refusé si moins de 84 h mesurées ou niveau < 1 vélo/h (repli). MOD-007 | E2 |
 
 ---
 
@@ -329,6 +375,9 @@ Chaque expérience a sa fiche dans `reports/experiments/` (gabarit [experiment.m
 | Date | Équipe | Objet | Résultat / preuve d'usage |
 | --- | --- | --- | --- |
 | 2026-11-19 | E1 | Réception de `hist-20261117` (merge `origin/Team1`) | Empreintes vérifiées contre le manifeste ; données utilisées par E2-TECH-001. À discuter : D-11 (E2 n'utilise pas les valeurs estimées comme entrées des références). |
+| 2026-11-22 | E4 | Lecture de `proto-v1/cases.csv` (branche `Team4`) | 6 014 cas de validation et 4 365 de test `known_site` sur 97 compteurs ; les 3 écarts de `proto-v0` sont corrigés. À demander : une date de début d'apprentissage dans `project.yaml` (D-17). |
+| 2026-11-22 | E1 | Contrôle indépendant de `hist-20261117` (MOD-007) | Données saines depuis 2023. À signaler : 29 heures > 1 500 vélos/h sur 5 compteurs gardées comme cibles (par exemple 8 190 à 5 h, rue Lecourbe NE-SO). |
+| 2026-11-22 | E5 | Lecture de `prediction_validation.py` (branche `Team5-integration`) | **À transmettre** : `verifier_valeurs` refuse les valeurs vides, alors qu'une heure sans prévision a `y_pred` vide (jamais 0) avec le statut `unavailable`. |
 | 2026-11-19 | E4 | Lecture de `proto-v0/cases.csv` (branche `Team4-sher`, `2ac02dd`) | Utilisé par E2-TECH-001. **Écarts à transmettre** : (1) 2 compteurs réservés `S_dev_new` par E1 figurent en `known_site` / `S_train` (244 cas écartés par E2) ; (2) `snapshot_id = flux-20261115` au lieu de `hist-20261117` ; (3) validation à partir du 01/06/2026 alors que le protocole proposé indique juillet–août ; 89 compteurs connus contre 97 `S_train` chez E1. |
 
 ---
@@ -368,7 +417,7 @@ Statuts : ✅ corrigé · ⏸️ reporté (décision prise) · 🔲 à traiter.
 | ID | Incohérence | Référence | Statut |
 | --- | --- | --- | --- |
 | I1 | `schemas.py` est dans `src/models/` alors que le contrat commun relève de `src/common/contracts.py` ; risque de divergence si E4 ou E5 définissent leur propre `Case`. | ARCHITECTURE §5 ; D-01 | 🔲 |
-| I2 | `TrainedModel` ne suit pas `model_metadata.example.json` : noms différents (`donor_site_groups`, `label_interval`, `train_seconds`) ; il manque `excluded_site_groups` (preuve attendue par E3), `weights_sha256`, `minimum_history_hours`, `supported_scenarios`, `fallback`. | CONTRATS §6 ; gabarit métadonnées | 🔲 |
+| I2 | `TrainedModel` ne suit pas `model_metadata.example.json` : noms différents (`donor_site_groups`, `label_interval`, `train_seconds`) ; il manque `excluded_site_groups` (preuve attendue par E3), `weights_sha256`, `minimum_history_hours`, `supported_scenarios`, `fallback`. | CONTRATS §6 ; gabarit métadonnées | ✅ MOD-007 : `TrainedModel` complété, `metadata.json` écrit avec tous les champs du gabarit (vérifié par un test) |
 | I3 | Référence décalée de 168 h UTC, mais repli en heure locale, et le plan dit « même heure une semaine avant » : décalage d'une heure en semaine de changement d'heure. Règle à choisir, documenter et tester. | Plan §7 ; PROTOCOLE §2 | 🔲 Écart rendu visible par le test de MOD-003 (repli à 11Z, valeur principale à 10Z) ; règle non tranchée. Les variables `f1.0` suivent l'UTC (D-14) |
 | I4 | `MIN_HISTORY_HOURS = 168` est ambigu : avec 24 h de latence, il faut la fenêtre [origin − 168 h, origin − 145 h], pas « 168 h d'historique ». Utilisée par `check_eligibility`, elle refuserait la référence alors que son repli peut répondre. | Sujet p. 2 (méthode simple toujours utilisable) | 🔲 |
 | I5 | MOD-001 concluait « aucune incohérence critique » et a été vérifiée avec Python 3.13 au lieu de 3.11 ; ruff non exécuté. | Règles de ce fichier | ✅ Conclusion corrigée par MOD-002 ; Python 3.11 et ruff utilisés depuis MOD-003, `ruff format --check` sans problème depuis MOD-006 |
@@ -379,7 +428,7 @@ Statuts : ✅ corrigé · ⏸️ reporté (décision prise) · 🔲 à traiter.
 | --- | --- | --- |
 | M1 | `check_eligibility` exige `fit_cutoff < origin`, le protocole admet `<=` (un modèle gelé au 01/09 00:00 serait refusé pour l'origine du 01/09 00:00) ; `MethodSpec.fit_cutoff` est une chaîne au lieu d'un `Timestamp`. Le §9 de ce fichier reprend aussi `<`. | 🔲 |
 | M2 | `ForecastInputs.information_cutoff` mal défini : comparé à `available_at` (= `origin`) ou à `interval_end` (= `origin − latence`) selon les docstrings. Lié à C3. | 🟡 MOD-003 : `weekly_reference` compare `interval_end` à `information_cutoff` = `origin − latence` (provisoire, à confirmer avec D-08) |
-| M3 | Expérience deep learning non planifiée concrètement dans le squelette (D-05 ouvert), alors qu'elle est obligatoire. | 🔲 |
+| M3 | Expérience deep learning non planifiée concrètement dans le squelette (D-05 ouvert), alors qu'elle est obligatoire. | 🟡 MOD-007 : `neural.py` créé (données, réseau, sauvegarde) ; apprentissage à écrire |
 
 ### Points vérifiés cohérents
 
