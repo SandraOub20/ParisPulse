@@ -119,7 +119,7 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
 ### MOD-007 - 2026-11-22 - Socle commun `train.py`, préparation et sauvegarde du MLP (`neural.py`)
 
 - **Auteur** : Idir.
-- **Branche / commit** : `Team2-idir` / non commité.
+- **Branche / commit** : `Team2-idir` / `4684e7c`, fusionné dans `Team2`.
 - **Quoi** :
   - [train.py](../../src/models/known/train.py), socle commun à toutes les méthodes :
     - `fit` choisit une seule fois les compteurs (`training_counters`) et les origines (`training_origins` entre `train_start` et `fit_cutoff`), puis appelle la méthode via un registre (`MethodBackend`, `register_backend`, `get_backend`) ;
