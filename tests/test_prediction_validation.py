@@ -6,6 +6,7 @@ from src.app.prediction_validation import (
     verifier_24_predictions,
     verifier_valeurs,
     verifier_horizons,
+    verifier_predictions_avec_statut,
 )
 
 
@@ -81,6 +82,33 @@ class TestPredictionValidation(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             verifier_horizons(origine.isoformat(), heures)
+    def test_statut_ok(self):
+        predictions = [20] * 24
+        self.assertTrue(
+            verifier_predictions_avec_statut(predictions, "ok")
+        )
+
+    def test_statut_ok_avec_manquant(self):
+        predictions = [20] * 23 + [None]
+        with self.assertRaises(ValueError):
+            verifier_predictions_avec_statut(predictions, "ok")
+
+    def test_statut_fallback(self):
+        predictions = [20] * 24
+        self.assertTrue(
+            verifier_predictions_avec_statut(predictions, "fallback")
+        )
+
+    def test_statut_unavailable(self):
+        predictions = [20] * 23 + [None]
+        self.assertTrue(
+            verifier_predictions_avec_statut(predictions, "unavailable")
+        )
+
+    def test_unavailable_sans_manquant(self):
+        predictions = [20] * 24
+        with self.assertRaises(ValueError):
+            verifier_predictions_avec_statut(predictions, "unavailable")
 
 
 if __name__ == "__main__":

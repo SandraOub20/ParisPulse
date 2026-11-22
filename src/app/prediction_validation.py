@@ -87,3 +87,39 @@ if __name__ == "__main__":
     ]
 
     print("Horizons valides :", verifier_horizons(origine, heures))
+
+def verifier_predictions_avec_statut(predictions, statut):
+    """
+    Vérifie les valeurs des prédictions selon leur statut.
+
+    None représente une prévision manquante.
+    """
+
+    # On doit toujours avoir 24 horizons.
+    verifier_24_predictions(predictions)
+
+    if statut not in ("ok", "fallback", "unavailable"):
+        raise ValueError(f"Statut inconnu : {statut}")
+
+    valeurs_manquantes = sum(
+        valeur is None for valeur in predictions
+    )
+
+    if statut in ("ok", "fallback") and valeurs_manquantes > 0:
+        raise ValueError(
+            "Une prévision complète ne doit pas contenir de valeur manquante."
+        )
+
+    if statut == "unavailable" and valeurs_manquantes == 0:
+        raise ValueError(
+            "Le statut unavailable nécessite au moins une valeur manquante."
+        )
+
+    # Vérifier toutes les valeurs présentes.
+    valeurs_presentes = [
+        valeur for valeur in predictions if valeur is not None
+    ]
+
+    verifier_valeurs(valeurs_presentes)
+
+    return True
