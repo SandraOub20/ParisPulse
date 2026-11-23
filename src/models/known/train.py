@@ -26,7 +26,7 @@ from typing import Any
 import pandas as pd
 
 from src.common.config import ROOT, data_path, load_config
-from src.models.known.features import LOCAL_TZ, training_counters, training_origins
+from src.models.known.features import LOCAL_TZ, _default_lag, training_counters, training_origins
 from src.models.schemas import HORIZON_HOURS
 
 METHOD_NAME = "known_site_model"
@@ -240,11 +240,15 @@ def fit(
     2. origines d'apprentissage entre config.train_start et config.fit_cutoff ;
     3. groupes de sites donneurs et exclus, gardés comme preuve dans metadata.json ;
     4. apprentissage par la méthode (backend.fit), chronométré.
+
+    publication_lag_hours doit valoir la latence de la configuration (ou None) : les
+    méthodes construisent leurs entrées avec cette latence-là (MOD-008).
     """
     backend = get_backend(config.method)
     if backend.fit is None:
         raise NotImplementedError(f"la méthode {config.method!r} ne sait pas encore apprendre")
     model_run_id = make_model_run_id(config)  # vérifie aussi le fuseau de fit_cutoff
+    _check_publication_lag(publication_lag_hours)
 
     counters = training_counters(inventory, include_robustness)
     train_counts = exclude_reserved_sites(counts, inventory, include_robustness)
@@ -276,6 +280,25 @@ def fit(
         excluded_site_groups=excluded,
         minimum_history_hours=backend.minimum_history_hours,
     )
+
+
+def _check_publication_lag(publication_lag_hours: int | None) -> None:
+    """Refuser une latence différente de celle de la configuration (MOD-008).
+
+    backend.fit ne reçoit pas la latence : build_training_frame (HGB) et build_windows
+    (MLP) prennent celle de la configuration. Une autre valeur ici ne déplacerait que les
+    origines, pas les fenêtres : une entrée pas encore publiée pourrait alors être lue.
+    Pour une sensibilité à 48 h, changer protocol.publication_lag_hours dans la configuration.
+    """
+    if publication_lag_hours is None:
+        return
+    expected = _default_lag()
+    if int(publication_lag_hours) != expected:
+        raise ValueError(
+            f"publication_lag_hours={publication_lag_hours} différent de la latence de la "
+            f"configuration ({expected} h), seule transmise aux méthodes : modifier "
+            "protocol.publication_lag_hours dans config/project.yaml"
+        )
 
 
 def _site_groups(inventory: pd.DataFrame, counters: list[str]) -> tuple[list[str], list[str]]:

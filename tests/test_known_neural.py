@@ -240,13 +240,9 @@ def test_chargement_refuse_le_code(tmp_path):
         N.load_mlp(path)
 
 
-def test_mlp_declare_mais_pas_encore_entrainable():
+def test_mlp_declare_et_entrainable():
+    # MOD-008 : ce test vérifiait jusqu'ici que le MLP ne savait pas encore apprendre
+    # (fit=None). L'apprentissage est branché ; il est testé dans test_known_neural_fit.py.
     assert train.get_backend("mlp").weights_file == "weights.pt"
     assert train.get_backend("mlp").minimum_history_hours == 192
-    with pytest.raises(NotImplementedError, match="ne sait pas encore apprendre"):
-        train.fit(
-            train.TrainConfig(method="mlp", fit_cutoff=pd.Timestamp("2026-07-01", tz="UTC")),
-            _counts(),
-            None,
-            pd.DataFrame(),
-        )
+    assert train.get_backend("mlp").fit is N.fit_mlp
