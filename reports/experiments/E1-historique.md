@@ -11,7 +11,7 @@
 | Instantané | Période (UTC) | Usage |
 | --- | --- | --- |
 | `flux-20261115` | 16/10/2025 → 14/11/2026 (13 mois) | Utilisé par les autres équipes, **inchangé** |
-| `hist-20261117` | 16/10/2023 → 14/11/2026 (3 ans) | Nouveau, **pas encore partagé** (A1 à A3 faits ; `counts.csv` rempli le 19/11) |
+| `hist-20261117` | 16/10/2023 → 14/11/2026 (3 ans) | **Livré le 19/11/2026** (branche `Team1`, Git LFS), remplace `flux-20261115` ; vérifié côté consommateur le 24/11 ([EXP-E1-05](E1-verification-livraison.md)) |
 
 ## Les archives
 
