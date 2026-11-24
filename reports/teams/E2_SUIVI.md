@@ -40,7 +40,7 @@ Documents de référence : [sujet](../../ParisPulse_Sujet_etudiants.pdf), [archi
 
 ## 2. État d'avancement
 
-_Dernière mise à jour : 2026-11-24 - MOD-011._
+_Dernière mise à jour : 2026-11-24 - MOD-012._
 
 | Étape (README E2) | État | Renvoi |
 | --- | --- | --- |
@@ -118,6 +118,21 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
 - **Vérifications effectuées** : commandes lancées, résultats observés (ou "aucune").
 - **Points ouverts** : ce qui reste incertain ou à valider.
 ```
+
+### MOD-012 - 2026-11-24 - Brouillon de la fiche EXP-E2-03 (MLP, HGB, références)
+
+- **Auteur** : Idir.
+- **Branche / commit** : `Team2-idir` / voir l'historique de [EXP-E2-03.md](../experiments/EXP-E2-03.md).
+- **Quoi** : brouillon de [EXP-E2-03](../experiments/EXP-E2-03.md), **non figé**, résultats vides.
+  - Un seul facteur : la méthode (`reference`, `reference_profile`, `mlp`, `hgb`), avec contexte. L'ablation du contexte, la loss du HGB et le masquage du MLP auront leur propre fiche.
+  - Population fixée d'avance : les 6 014 cas `known_site` de validation de `proto-v1`. Le test n'est pas lu.
+  - Deux évaluations : modèles bruts sur l'intersection commune des cas complets ; système (modèle + repli) sur les 6 014 cas. MAE macro, même masque `is_scoreable`.
+  - Règle de choix proposée : un modèle est retenu s'il fait au moins 5 % de mieux que la meilleure référence ; entre MLP et HGB, l'écart doit dépasser l'étendue entre 3 graines du MLP, sinon HGB ; MLP en graine 0, déclarée d'avance.
+- **Pourquoi** : figer la comparaison avant les scores (sujet, E2 « choisissez les variables et les réglages avant de mesurer » ; PROTOCOLE §6 et §8).
+- **Fichiers** : [EXP-E2-03.md](../experiments/EXP-E2-03.md), ce fichier.
+- **Impact partenaires / contrats** : aucun code modifié. À E4 : population, masque, intersection commune. À E5 : `model_run_id` choisi selon la règle.
+- **Vérifications effectuées** : aucune mesure ; relecture de la cohérence avec PROTOCOLE §3, §6 et §8, et avec D-11, D-17 à D-22.
+- **Points ouverts** (à trancher avant le gel) : règle de choix et seuil de 5 % ; réglages du HGB (`categorical`, `refit_on_holdout`, loss avec E4) ; graines 1 et 2 du MLP ; capacité d'E4 à calculer l'intersection commune ; réapprentissage au 01/08 (proposé : non).
 
 ### MOD-011 - 2026-11-24 - Branchement des variantes `mlp` et `hgb` dans `predict.py`, avec repli sur la référence
 
@@ -480,7 +495,7 @@ Prioriser dans l'ordre. Cocher avec le renvoi `MOD-NNN` uniquement une fois vér
 - [ ] Désigner le `model_run_id` utilisé par l'application (avec E5).
 - [ ] Présenter MOD-008 à Idir et Ania (contrôle de latence dans `train.fit`, format 2), à E3 (réseau réutilisable), à E4/E5 (codes `mlp_*`, couverture) ; consigner leur retour au §8.
 - [ ] MLP : mesurer la variabilité entre graines (au moins 3) avant la comparaison EXP-E2-03.
-- [ ] Fiche EXP-E2-03 (MLP contre HGB contre références) avec les décisions figées avant les scores.
+- [ ] Fiche EXP-E2-03 (MLP contre HGB contre références) avec les décisions figées avant les scores. Brouillon : MOD-012 ; 5 points à trancher en équipe.
 - [ ] Enregistrer la référence et les modèles dans le registre (`register_defaults`).
 - [ ] Recalcul de la référence sur une autre origine avec E5 (`use_cache=False`).
 
@@ -532,6 +547,7 @@ Chaque expérience a sa fiche dans `reports/experiments/` (gabarit [experiment.m
 | E2-TECH-002 | 2026-11-20 | Essai technique : jeu d'apprentissage des variables `f1.0` (pas de modèle) | sans objet | aucun (`fit_cutoff` 01/06/2026 provisoire) / `hist-20261117` | sans objet | 87 826 couples, 2 075 614 lignes | 204 s, 374 Mo | Variables sans fuite, chemins identiques ; prêtes pour un modèle | [fiche](../experiments/E2-TECH-002.md) |
 | E2-TECH-003 | 2026-11-23 | Essai technique : premier apprentissage du MLP sur données réelles (pas de comparaison) | `mlp` avec contexte, graine 0 | aucun protocole validé (`fit_cutoff` 01/07/2026, D-17) / `hist-20261117` | non calculée (E4) | 5 694 / 6 014 cas de validation servis par le MLP (94,7 %) | apprentissage 33 s, 1,25 Go, CPU | Apprentissage sans fuite et rapide ; contrôle interne sur juin, hors scores E4 (voir fiche) ; 4 sites en panne pendant la validation | [fiche](../experiments/E2-TECH-003.md) |
 | E2-TECH-004 | 2026-11-24 | Essai technique : premier apprentissage du HGB sur données réelles (pas de comparaison) | `hgb` avec contexte, `absolute_error`, graine 0 | aucun protocole validé (`fit_cutoff` 01/07/2026, D-17) / `hist-20261117` | non calculée (E4) | couverture de la validation non mesurée | 278 s au total, dont 125 s pour les deux apprentissages HGB ; CPU | Apprentissage sans fuite ; 342 arbres ; contrôle interne sur juin, hors scores E4 (voir fiche) ; loss à fixer par E4 | [fiche](../experiments/E2-TECH-004.md) |
+| EXP-E2-03 | 2026-11-24 | Quelle méthode pour les sites connus ? **Brouillon, non figé** | `reference`, `reference_profile`, `mlp` (graine 0, + graines 1-2 pour la variabilité), `hgb` | `proto-v1` (non validé) / `hist-20261117`, validation | à venir (E4) | 6 014 attendus | à mesurer | à venir | [fiche](../experiments/EXP-E2-03.md) |
 
 ---
 
