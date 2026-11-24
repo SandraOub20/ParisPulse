@@ -15,6 +15,9 @@ Réservé aux expériences ; l'application (E5) et E3 continuent d'appeler predi
 from __future__ import annotations
 
 import importlib
+import time
+from collections.abc import Callable
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -239,3 +242,119 @@ def batch_raw_hgb(
             else:
                 values[i] = predicted[row]
     return values, reasons
+
+
+RAW_BATCH: dict[str, Callable[..., tuple[np.ndarray, list[str | None]]]] = {
+    P.MLP_VARIANT: batch_raw_mlp,
+    P.HGB_VARIANT: batch_raw_hgb,
+}
+
+
+def run_experiment_batch(
+    cases: pd.DataFrame,
+    history_loader: Callable[[str], pd.DataFrame],
+    variant: str,
+    experiment_id: str,
+    method_run_id: str,
+    *,
+    context: pd.DataFrame | None = None,
+    root: Path | None = None,
+    publication_lag_hours: int | None = None,
+    model_run_id: str | None = None,
+    min_observed_hours: int | None = None,
+) -> tuple[Path, Path]:
+    """Comme predict.run_experiment, mais la sortie brute du modèle est calculée en bloc.
+
+    Mêmes paramètres et mêmes fichiers (.pred.csv, .runs.csv) que run_experiment ; seul le
+    coût diffère. Par cas : build_inputs (sans contexte : seul l'historique sert au repli),
+    eligibility_reason, puis la sortie brute en bloc (RAW_BATCH), et _assemble_result, le
+    même code que le cas par cas. Un cas qui échoue (compteur absent...) reste dans les
+    fichiers, en statut error. Les références (sans modèle) passent par run_experiment.
+    Coût écrit par cas : preparation_seconds = son filtrage causal, inference_seconds = la
+    part du calcul en bloc (temps total / nombre de cas).
+    """
+    if variant not in RAW_BATCH:
+        return P.run_experiment(
+            cases,
+            history_loader,
+            variant,
+            experiment_id,
+            method_run_id,
+            context=context,
+            root=root,
+            publication_lag_hours=publication_lag_hours,
+            model_run_id=model_run_id,
+            min_observed_hours=min_observed_hours,
+        )
+    if min_observed_hours is not None and variant != P.MLP_VARIANT:
+        raise ValueError(f"min_observed_hours sans objet pour la variante {variant!r}")
+    model = P._load_model(variant, model_run_id)
+    lag = P.default_publication_lag() if publication_lag_hours is None else publication_lag_hours
+    context_version = None
+    if context is not None and "context_version" in context.columns:
+        versions = context["context_version"].dropna()
+        context_version = str(versions.iloc[0]) if len(versions) else None
+
+    # 1. Par cas : passé admissible (pour le repli) et éligibilité ; les échecs sont gardés.
+    items: list[tuple[Case, object | None, float, BaseException | None]] = []
+    histories: dict[str, pd.DataFrame] = {}
+    for _, row in cases.iterrows():
+        case = Case.from_row(row)
+        started = time.perf_counter()
+        try:
+            if case.counter_id not in histories:
+                histories[case.counter_id] = history_loader(case.counter_id)
+            inputs = P.build_inputs(case, histories[case.counter_id], None, lag)
+            if context is not None:
+                inputs.context_version = context_version
+            items.append((case, inputs, time.perf_counter() - started, None))
+        except Exception as exc:  # noqa: BLE001 - l'échec est tracé, jamais silencieux
+            items.append((case, None, 0.0, exc))
+
+    # 2. Sortie brute en bloc, pour les cas préparés et éligibles.
+    method = variant
+    reasons: dict[int, str | None] = {}
+    todo = []
+    for k, (_, inputs, _, exc) in enumerate(items):
+        if exc is None:
+            reasons[k] = P.eligibility_reason(inputs, model, method)
+            if reasons[k] is None:
+                todo.append(k)
+    started = time.perf_counter()
+    raw_values = np.full((len(items), HORIZON_HOURS), np.nan)
+    if todo:
+        # une seule copie de l'historique par compteur (et non par cas : 6 014 copies
+        # saturaient la mémoire)
+        needed = sorted({items[k][0].counter_id for k in todo})
+        counts = pd.concat([histories[c] for c in needed], ignore_index=True)
+        extra = {"min_observed_hours": min_observed_hours} if variant == P.MLP_VARIANT else {}
+        values, raw_reasons = RAW_BATCH[variant](
+            [items[k][0] for k in todo],
+            counts,
+            context,
+            model,
+            publication_lag_hours=lag,
+            **extra,
+        )
+        for row, k in enumerate(todo):
+            raw_values[k] = values[row]
+            reasons[k] = raw_reasons[row]
+    share = (time.perf_counter() - started) / max(len(todo), 1)
+
+    # 3. Un résultat par cas, avec le même assemblage que le cas par cas.
+    results = []
+    for k, (case, inputs, preparation, exc) in enumerate(items):
+        if exc is not None:
+            results.append(P.error_result(case, method_run_id, variant, exc))
+            continue
+        values = raw_values[k] if reasons[k] is None else None
+        result = P._assemble_result(
+            inputs, method, model, values, reasons[k], method_run_id=method_run_id
+        )
+        result.cost.preparation_seconds = preparation
+        result.cost.inference_seconds = share if k in todo else 0.0
+        results.append(result)
+    out_dir = Path(root) if root else P.data_path("predictions") / experiment_id
+    pred = P.write_predictions(results, out_dir / f"{method_run_id}.pred.csv")
+    runs = P.write_runs(results, out_dir / f"{method_run_id}.runs.csv")
+    return pred, runs

@@ -290,3 +290,152 @@ def test_hgb_bloc_refuse_une_autre_latence(counts):
     model = _hgb(counts, use_context=False)
     with pytest.raises(ValueError, match="latence"):
         B.batch_raw_hgb(_cases()[:2], counts, None, model, publication_lag_hours=48)
+
+
+# --- run_experiment_batch : mêmes fichiers que run_experiment -------------------------------
+
+COST_COLUMNS = ["preparation_seconds", "inference_seconds", "wait_seconds", "memory_mb"]
+
+
+def _cases_frame() -> pd.DataFrame:
+    rows = []
+    for case in _cases() + [_case("Z-9", _paris("2026-07-05"))]:  # Z-9 : compteur inconnu
+        rows.append(
+            {
+                "case_id": case.case_id,
+                "counter_id": case.counter_id,
+                "site_group_id": "G",
+                "origin": case.origin.isoformat(),
+                "scenario": "known_site",
+                "temporal_split": "validation",
+                "spatial_role": "S_train",
+                "local_budget_hours": "",
+                "support_start": "",
+                "support_end": "",
+                "protocol_id": "test",
+                "snapshot_id": "synthetic",
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _loader(counts: pd.DataFrame):
+    by_counter = {k: v.reset_index(drop=True) for k, v in counts.groupby("counter_id")}
+
+    def load(counter_id: str) -> pd.DataFrame:
+        if counter_id not in by_counter:
+            raise ValueError(f"compteur {counter_id} absent")
+        return by_counter[counter_id]
+
+    return load
+
+
+def _both(tmp_path, monkeypatch, counts, model, variant, context=None, **kw):
+    import dataclasses
+
+    model = dataclasses.replace(model, donor_site_groups=["G"])
+    monkeypatch.setattr(P, "_load_model", lambda v, run_id: model)
+    cases = _cases_frame()
+    args = (cases, _loader(counts), variant, "EXP-test", "run-test")
+    single = P.run_experiment(
+        *args, context=context, root=tmp_path / "un", publication_lag_hours=LAG, **kw
+    )
+    bloc = B.run_experiment_batch(
+        *args, context=context, root=tmp_path / "bloc", publication_lag_hours=LAG, **kw
+    )
+    read = [pd.read_csv(p, dtype=str, keep_default_na=False) for p in (*single, *bloc)]
+    return read  # pred_un, runs_un, pred_bloc, runs_bloc
+
+
+def _assert_same_files(pred_un, runs_un, pred_bloc, runs_bloc):
+    assert list(pred_un.columns) == list(pred_bloc.columns)
+    other = [c for c in pred_un.columns if c != "y_pred"]
+    pd.testing.assert_frame_equal(pred_un[other], pred_bloc[other])
+    y_un = pd.to_numeric(pred_un["y_pred"].replace("", np.nan))
+    y_bloc = pd.to_numeric(pred_bloc["y_pred"].replace("", np.nan))
+    np.testing.assert_allclose(y_bloc, y_un, rtol=0, atol=1e-3, equal_nan=True)
+    assert (pred_un["y_pred"] == "").equals(pred_bloc["y_pred"] == "")  # mêmes cases vides
+    keep = [c for c in runs_un.columns if c not in COST_COLUMNS]
+    pd.testing.assert_frame_equal(runs_un[keep], runs_bloc[keep])
+
+
+def test_fichiers_mlp_identiques(tmp_path, monkeypatch, counts, ctx_model):
+    files = _both(tmp_path, monkeypatch, counts, ctx_model, "mlp", context=_context())
+    _assert_same_files(*files)
+    runs = files[1].set_index("case_id")
+    statuses = set(runs["status"])
+    assert {"ok", "fallback", "error"} <= statuses  # servis, repliés, compteur inconnu
+    assert "absent" in runs.loc[runs.index.str.startswith("T|Z-9"), "status_reason"].iloc[0]
+
+
+def test_fichiers_mlp_seuil_remplace_identiques(tmp_path, monkeypatch, counts, model):
+    files = _both(tmp_path, monkeypatch, counts, model, "mlp", min_observed_hours=24)
+    _assert_same_files(*files)
+
+
+@pytest.mark.parametrize("use_context", [False, True])
+def test_fichiers_hgb_identiques(tmp_path, monkeypatch, counts, use_context):
+    context = _context() if use_context else None
+    files = _both(tmp_path, monkeypatch, counts, _hgb(counts, use_context), "hgb", context)
+    _assert_same_files(*files)
+
+
+def test_reference_passe_par_le_cas_par_cas(tmp_path, counts):
+    cases = _cases_frame()
+    args = (cases, _loader(counts), "reference", "EXP-test", "ref")
+    single = P.run_experiment(*args, root=tmp_path / "un", publication_lag_hours=LAG)
+    bloc = B.run_experiment_batch(*args, root=tmp_path / "bloc", publication_lag_hours=LAG)
+    a, b = (pd.read_csv(p, dtype=str, keep_default_na=False) for p in (single[0], bloc[0]))
+    pd.testing.assert_frame_equal(a, b)
+
+
+def test_commande_batch(tmp_path, monkeypatch, counts, model):
+    import dataclasses
+
+    model = dataclasses.replace(model, donor_site_groups=["G"])
+    monkeypatch.setattr(P, "_load_model", lambda v, run_id: model)
+    monkeypatch.setattr(
+        P, "counts_history_loader", lambda snapshot, values="measured": _loader(counts)
+    )
+    monkeypatch.setattr(P, "train_site_counters", lambda snapshot: {"A-1", "A-2", "A-3", "A-4"})
+    monkeypatch.setattr(P, "load_context", lambda snapshot, path=None: None)
+    monkeypatch.setattr(P, "default_publication_lag", lambda: LAG)
+    monkeypatch.setattr(P, "data_path", lambda key: tmp_path)
+    cases = _cases_frame()
+    cases.to_csv(tmp_path / "cases.csv", index=False)
+    argv = ["--cases", str(tmp_path / "cases.csv"), "--snapshot", "synthetic"]
+    argv += ["--experiment", "EXP-test", "--variant", "mlp", "--batch"]
+    assert P.main(argv) == 0
+    selection = (tmp_path / "EXP-test").glob("*.selection.json")
+    import json
+
+    report = json.loads(next(selection).read_text(encoding="utf-8"))
+    assert report["mode"] == "batch"
+
+
+def test_historique_passe_une_seule_fois_par_compteur(tmp_path, monkeypatch, counts, model):
+    """Garde-fou mémoire : l'historique d'un compteur n'est pas recopié pour chaque cas."""
+    import dataclasses
+
+    seen = {}
+    original = B.RAW_BATCH["mlp"]
+
+    def spy(cases, counts_arg, *args, **kwargs):
+        seen["rows"] = len(counts_arg)
+        seen["duplicates"] = int(counts_arg.duplicated(["counter_id", "timestamp"]).sum())
+        return original(cases, counts_arg, *args, **kwargs)
+
+    model = dataclasses.replace(model, donor_site_groups=["G"])
+    monkeypatch.setattr(P, "_load_model", lambda v, run_id: model)
+    monkeypatch.setitem(B.RAW_BATCH, "mlp", spy)
+    B.run_experiment_batch(
+        _cases_frame(),
+        _loader(counts),
+        "mlp",
+        "EXP-test",
+        "run",
+        root=tmp_path,
+        publication_lag_hours=LAG,
+    )
+    assert seen["duplicates"] == 0
+    assert seen["rows"] <= len(counts)  # au plus une copie de chaque compteur

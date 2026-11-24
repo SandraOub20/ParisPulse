@@ -577,6 +577,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--min-observed-hours", type=int, help="MLP seulement : seuil à la place de celui appris"
     )
+    parser.add_argument(
+        "--batch",
+        action="store_true",
+        help="mlp et hgb : sortie du modèle en bloc (batch.py), mêmes fichiers en quelques s",
+    )
     parser.add_argument("--method-run-id")
     parser.add_argument("--values", default="measured", choices=VALUE_POLICIES)
     parser.add_argument("--split", action="append", default=None, help="défaut : validation")
@@ -607,7 +612,12 @@ def main(argv: list[str] | None = None) -> int:
     loader = counts_history_loader(args.snapshot, values=args.values)
     context = load_context(args.snapshot, path=args.context) if trained else None
     loading = time.perf_counter() - started
-    pred, runs = run_experiment(
+    runner = run_experiment
+    if args.batch:
+        from src.models.known import batch  # import tardif : batch importe ce module
+
+        runner = batch.run_experiment_batch
+    pred, runs = runner(
         selected,
         loader,
         args.variant,
@@ -623,6 +633,7 @@ def main(argv: list[str] | None = None) -> int:
             "values": args.values,
             "model_run_id": args.model_run_id,
             "min_observed_hours": args.min_observed_hours,
+            "mode": "batch" if args.batch and trained else "cas par cas",
             "context_rows": None if context is None else len(context),
             "load_seconds": round(loading, 1),
             "total_seconds": round(time.perf_counter() - started, 1),
