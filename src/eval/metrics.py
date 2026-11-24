@@ -1,3 +1,4 @@
+
 import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
@@ -69,6 +70,28 @@ def _prepare_inputs(cases, forecasts, observations):
 
     observations["timestamp"] = pd.to_datetime(observations["timestamp"], utc=True)
 
+    # Normalisation des identifiants
+    for df, column in [
+        (cases, "case_id"),
+        (cases, "counter_id"),
+        (forecasts, "case_id"),
+        (forecasts, "counter_id"),
+        (forecasts, "method_run_id"),
+        (observations, "counter_id"),
+    ]:
+        df[column] = df[column].astype(str).str.strip()
+
+    # Normalisation des variantes et des statuts
+    forecasts["variant"] = forecasts["variant"].fillna("").astype(str).str.strip()
+
+    forecasts["prediction_status"] = (
+        forecasts["prediction_status"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.lower()
+    )
+
     # Vérification des identifiants de cas
     if cases["case_id"].duplicated().any():
         raise ValueError("Des case_id sont dupliqués dans cases.")
@@ -93,8 +116,18 @@ def _prepare_inputs(cases, forecasts, observations):
         raise ValueError("Des observations sont dupliquées pour un même compteur et timestamp.")
 
     # Vérification des horizons
-    if not forecasts["horizon"].between(1, 24).all():
-        raise ValueError("Les horizons doivent être compris entre 1 et 24.")
+    forecasts["horizon"] = pd.to_numeric(forecasts["horizon"], errors="coerce")
+
+    if forecasts["horizon"].isna().any():
+        raise ValueError("Certains horizons ne sont pas numériques.")
+
+    if (
+        not forecasts["horizon"].between(1, N_EXPECTED_HOURS).all()
+        or not (forecasts["horizon"] % 1 == 0).all()
+    ):
+        raise ValueError("Les horizons doivent être des entiers compris entre 1 et 24.")
+
+    forecasts["horizon"] = forecasts["horizon"].astype(int)
 
     # Conversion des indicateurs
     observations["is_observed"] = _to_bool(observations["is_observed"])
@@ -213,19 +246,15 @@ def _build_evaluation(cases, forecasts, observations):
     )
 
     # Vérifier la cohérence du compteur
-    mismatch = (
-        (
+    if "counter_id_forecast" in evaluation.columns:
+        mismatch = (
             evaluation["counter_id_forecast"].notna()
             & (evaluation["counter_id_forecast"] != evaluation["counter_id"])
         )
-        if "counter_id_forecast" in evaluation.columns
-        else False
-    )
 
-    if isinstance(mismatch, pd.Series) and mismatch.any():
-        raise ValueError("Une prévision est associée au mauvais compteur.")
+        if mismatch.any():
+            raise ValueError("Une prévision est associée au mauvais compteur.")
 
-    if "counter_id_forecast" in evaluation.columns:
         evaluation = evaluation.drop(columns="counter_id_forecast")
 
     # Vérifier l'alignement temporel
@@ -288,7 +317,7 @@ def evaluate_model_case(case, model, y_true, y_pred, is_scoreable):
 
     y_true = np.asarray(y_true, dtype=float)
     y_pred = np.asarray(y_pred, dtype=float)
-    is_scoreable = np.asarray(is_scoreable, dtype=bool)
+    is_scoreable = _to_bool(pd.Series(is_scoreable)).to_numpy()
 
     if not (len(y_true) == len(y_pred) == len(is_scoreable)):
         raise ValueError("Les tableaux doivent avoir la même taille.")
@@ -297,12 +326,11 @@ def evaluate_model_case(case, model, y_true, y_pred, is_scoreable):
 
     metrics = calculate_metrics(y_true[valid], y_pred[valid])
 
-    hourly_mae = np.full(len(y_true), np.nan)
-    hourly_rmse = np.full(len(y_true), np.nan)
+    hourly_absolute_error = np.full(len(y_true), np.nan)
+    hourly_signed_error = np.full(len(y_true), np.nan)
 
-    hourly_mae[valid] = np.abs(y_true[valid] - y_pred[valid])
-
-    hourly_rmse[valid] = np.abs(y_true[valid] - y_pred[valid])
+    hourly_absolute_error[valid] = np.abs(y_true[valid] - y_pred[valid])
+    hourly_signed_error[valid] = y_pred[valid] - y_true[valid]
 
     return {
         "case": case,
@@ -313,11 +341,12 @@ def evaluate_model_case(case, model, y_true, y_pred, is_scoreable):
         "MAPE": metrics["MAPE"],
         "RMSE": metrics["RMSE"],
         "R2": metrics["R2"],
-        "hourly_MAE": hourly_mae.tolist(),
-        "hourly_RMSE": hourly_rmse.tolist(),
+        "hourly_absolute_error": hourly_absolute_error.tolist(),
+        "hourly_signed_error": hourly_signed_error.tolist(),
     }
 
 
+# EVALUATION PAR CAS
 def calculate_metrics_by_case(evaluation):
     """
     Calcule les métriques pour chaque cas, méthode et variante.
@@ -367,7 +396,12 @@ def calculate_coverage(evaluation):
     for keys, group in evaluation.groupby(group_columns, dropna=False):
         n_predicted = int(group["is_valid_prediction"].sum())
 
-        n_fallback = int((group["prediction_status"] == "fallback").sum())
+        n_fallback = int(
+            (
+                group["is_valid_prediction"]
+                & (group["prediction_status"] == "fallback")
+            ).sum()
+        )
 
         n_missing = N_EXPECTED_HOURS - n_predicted
 
@@ -382,7 +416,9 @@ def calculate_coverage(evaluation):
         elif n_predicted > 0:
             status = "partial"
             reason = "Less than 24h of predictions"
-        elif group["prediction_status"].notna().any():
+        elif group["prediction_status"].notna().any() and (
+            group["prediction_status"] != ""
+        ).any():
             status = "error"
             reason = "Error in the data"
         else:
@@ -440,34 +476,6 @@ def calculate_by_counter(evaluation):
     return pd.DataFrame(results)
 
 
-# METRIQUES PAR COMPTEUR
-def calculate_by_counter(evaluation):
-    """
-    Calcule les métriques par compteur, méthode et variante.
-    Les calculs sont réalisés à partir des heures évaluables,
-    et non à partir d'une moyenne des métriques par cas.
-    """
-
-    valid = evaluation[evaluation["is_evaluable"]].copy()
-
-    if valid.empty:
-        return pd.DataFrame()
-
-    results = []
-
-    group_columns = ["counter_id", "method_run_id", "variant"]
-
-    for keys, group in valid.groupby(group_columns):
-        metrics = calculate_metrics(group["count"], group["y_pred"])
-
-        result = dict(zip(group_columns, keys))
-        result.update(metrics)
-
-        results.append(result)
-
-    return pd.DataFrame(results)
-
-
 # METRIQUES GLOBALES
 def calculate_global_metrics(results_df):
     """
@@ -479,9 +487,11 @@ def calculate_global_metrics(results_df):
     if results_df.empty:
         return pd.DataFrame()
 
-    metric_columns = ["MAE", "MAPE", "RMSE", "R2"]
+    metric_columns = ["MAE", "MAPE", "RMSE", "R2", "bias"]
 
     group_columns = ["method_run_id", "variant"]
+
+    _check_columns(results_df, group_columns + metric_columns, "results_df")
 
     global_results = results_df.groupby(group_columns)[metric_columns].mean().reset_index()
 
@@ -521,6 +531,9 @@ def filter_common_complete_cases(evaluation, coverage):
     comparable = evaluation[
         evaluation["case_id"].isin(common_cases) & evaluation["is_evaluable"]
     ].copy()
+
+    if comparable.empty:
+        return comparable
 
     # Ne garder que les timestamps évaluables pour toutes les méthodes et variantes du cas
     hour_counts = comparable.groupby(["case_id", "expected_timestamp"])[
@@ -594,7 +607,7 @@ def evaluation_cases_from_forecasts(forecasts_csv, cases_csv, observations_csv):
     forecasts = pd.read_csv(forecasts_csv)
     observations = pd.read_csv(observations_csv)
 
-    case_ids = forecasts["case_id"].unique()
+    case_ids = forecasts["case_id"].dropna().unique()
 
     selected_cases = cases[cases["case_id"].isin(case_ids)].copy()
 
