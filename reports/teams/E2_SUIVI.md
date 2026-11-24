@@ -5,7 +5,7 @@
 > Ce document est la **source de vérité du travail de l'équipe 2** et la matière première du rapport final. Toute personne qui modifie du code, des données, des paramètres ou une décision de l'équipe 2 **doit le mettre à jour dans le même commit**. Pour qu'il reste cohérent :
 >
 > 1. **Une entrée par modification** dans le [§4 Journal des modifications](#4-journal-des-modifications), ajoutée **en haut** de la liste (la plus récente d'abord). Ne jamais réécrire ni supprimer une entrée passée : pour corriger, ajouter une nouvelle entrée qui renvoie à l'ancienne (`Corrige MOD-xxx`).
-> 2. **Identifiant séquentiel** `MOD-NNN` (le suivant du plus grand existant), **date au format ISO** `AAAA-MM-JJ`, **auteur nommé**, branche et commit (hash court, ou `non commité` à remplacer ensuite).
+> 2. **Identifiant séquentiel** `MOD-NNN` (le suivant du plus grand existant), **date au format ISO** `AAAA-MM-JJ`, **auteur nommé**, branche et commit (Team2).
 > 3. **Remplir tous les champs du gabarit d'entrée** (§4) : quoi, pourquoi, fichiers (liens relatifs), impact sur les contrats/partenaires, vérifications réellement effectuées, points ouverts. Écrire `aucun` plutôt que laisser vide.
 > 4. **Mettre à jour en même temps** les sections d'état concernées : [§2 État](#2-état-davancement), [§5 Reste à faire](#5-reste-à-faire), [§6 Décisions](#6-décisions-et-points-ouverts), [§7 Expériences](#7-expériences-et-résultats). Cocher une tâche uniquement si elle est **faite et vérifiée**, avec le renvoi `MOD-NNN`.
 > 5. **Ne noter que des faits vérifiés.** Un résultat chiffré cite sa source (fichier `.pred.csv`, `scores.csv`, fiche d'expérience). Ne jamais reporter un score mesuré sur le **test final** avant le gel des choix (§6).
@@ -40,7 +40,7 @@ Documents de référence : [sujet](../../ParisPulse_Sujet_etudiants.pdf), [archi
 
 ## 2. État d'avancement
 
-_Dernière mise à jour : 2026-11-23 - MOD-008._
+_Dernière mise à jour : 2026-11-24 - MOD-010._
 
 | Étape (README E2) | État | Renvoi |
 | --- | --- | --- |
@@ -50,7 +50,7 @@ _Dernière mise à jour : 2026-11-23 - MOD-008._
 | 2. Référence 168 h + repli causal (`baseline.py`) | ✅ Codée et testée sur cas synthétique ; repli N = 4 provisoire (D-03) ; seconde référence médiane 4 semaines | MOD-003, MOD-004 |
 | 3. Vérification manuelle + raccord E4/E5 | 🟡 Vérifié à la main sur cas synthétique et sur 11 valeurs réelles ; consommation par E4/E5 à obtenir | MOD-003, MOD-005 |
 | 4. Variables communes (`features.py`) | 🟡 `f1.0` codée, testée, jeu d'apprentissage réel construit (E2-TECH-002) ; à présenter à E3 et E1 | MOD-006 |
-| 5. Méthode justifiée + variante explicative (`train.py`) | 🟡 Socle commun `train.py` fait et testé (`fit`, sauvegarde, chargement) ; MLP : apprentissage (`fit_mlp`) et prévision (`predict_mlp`) faits et testés, premier apprentissage réel (E2-TECH-003) ; HGB à brancher ; comparaison après validation du protocole | MOD-007, MOD-008 |
+| 5. Méthode justifiée + variante explicative (`train.py`) | 🟡 Socle commun `train.py` fait et testé (`fit`, sauvegarde, chargement) ; MLP : apprentissage (`fit_mlp`) et prévision (`predict_mlp`) faits et testés, premier apprentissage réel (E2-TECH-003) ; HGB (`tabular.py`) fait et testé, premier apprentissage réel (E2-TECH-004), loss à fixer par E4 ; comparaison après validation du protocole | MOD-007, MOD-008, MOD-010 |
 | 6. Calcul exécutable et exports, recalcul autre origine (`predict.py`) | 🟡 Chaîne complète et commande `python -m src.models.known.predict` ; 10 858 cas de validation calculés (E2-TECH-001) ; recalcul par E5 à faire ; variante MLP à brancher (recette dans [E2_PRISE_EN_MAIN.md](E2_PRISE_EN_MAIN.md)) | MOD-003, MOD-005, MOD-008 |
 | 7. Cas difficile, extension, test final après gel | 🔲 | - |
 
@@ -119,10 +119,72 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
 - **Points ouverts** : ce qui reste incertain ou à valider.
 ```
 
+### MOD-010 - 2026-11-24 - HGB implémenté (`tabular.py`), tests et premier apprentissage réel (complète MOD-009)
+
+- **Auteur** : Ania Garoui (assistée par Claude Code).
+- **Branche / commit** : `Team2` / commité 
+- **Quoi** :
+  - [tabular.py](../../src/models/known/tabular.py) : toutes les fonctions du squelette MOD-009 sont écrites.
+    - `hgb_hyperparameters` contrôle les réglages et refuse une clé inconnue.
+    - `fit_hgb` :
+      - contrôle les origines avant de lire une cible ;
+      - construit les variables avec `build_training_frame` (`f1.0`) ;
+      - réserve comme holdout les 4 semaines avant `fit_cutoff`, en journées entières ;
+      - choisit le nombre d'arbres sur ce holdout avec `staged_predict` (patience 20) ;
+      - réapprend avec ce nombre d'arbres, sur l'apprentissage seul par défaut ;
+      - écrit un bilan avec la MAE de contrôle contre `lag_168h` et `profile_median_4w` sur les mêmes cellules.
+    - `predict_hgb` refuse avec un code `hgb_*`, sinon passe par `build_feature_frame` et `predict_frame`. Les sorties sont bornées à ≥ 0.
+    - `save_hgb` / `load_hgb` (joblib) refusent un format, une version de variables, des colonnes ou une latence différents.
+    - La commande `python -m src.models.known.tabular` apprend, sauvegarde et affiche le bilan.
+  - [tests/test_known_tabular.py](../../tests/test_known_tabular.py) : 36 tests sur données synthétiques, sans dépendre de torch. Ils couvrent :
+    - les réglages et les origines ;
+    - la stabilité : changer le futur ou relancer avec la même graine ne change rien ;
+    - le holdout en journées entières, la latence et les refus ;
+    - une fenêtre clairsemée, qui est prévue et non refusée ;
+    - l'égalité du calcul en bloc et du calcul cas par cas ;
+    - l'aller-retour `train.save_model` / `load_model` et le refus des modèles incompatibles.
+- **Pourquoi** : second modèle sites connus, à comparer au MLP et aux références sur les mêmes origines (EXP-E2-03).
+- **Fichiers** : [tabular.py](../../src/models/known/tabular.py), [test_known_tabular.py](../../tests/test_known_tabular.py), ce fichier.
+- **Impact partenaires / contrats** :
+  - Aucune colonne CSV ni signature partagée modifiée. `predict.py` n'est pas encore branché : la variante `hgb` n'est pas servie par `predict_24h`.
+  - Nouveaux codes à annoncer à E4 et E5 avant le branchement : `hgb_origin_not_midnight`, `hgb_origin_before_fit_cutoff`, `hgb_no_history`, `hgb_context_missing`, `hgb_non_finite_output`.
+  - Le HGB ne refuse pas une fenêtre clairsemée, contrairement au MLP (`mlp_window_too_sparse`). Sa couverture sera donc plus large : comparer sur les mêmes cas complets.
+- **Vérifications effectuées** :
+  - `pytest` hors tests du MLP (torch absent du `.venv` local) : 242 passés. `ruff check` et `ruff format --check` sans problème.
+  - Données réelles, `hist-20261117`, coupure au 01/07/2026, avec contexte, graine 0, `--no-save`, model_run_id `e2-hgb-ctx-20260701-s0-b357` :
+    - effectifs : 97 compteurs ; 2 082 454 lignes et 87 084 origines en apprentissage ; holdout de 61 370 lignes sur 95 compteurs (03/06 au 29/06) ; 9 groupes E3 exclus ;
+    - modèle : 342 arbres retenus sur 500 ;
+    - temps : 4 min 38 s au total, dont 44 s de variables et 125 s pour les deux apprentissages HGB ;
+    - NaN ≤ 0,33 % par colonne.
+  - Fiche : [E2-TECH-004](../experiments/E2-TECH-004.md).
+  - Contrôle sur le holdout, en MAE macro par compteur sur 61 314 cellules : HGB 17,9 vélos/h, `profile_median_4w` 20,3, `lag_168h` 24,5. Contrôle de bon fonctionnement seulement, ni score E4 ni comparaison officielle. Le MLP donnait 17,5 contre 24,5 pour `lag_168h` (E2-TECH-003), mais sur ses propres cellules : les deux chiffres ne sont pas comparables.
+- **Fiche d'essai** : [E2-TECH-004](../experiments/E2-TECH-004.md).
+- **Points ouverts** :
+  - brancher les variantes `hgb` et `mlp` dans `predict.py` : Idir ;
+  - choisir la loss : E4 ; `absolute_error` reste le réglage par défaut d'ici là ;
+  - mettre en commun `_check_training_origins` et `_holdout_start` avec `neural.py` (Idir) ;
+  - sauvegarder un modèle, puis mesurer la couverture et le coût par cas sur la validation ;
+  - ajouter à `BIBLIOGRAPHIE.md` des références sur le gradient boosting, absentes aujourd'hui ;
+  - fixer `refit_on_holdout` et `categorical` avant les scores de validation (EXP-E2-03) ;
+  - calculer l'importance des variables par permutation, sur la validation.
+
+### MOD-009 - 2026-11-24 - Squelette du HGB (`tabular.py`) et de ses tests
+
+- **Auteur** : Ania Garoui (assistée par Claude Code).
+- **Branche / commit** : `Team2` / commité.
+- **Quoi** :
+  - [tabular.py](../../src/models/known/tabular.py), nouveau : constantes (réglages par défaut, codes de refus `hgb_*`), `HGBModel`, `HGBForecast`, signatures et docstrings de `hgb_hyperparameters`, `resolve_groups`, `fit_hgb` (arrêt anticipé temporel sur les 4 semaines avant `fit_cutoff`, jamais le découpage aléatoire de sklearn), `refusal_reason`, `predict_frame`, `predict_hgb`, `save_hgb` / `load_hgb`, commande `main`. Toutes lèvent `NotImplementedError("E2 (Ania) : ...")` ; « hgb » est déclaré dans le registre à l'import.
+  - [tests/test_known_tabular.py](../../tests/test_known_tabular.py), nouveau : 2 tests actifs (déclaration, codes de refus), 17 tests à écrire marqués `skip`.
+- **Pourquoi** : étape 5 du README E2 ; second modèle sites connus, comparé au MLP sur les mêmes origines (EXP-E2-03).
+- **Fichiers** : [tabular.py](../../src/models/known/tabular.py), [test_known_tabular.py](../../tests/test_known_tabular.py), ce fichier.
+- **Impact partenaires / contrats** : aucun pour l'instant (aucune colonne, signature ou variante de `predict_24h` modifiée). L'ablation par groupe passe par `hyperparameters["context_groups"]`, sans changer `TrainConfig`. `_check_training_origins` et `_holdout_start` dupliquent `neural.py` : factorisation à proposer à Idir.
+- **Vérifications effectuées** : `pytest` hors tests du MLP (torch absent du `.venv` local) : 208 passés, 17 ignorés ; `ruff check` et `ruff format --check` sans problème.
+- **Points ouverts** : loss principale, réapprentissage sur le holdout, variables catégorielles, refus d'une fenêtre très clairsemée ou non.
+
 ### MOD-008 - 2026-11-23 - Apprentissage (`fit_mlp`) et prévision (`predict_mlp`) du MLP, essai réel E2-TECH-003
 
 - **Auteur** : Esther (assistée par Claude Code).
-- **Branche / commit** : `Team2-Esther` / non commité.
+- **Branche / commit** : `Team2-Esther` / commité.
 - **Quoi** :
   - [neural.py](../../src/models/known/neural.py) :
     - `mlp_hyperparameters` : tous les réglages, contrôlés (clé inconnue ou valeur hors domaine refusées), à passer à `TrainConfig` pour que `metadata.json` et le nom du modèle portent les réglages réellement utilisés ;
@@ -220,7 +282,7 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
 ### MOD-006 - 2026-11-20 - Variables f1.0 (`features.py`), tests et jeu d'apprentissage réel
 
 - **Auteur** : Ania Garoui (assistée par Claude Code).
-- **Branche / commit** : `Team2` / non commité.
+- **Branche / commit** : `Team2` / commité.
 - **Quoi** :
   - [features.py](../../src/models/known/features.py), `FEATURE_VERSION = "f1.0"` :
     - calendrier de base, toujours présent : horizon, heure locale, jour, week-end, mois (Europe/Paris) ;
@@ -259,7 +321,7 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
 ### MOD-005 - 2026-11-19 - Chaîne complète sur données réelles : chargement, filtrage causal, predict_24h, commande (Corrige MOD-004)
 
 - **Auteur** : kid-emmanuelle.
-- **Branche / commit** : `Team2` / non commité.
+- **Branche / commit** : `Team2` / commité.
 - **Quoi** :
   - [schemas.py](../../src/models/schemas.py) : `Case.from_row` (cellules vides = absent, dates avec fuseau obligatoires puis UTC, scénario contrôlé) ; `assert_causal` (coupure ≤ origine, `interval_end` ≤ coupure, `available_at` ≤ origine pour l'historique et le contexte, support local pour un nouveau site).
   - [predict.py](../../src/models/known/predict.py) :
@@ -271,7 +333,7 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
     - Commande `python -m src.models.known.predict`, qui refuse le bloc `test` sauf `--allow-test`.
   - [tests/test_known_predict.py](../../tests/test_known_predict.py) : 8 tests synthétiques (lecture des cas, valeurs mesurées contre estimées, repli sur une estimation E1, filtrage du futur et du contexte tardif, fuites refusées, cas en échec conservé).
   - Essai technique [E2-TECH-001](../experiments/E2-TECH-001.md) : 10 858 cas de validation, pour chaque référence.
-  - Corrige MOD-004 : son commit est `8bf5f7f` (et non « non commité »).
+  - Corrige MOD-004 : son commit est `8bf5f7f` 
 - **Pourquoi** : données d'E1 reçues ; première prévision réelle à transmettre à E4 et E5 (sujet p. 4 et 6).
 - **Fichiers** : [schemas.py](../../src/models/schemas.py), [predict.py](../../src/models/known/predict.py), [tests/test_known_predict.py](../../tests/test_known_predict.py), [E2-TECH-001.md](../experiments/E2-TECH-001.md), ce fichier.
 - **Impact partenaires / contrats** :
@@ -383,7 +445,7 @@ Prioriser dans l'ordre. Cocher avec le renvoi `MOD-NNN` uniquement une fois vér
 - [ ] Choisir une méthode justifiée par la bibliographie (statistique, tabulaire, réseau compact, modèle partagé...).
 - [ ] Ablation : même modèle avec / sans calendrier ou météo, réglages figés avant le test.
 - [x] `train.py` : `exclude_reserved_sites` (par `site_group_id`), `fit`, `save_model` avec `metadata.json` + SHA-256. MOD-007
-- [ ] Brancher le HGB sur `train.fit` (`register_backend("hgb", …)`).
+- [x] Brancher le HGB sur `train.fit` (`register_backend("hgb", …)`). MOD-009 (squelette), MOD-010 (implémentation, premier apprentissage réel)
 - [x] MLP : `fit_mlp` (perte MAE sur les cibles mesurées, arrêt anticipé sur les 4 semaines avant `fit_cutoff`, cibles extrêmes) et `predict_mlp` (proposés à Esther). MOD-008 (E2-TECH-003)
 - [ ] `predict.py` : variante `"model"` (charger le modèle une fois, repli sur la référence) ; désigner le `model_run_id` utilisé par l'application. Recette pour le MLP : [E2_PRISE_EN_MAIN.md](E2_PRISE_EN_MAIN.md) (MOD-008).
 - [ ] Présenter MOD-008 à Idir et Ania (contrôle de latence dans `train.fit`, format 2), à E3 (réseau réutilisable), à E4/E5 (codes `mlp_*`, couverture) ; consigner leur retour au §8.
@@ -439,6 +501,7 @@ Chaque expérience a sa fiche dans `reports/experiments/` (gabarit [experiment.m
 | E2-TECH-001 | 2026-11-19 | Essai technique : chaîne complète sur données réelles (pas de comparaison) | `weekly_naive`, `weekly_profile_median` | `proto-v0` (non validé) / `hist-20261117`, bloc validation | non calculée (E4) | 10 858 / 10 858 pour chaque variante | ≈ 2 min pour 10 858 cas, CPU portable | Chaîne fonctionnelle ; 6,2 % / 3,5 % d'horizons en repli | [fiche](../experiments/E2-TECH-001.md) |
 | E2-TECH-002 | 2026-11-20 | Essai technique : jeu d'apprentissage des variables `f1.0` (pas de modèle) | sans objet | aucun (`fit_cutoff` 01/06/2026 provisoire) / `hist-20261117` | sans objet | 87 826 couples, 2 075 614 lignes | 204 s, 374 Mo | Variables sans fuite, chemins identiques ; prêtes pour un modèle | [fiche](../experiments/E2-TECH-002.md) |
 | E2-TECH-003 | 2026-11-23 | Essai technique : premier apprentissage du MLP sur données réelles (pas de comparaison) | `mlp` avec contexte, graine 0 | aucun protocole validé (`fit_cutoff` 01/07/2026, D-17) / `hist-20261117` | non calculée (E4) | 5 694 / 6 014 cas de validation servis par le MLP (94,7 %) | apprentissage 33 s, 1,25 Go, CPU | Apprentissage sans fuite et rapide ; contrôle interne sur juin, hors scores E4 (voir fiche) ; 4 sites en panne pendant la validation | [fiche](../experiments/E2-TECH-003.md) |
+| E2-TECH-004 | 2026-11-24 | Essai technique : premier apprentissage du HGB sur données réelles (pas de comparaison) | `hgb` avec contexte, `absolute_error`, graine 0 | aucun protocole validé (`fit_cutoff` 01/07/2026, D-17) / `hist-20261117` | non calculée (E4) | couverture de la validation non mesurée | 278 s au total, dont 125 s pour les deux apprentissages HGB ; CPU | Apprentissage sans fuite ; 342 arbres ; contrôle interne sur juin, hors scores E4 (voir fiche) ; loss à fixer par E4 | [fiche](../experiments/E2-TECH-004.md) |
 
 ---
 
