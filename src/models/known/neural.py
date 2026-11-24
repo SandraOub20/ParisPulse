@@ -30,6 +30,7 @@ Le repli sur la référence est décidé par l'appelant (predict.py), jamais ici
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import time
 from dataclasses import dataclass
@@ -78,6 +79,12 @@ DEFAULT_HYPERPARAMETERS: dict[str, Any] = {
     "patience": 8,  # époques sans progrès sur l'arrêt anticipé avant d'arrêter
     "holdout_weeks": 4,  # arrêt anticipé sur les dernières semaines avant fit_cutoff (0 = aucun)
     "loss_weighting": "scale",  # "scale" : erreur en vélos/h ; "none" : erreur relative au niveau
+    # Seuil d'heures mesurées sur la semaine visible (apprentissage et prévision), D-18.
+    "min_observed_hours": MIN_OBSERVED_HOURS,
+    # Masquage à l'apprentissage (EXP-E2-05) : 0 = désactivé, comportement d'avant.
+    "mask_prob": 0.0,  # part des exemples d'apprentissage masqués, retirée à chaque époque
+    "mask_min_hours": 24,  # longueur minimale du bloc effacé
+    "mask_max_hours": 144,  # longueur maximale du bloc effacé
 }
 LOSS_WEIGHTINGS = ("scale", "none")
 EXTREME_TARGET_RATIO = INPUT_CLIP  # cible > 10 fois le niveau de sa fenêtre : comptée au bilan
@@ -88,7 +95,7 @@ REFUSE_NOT_MIDNIGHT = "mlp_origin_not_midnight"  # la sortie k doit être la k-i
 REFUSE_BEFORE_CUTOFF = "mlp_origin_before_fit_cutoff"  # journée vue pendant l'apprentissage
 REFUSE_NO_HISTORY = "mlp_no_history"  # aucune mesure publiée pour ce compteur
 REFUSE_CONTEXT = "mlp_context_missing"  # contexte utilisé par le réseau inconnu à l'origine
-REFUSE_SPARSE = "mlp_window_too_sparse"  # moins de 84 h mesurées sur la semaine visible
+REFUSE_SPARSE = "mlp_window_too_sparse"  # moins de min_observed_hours (84 par défaut) mesurées
 REFUSE_LOW_LEVEL = "mlp_level_too_low"  # niveau < 1 vélo/h : normalisation instable
 REFUSE_NON_FINITE = "mlp_non_finite_output"  # sortie non finie (ne devrait jamais arriver)
 
@@ -122,6 +129,7 @@ class Windows:
     calendar_columns: list[str]
     context_missing: np.ndarray | None = None
     publication_lag_hours: int | None = None
+    min_observed_hours: int = MIN_OBSERVED_HOURS  # seuil utilisé pour usable et les refus
 
     def __len__(self) -> int:
         return len(self.scale)
@@ -162,11 +170,14 @@ def build_windows(
     *,
     use_context: bool = True,
     publication_lag_hours: int = DEFAULT_LAG_HOURS,
+    min_observed_hours: int = MIN_OBSERVED_HOURS,
 ) -> Windows:
     """Construire un exemple par ligne de origins (colonnes counter_id, origin).
 
     counts : counter_id, timestamp (UTC), count (entrée : mesures seules, voir
     train.load_training_data), count_raw et is_scoreable (pour les cibles).
+    min_observed_hours : heures mesurées minimales pour qu'un exemple soit utilisable
+    (84 par défaut, D-18) ; rangé dans Windows pour que refusal_reasons applique le même.
     Fenêtre d'un exemple : les 168 heures qui finissent à origin - délai, donc
     publiées à l'origine. Rien après n'est lu en entrée.
     Cibles : les 24 heures à partir de l'origine (leurs valeurs ne servent qu'à apprendre
@@ -194,7 +205,7 @@ def build_windows(
     n_obs = observed.sum(axis=1)
     total = np.where(observed, window, 0.0).sum(axis=1)
     scale = total / np.maximum(n_obs, 1)  # moyenne des heures mesurées (0 si aucune)
-    usable = (n_obs >= MIN_OBSERVED_HOURS) & (scale >= MIN_SCALE)
+    usable = (n_obs >= min_observed_hours) & (scale >= MIN_SCALE)
     safe = np.where(usable, scale, 1.0)[:, None]
     series = np.clip(np.nan_to_num(window / safe, nan=0.0), 0.0, INPUT_CLIP)
     target_mask = ~np.isnan(truth)
@@ -217,6 +228,7 @@ def build_windows(
         calendar_columns=columns,
         context_missing=context_missing,
         publication_lag_hours=lag,
+        min_observed_hours=int(min_observed_hours),
     )
 
 
@@ -373,6 +385,9 @@ def mlp_hyperparameters(**overrides: Any) -> dict[str, Any]:
         ("max_epochs", 1),
         ("patience", 1),
         ("holdout_weeks", 0),
+        ("min_observed_hours", 1),
+        ("mask_min_hours", 1),
+        ("mask_max_hours", 1),
     ):
         value = hp[key]
         if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
@@ -381,6 +396,7 @@ def mlp_hyperparameters(**overrides: Any) -> dict[str, Any]:
         ("dropout", 0.0, 1.0, False),
         ("lr", 0.0, None, True),
         ("weight_decay", 0.0, None, False),
+        ("mask_prob", 0.0, 1.0, False),
     ):
         value = hp[key]
         ok = not isinstance(value, bool) and isinstance(value, int | float)
@@ -390,9 +406,68 @@ def mlp_hyperparameters(**overrides: Any) -> dict[str, Any]:
             bounds = f"dans [{low}, {high})" if high is not None else f"{sign} {low}"
             raise ValueError(f"réglage {key}={value!r} : nombre {bounds} attendu")
         hp[key] = float(value)  # 1 et 1.0 donnent la même empreinte de configuration
+    for key in ("min_observed_hours", "mask_max_hours"):
+        if hp[key] > WINDOW_HOURS:
+            raise ValueError(f"réglage {key}={hp[key]!r} : au plus {WINDOW_HOURS} h (fenêtre)")
+    if hp["mask_min_hours"] > hp["mask_max_hours"]:
+        raise ValueError("mask_min_hours doit être <= mask_max_hours")
     if hp["loss_weighting"] not in LOSS_WEIGHTINGS:
         raise ValueError(f"loss_weighting={hp['loss_weighting']!r} : {LOSS_WEIGHTINGS} attendus")
     return {key: hp[key] for key in DEFAULT_HYPERPARAMETERS}
+
+
+def mask_windows(
+    windows: Windows,
+    rows: np.ndarray,
+    rng: np.random.Generator,
+    *,
+    prob: float,
+    min_hours: int,
+    max_hours: int,
+) -> Windows:
+    """Copie de windows où une part prob des lignes rows perd un bloc continu d'heures.
+
+    Pour chaque ligne tirée : un bloc de min_hours à max_hours heures, à une position tirée
+    au hasard dans la semaine visible, passe à « non mesuré » (masque 0, série 0, jamais une
+    valeur 0 prise pour une mesure). Le niveau est recalculé sur les heures restantes, puis
+    la série et les cibles sont renormalisées par ce niveau, comme le ferait build_windows
+    sur une semaine réellement trouée. Une ligne qui deviendrait inutilisable (moins de
+    windows.min_observed_hours mesurées, ou niveau < MIN_SCALE) n'est pas masquée.
+    Les cibles réelles (en vélos/h) et leur masque ne changent pas. windows n'est pas modifié.
+    Approximation : une heure plafonnée à INPUT_CLIP fois le niveau le reste après masquage.
+    """
+    out = dataclasses.replace(
+        windows,
+        series=windows.series.copy(),
+        mask=windows.mask.copy(),
+        target=windows.target.copy(),
+        scale=windows.scale.copy(),
+    )
+    rows = np.asarray(rows, dtype=np.int64)
+    if prob <= 0 or rows.size == 0:
+        return out
+    chosen = rows[rng.random(rows.size) < prob]
+    if chosen.size == 0:
+        return out
+    lengths = rng.integers(min_hours, max_hours + 1, size=chosen.size)
+    starts = rng.integers(0, WINDOW_HOURS - lengths + 1)
+    hours = np.arange(WINDOW_HOURS)[None, :]
+    block = (hours >= starts[:, None]) & (hours < (starts + lengths)[:, None])
+
+    old_scale = windows.scale[chosen].astype(np.float64)
+    raw = windows.series[chosen].astype(np.float64) * old_scale[:, None]  # vélos/h
+    kept = (windows.mask[chosen] == 1) & ~block
+    n_obs = kept.sum(axis=1)
+    new_scale = np.where(kept, raw, 0.0).sum(axis=1) / np.maximum(n_obs, 1)
+    ok = (n_obs >= windows.min_observed_hours) & (new_scale >= MIN_SCALE)
+    rows_ok, kept, raw, new_scale = chosen[ok], kept[ok], raw[ok], new_scale[ok]
+    out.mask[rows_ok] = kept.astype(np.float32)
+    series = np.where(kept, raw / new_scale[:, None], 0.0)
+    out.series[rows_ok] = np.clip(series, 0.0, INPUT_CLIP).astype(np.float32)
+    truth = windows.target[rows_ok].astype(np.float64) * old_scale[ok][:, None]
+    out.target[rows_ok] = (truth / new_scale[:, None]).astype(np.float32)
+    out.scale[rows_ok] = new_scale.astype(np.float32)
+    return out
 
 
 def fit_mlp(
@@ -428,7 +503,12 @@ def fit_mlp(
     _check_training_origins(origins, fit_cutoff, lag)
 
     windows = build_windows(
-        counts, origins, context, use_context=use_context, publication_lag_hours=lag
+        counts,
+        origins,
+        context,
+        use_context=use_context,
+        publication_lag_hours=lag,
+        min_observed_hours=hp["min_observed_hours"],
     )
     context_missing = windows.context_missing
     has_target = windows.target_mask.any(axis=1)
@@ -458,6 +538,10 @@ def fit_mlp(
     with torch.random.fork_rng(devices=[]):  # graine locale : l'état global est rendu après
         torch.manual_seed(config.seed)
         rng = np.random.default_rng(config.seed)
+        # Générateur à part pour les masques : sans masquage, l'ordre des lots (rng) et donc
+        # les poids restent exactement ceux d'avant EXP-E2-05.
+        mask_rng = np.random.default_rng([config.seed, 1])
+        masked_per_epoch: list[int] = []
         net = MLPNet(
             windows.n_inputs, hidden=hp["hidden"], layers=hp["layers"], dropout=hp["dropout"]
         )
@@ -467,6 +551,23 @@ def fit_mlp(
         x_train, t_train, m_train, w_train = train_set
         for epoch in range(1, hp["max_epochs"] + 1):
             net.train()
+            if hp["mask_prob"] > 0:  # nouveau tirage à chaque époque, apprentissage seulement
+                masked = mask_windows(
+                    windows,
+                    train_rows,
+                    mask_rng,
+                    prob=hp["mask_prob"],
+                    min_hours=hp["mask_min_hours"],
+                    max_hours=hp["mask_max_hours"],
+                )
+                masked_weights = (
+                    masked.scale if hp["loss_weighting"] == "scale" else np.ones(len(masked))
+                )
+                x_train, t_train, m_train, w_train = _tensors(
+                    masked.X, masked, masked_weights, train_rows
+                )
+                changed = (masked.mask[train_rows] != windows.mask[train_rows]).any(axis=1)
+                masked_per_epoch.append(int(changed.sum()))
             order = torch.from_numpy(rng.permutation(len(x_train)))
             loss_sum, weight_sum = 0.0, 0.0
             for start in range(0, len(order), hp["batch_size"]):
@@ -511,6 +612,12 @@ def fit_mlp(
         net=net,
         X=X,
     )
+    if masked_per_epoch:
+        report["masking"] = {
+            "train_examples": int(train_rows.size),
+            "masked_per_epoch_mean": round(float(np.mean(masked_per_epoch)), 1),
+            "masked_share_mean": round(float(np.mean(masked_per_epoch)) / train_rows.size, 4),
+        }
     report["fit_seconds"] = round(time.perf_counter() - started, 3)
     net.input_layout = _input_layout(use_context, lag)
     net.training_report = report
@@ -757,8 +864,9 @@ def refusal_reasons(windows: Windows) -> np.ndarray:
     """
     observed = windows.mask.sum(axis=1)
     reasons = np.full(len(windows), None, dtype=object)
-    reasons[~windows.usable & (observed >= MIN_OBSERVED_HOURS)] = REFUSE_LOW_LEVEL
-    reasons[~windows.usable & (observed < MIN_OBSERVED_HOURS)] = REFUSE_SPARSE
+    threshold = windows.min_observed_hours
+    reasons[~windows.usable & (observed >= threshold)] = REFUSE_LOW_LEVEL
+    reasons[~windows.usable & (observed < threshold)] = REFUSE_SPARSE
     if windows.context_missing is not None:
         reasons[windows.context_missing] = REFUSE_CONTEXT
     return reasons
@@ -787,13 +895,20 @@ def predict_windows(net: MLPNet, windows: Windows) -> np.ndarray:
 
 
 def predict_mlp(
-    net: MLPNet, inputs: ForecastInputs, *, fit_cutoff: pd.Timestamp | None = None
+    net: MLPNet,
+    inputs: ForecastInputs,
+    *,
+    fit_cutoff: pd.Timestamp | None = None,
+    min_observed_hours: int | None = None,
 ) -> MLPForecast:
     """Prévoir les 24 heures d'un cas, ou refuser avec une raison (repli : l'appelant).
 
     - inputs : predict.build_inputs (historique et contexte connus à l'origine) ;
       l'historique est refiltré ici sur information_cutoff et sur le support local
       éventuel du cas, par sécurité ;
+    - min_observed_hours : seuil d'heures mesurées ; par défaut celui appris par le réseau
+      (84 pour un réseau d'avant EXP-E2-05). Le donner sert à évaluer un réseau avec un
+      autre seuil (bras A′ d'EXP-E2-05), sans le réapprendre ;
     - fit_cutoff : coupure du modèle. Une origine antérieure est refusée : le modèle a
       appris sur ces journées. Un réseau entraîné la connaît (son bilan) : elle est
       vérifiée même si l'appelant l'oublie ; si les deux sont données, la plus tardive vaut ;
@@ -837,12 +952,14 @@ def predict_mlp(
     frame["count"] = pd.to_numeric(history["count"], errors="coerce").to_numpy(dtype=float)
     frame["count_raw"] = np.nan  # cibles inconnues à l'origine : jamais lues ici
     frame["is_scoreable"] = False
+    threshold = _min_observed_of(net) if min_observed_hours is None else int(min_observed_hours)
     windows = build_windows(
         frame,
         pd.DataFrame({"counter_id": [str(case.counter_id)], "origin": [origin]}),
         inputs.context if use_context else None,
         use_context=use_context,
         publication_lag_hours=lag,
+        min_observed_hours=threshold,
     )
     observed = int(windows.mask[0].sum())
     reason = refusal_reasons(windows)[0]
@@ -938,6 +1055,13 @@ def _use_context_of(net: MLPNet) -> bool:
 def _lag_of(net: MLPNet) -> int:
     layout = getattr(net, "input_layout", None)
     return DEFAULT_LAG_HOURS if layout is None else int(layout["publication_lag_hours"])
+
+
+def _min_observed_of(net: MLPNet) -> int:
+    """Seuil d'heures mesurées appris par le réseau (bilan), 84 pour un réseau d'avant."""
+    report = getattr(net, "training_report", None) or {}
+    hp = report.get("hyperparameters") or {}
+    return int(hp.get("min_observed_hours", MIN_OBSERVED_HOURS))
 
 
 def _layout_of(net: MLPNet) -> dict[str, Any]:

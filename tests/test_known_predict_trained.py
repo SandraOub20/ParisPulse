@@ -163,7 +163,7 @@ def _model(fallback: str | None = "reference") -> TrainedModel:
 
 def _raw(monkeypatch, values=None, reason=None):
     out = SimpleNamespace(ok=values is not None, values=values, reason=reason)
-    monkeypatch.setattr(predict, "_raw_forecast", lambda variant, model, inputs: out)
+    monkeypatch.setattr(predict, "_raw_forecast", lambda method, model, inputs, **kw: out)
 
 
 def test_modele_qui_prevoit(monkeypatch):
@@ -454,10 +454,17 @@ def test_eligibilite_nouveau_site_doit_etre_reserve():
 
 def test_refus_d_eligibilite_trace_sans_appeler_le_modele(monkeypatch):
     monkeypatch.setattr(
-        predict, "_raw_forecast", lambda *a: pytest.fail("modèle appelé malgré le refus")
+        predict, "_raw_forecast", lambda *a, **k: pytest.fail("modèle appelé malgré le refus")
     )
     inputs = predict.build_inputs(_case(site_group_id="G-2"), _history())
     result = predict.trained_forecast(inputs, "fakepred", _model())
     assert result.status == "fallback"
     assert result.status_reason == "fakepred_site_not_in_training"
     assert result.predictions["status_reason"].eq("fakepred_site_not_in_training").all()
+
+
+def test_seuil_d_heures_mesurees_refuse_hors_mlp():
+    with pytest.raises(ValueError, match="sans objet"):
+        predict.predict_24h(_case(), _history(), "reference", min_observed_hours=24)
+    with pytest.raises(ValueError, match="qu'au MLP"):
+        predict._raw_forecast("hgb", _model(), None, min_observed_hours=24)

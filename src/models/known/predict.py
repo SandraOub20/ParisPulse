@@ -186,6 +186,7 @@ def trained_forecast(
     *,
     variant: str | None = None,
     method_run_id: str | None = None,
+    min_observed_hours: int | None = None,
 ) -> ForecastResult:
     """Prévoir un cas avec un modèle entraîné (mlp, hgb), ou se replier sur la référence.
 
@@ -196,6 +197,7 @@ def trained_forecast(
       method_used = méthode réellement employée. Un horizon sans repli reste vide
       (unavailable), jamais 0.
     variant : étiquette écrite dans le résultat (par défaut la méthode ; E3 passe "frozen").
+    min_observed_hours : MLP seulement, remplace le seuil appris (bras A′ d'EXP-E2-05).
     model_run_id et fit_cutoff du modèle sont tracés dans les deux cas.
     """
     started = time.perf_counter()
@@ -204,7 +206,7 @@ def trained_forecast(
     values = None
     if reason is None:
         try:
-            raw = _raw_forecast(method, model, inputs)
+            raw = _raw_forecast(method, model, inputs, min_observed_hours=min_observed_hours)
             values, reason = raw.values, raw.reason
         except ValueError as error:
             reason = f"{method}_inputs_incompatible: {error}"
@@ -247,14 +249,28 @@ def trained_forecast(
     )
 
 
-def _raw_forecast(method: str, model: train.TrainedModel, inputs: ForecastInputs):
+def _raw_forecast(
+    method: str,
+    model: train.TrainedModel,
+    inputs: ForecastInputs,
+    *,
+    min_observed_hours: int | None = None,
+):
     """Sortie brute du modèle : objet avec values (24,) ou None, et reason (code de refus).
 
-    Module importé à la demande : torch n'est chargé que pour le MLP.
+    Module importé à la demande : torch n'est chargé que pour le MLP. Le seuil d'heures
+    mesurées ne concerne que le MLP (le HGB n'en a pas).
     """
     if method == MLP_VARIANT:
         neural = importlib.import_module(TRAINED_VARIANTS[MLP_VARIANT])
-        return neural.predict_mlp(model.estimator, inputs, fit_cutoff=model.config.fit_cutoff)
+        return neural.predict_mlp(
+            model.estimator,
+            inputs,
+            fit_cutoff=model.config.fit_cutoff,
+            min_observed_hours=min_observed_hours,
+        )
+    if min_observed_hours is not None:
+        raise ValueError(f"min_observed_hours ne s'applique qu'au MLP, pas à {method!r}")
     if method == HGB_VARIANT:
         tabular = importlib.import_module(TRAINED_VARIANTS[HGB_VARIANT])
         return tabular.predict_hgb(model.estimator, inputs)
@@ -320,6 +336,7 @@ def predict_24h(
     model_run_id: str | None = None,
     method_run_id: str | None = None,
     publication_lag_hours: int | None = None,
+    min_observed_hours: int | None = None,
 ) -> ForecastResult:
     """Point d'entrée E2 appelé par E5 et par les expériences.
 
@@ -328,9 +345,12 @@ def predict_24h(
     - mlp, hgb -> modèle entraîné (model_run_id, sinon DEFAULT_MODEL_RUN_IDS), chargé
       une fois, repli sur la référence s'il refuse le cas (trained_forecast).
       Le MLP et le HGB avec contexte en ont besoin : sans context, ils se replient.
+    min_observed_hours : MLP seulement, seuil d'heures mesurées à la place de celui appris.
     Le temps de préparation (filtrage causal) est compté dans preparation_seconds ; le
     chargement du modèle, fait une seule fois par expérience, n'y est pas compté.
     """
+    if min_observed_hours is not None and variant not in TRAINED_VARIANTS:
+        raise ValueError(f"min_observed_hours sans objet pour la variante {variant!r}")
     if variant not in REFERENCE_VARIANTS and variant not in TRAINED_VARIANTS:
         available = sorted(REFERENCE_VARIANTS) + sorted(TRAINED_VARIANTS)
         raise ValueError(f"variante {variant!r} indisponible ; disponibles : {available}")
@@ -343,7 +363,13 @@ def predict_24h(
     if model is None:
         result = REFERENCE_VARIANTS[variant](inputs, variant, method_run_id=method_run_id)
     else:
-        result = trained_forecast(inputs, variant, model, method_run_id=method_run_id)
+        result = trained_forecast(
+            inputs,
+            variant,
+            model,
+            method_run_id=method_run_id,
+            min_observed_hours=min_observed_hours,
+        )
     result.cost.preparation_seconds = preparation
     return result
 
@@ -359,6 +385,7 @@ def run_experiment(
     root: Path | None = None,
     publication_lag_hours: int | None = None,
     model_run_id: str | None = None,
+    min_observed_hours: int | None = None,
 ) -> tuple[Path, Path]:
     """Prévoir tous les cas puis écrire .pred.csv et .runs.csv ; retourner leurs chemins.
 
@@ -378,6 +405,7 @@ def run_experiment(
                 model_run_id=model_run_id,
                 method_run_id=method_run_id,
                 publication_lag_hours=publication_lag_hours,
+                min_observed_hours=min_observed_hours,
             )
         except Exception as exc:  # noqa: BLE001 - l'échec est tracé, jamais silencieux
             result = error_result(case, method_run_id, variant, exc)
@@ -524,6 +552,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--context", type=Path, help="défaut pour les modèles : context.csv de l'instantané"
     )
+    parser.add_argument(
+        "--min-observed-hours", type=int, help="MLP seulement : seuil à la place de celui appris"
+    )
     parser.add_argument("--method-run-id")
     parser.add_argument("--values", default="measured", choices=VALUE_POLICIES)
     parser.add_argument("--split", action="append", default=None, help="défaut : validation")
@@ -536,6 +567,8 @@ def main(argv: list[str] | None = None) -> int:
     trained = args.variant in TRAINED_VARIANTS
     if trained and args.values != "measured":
         parser.error("les modèles ont appris sur les mesures seules (D-11) : --values measured")
+    if args.min_observed_hours is not None and args.variant != MLP_VARIANT:
+        parser.error("--min-observed-hours ne s'applique qu'au MLP")
     if not trained and args.model_run_id:
         parser.error(f"--model-run-id sans objet pour la variante {args.variant}")
     if trained:
@@ -560,12 +593,14 @@ def main(argv: list[str] | None = None) -> int:
         method_run_id,
         context=context,
         model_run_id=args.model_run_id,
+        min_observed_hours=args.min_observed_hours,
     )
     selected.to_csv(pred.parent / f"{method_run_id}.cases_used.csv", index=False)
     report.update(
         {
             "values": args.values,
             "model_run_id": args.model_run_id,
+            "min_observed_hours": args.min_observed_hours,
             "context_rows": None if context is None else len(context),
             "load_seconds": round(loading, 1),
             "total_seconds": round(time.perf_counter() - started, 1),
