@@ -2,7 +2,21 @@
 
 Comprendre et prévoir la fréquentation cyclable à l'échelle d'un réseau.
 
-Structure de travail fondée sur le [sujet étudiants](ParisPulse_Sujet_etudiants.pdf) et les plans du **10 novembre 2026**. Les fichiers Python contiennent des consignes à compléter par les équipes ; l'application et les algorithmes restent à développer.
+Projet fondé sur le [sujet étudiants](ParisPulse_Sujet_etudiants.pdf) et les plans du **10 novembre 2026**.
+
+## Lancer ParisPulse V2
+
+Depuis la racine du dépôt, avec uv, Git LFS et unzip installés :
+
+```sh
+./run.sh demo
+```
+
+Cette commande prépare l’instantané E1 fourni et installe les dépendances verrouillées.
+Ouvrir l’adresse indiquée dans le terminal, par défaut [http://localhost:8501](http://localhost:8501).
+Après installation, `./run.sh app` suffit. Le [guide de l’application](src/app/README.md)
+décrit le calcul à la demande pour les sites connus et les nouveaux sites, ainsi que la comparaison
+aux mesures réelles.
 
 ## Environnement de développement
 
@@ -14,7 +28,7 @@ Installer [uv 0.13.x](doc/ENVIRONNEMENT.md), puis, depuis la racine du dépôt :
 ./run.sh notebook
 ```
 
-Python 3.11 et les dépendances verrouillées sont installés dans `.venv/`. JupyterLab, pytest et Ruff sont inclus ; PyTorch s'ajoute avec `./run.sh setup --group dl`. Les [instructions détaillées](doc/ENVIRONNEMENT.md) couvrent VS Code, Windows, Docker et la gestion des dépendances. Aucun code métier n'est fourni par cette installation.
+Python 3.11 et les dépendances verrouillées sont installés dans `.venv/`. JupyterLab, pytest et Ruff sont inclus ; PyTorch et Chronos-2 s'ajoutent avec `./run.sh setup --group dl`. Les [instructions détaillées](doc/ENVIRONNEMENT.md) couvrent VS Code, Windows, Docker et la gestion des dépendances. Aucun code métier n'est fourni par cette installation.
 
 ## Architecture et démarrage du travail
 
@@ -30,7 +44,7 @@ Lire l'[architecture](doc/ARCHITECTURE.md) puis les consignes du dossier de son 
 
 Les objets et paramètres communs sont à définir dans [src/common](src/common/README.md). Les échanges suivent les [gabarits](doc/templates/README.md) : vérité terrain dans `data/processed/`, prévisions dans `data/prediction_results/`, résultats d'évaluation dans `data/evaluation/`.
 
-Un représentant de chaque équipe fixe les échanges pendant que les autres commencent leurs premiers travaux. Le `Dockerfile`, `compose.yaml` et `run.sh` fournissent l'environnement de développement. E5 complétera le lancement de l'application suivant `run.sh.example` ; cette commande applicative reste à implémenter.
+Le `Dockerfile`, `compose.yaml` et `run.sh` fournissent l'environnement de développement.
 
 ## Documents pour démarrer
 
@@ -61,5 +75,3 @@ Le sujet demande de **faire valider le protocole par le professeur avant les com
 ## Première action
 
 Un représentant par équipe fixe les échanges pendant que les autres commencent : E1 extrait une série, E2 code une référence, E3 prépare les sites réservés et une méthode transférable, E4 vérifie un score à la main, E5 raccorde l'écran. Le premier cas technique ne remplace pas l'inventaire qui justifiera l'échantillon scientifique.
-
-**État : environnement de développement configuré et squelette documenté.** Les modules sont des fichiers d'instructions, les CSV sont des en-têtes vides et les configurations scientifiques sont des exemples à renseigner. Les données, modèles, calculs, tests applicatifs et lancement de l'application restent à réaliser. Aucun résultat scientifique n'est fourni par cette structure.

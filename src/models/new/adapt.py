@@ -1,14 +1,24 @@
-"""GABARIT À COMPLÉTER - E3
+"""Adaptation du modèle E3 à l'historique autorisé d'un nouveau site."""
 
-Comparer la même méthode sans et avec adaptation légère.
 
-Entrées et sorties : voir doc/CONTRATS.md et doc/templates/.
+def adapt(model_name, history):
+    """Retourne une copie du modèle adaptée au site à partir de `history`.
 
-À faire :
-1. Définir précisément quels paramètres changent et comment les estimer sur le support local.
-2. Choisir les réglages sur des sites de développement distincts des sites finaux.
-3. Garder le futur caché et le même support entre variantes ; réinitialiser selon le protocole.
-4. Tracer adaptation_id, paramètres, coût, échecs et résultats sur plusieurs sites.
+    L'adaptation doit rester limitée à l'historique local autorisé pour le cas.
+    """
+    model = manager.load_model(model_name)
+    adapted_model = model
+    if model_name == "chronos-2":
+        # TODO : adapter Chronos-2 sur history (travailler sur adapted_model).
+        adapted_model = None
+    elif model_name == "google_TimesFM_2.5":
+        # TODO : adapter TimesFM 2.5 sur history (travailler sur adapted_model).
+        adapted_model = None
+    elif model_name == "team2":
+        # TODO : adapter le modèle E2 sur history (travailler sur adapted_model).
+        adapted_model = None
+    else:
+        raise ValueError(f"Modèle inconnu : {model_name}")
 
-Aucune implémentation fournie ; ce fichier contient uniquement des consignes.
-"""
+    # TODO : retourner le modèle adapté sans modifier le modèle global (model) partagé.
+    return adapted_model
