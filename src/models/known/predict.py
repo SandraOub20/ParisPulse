@@ -45,16 +45,24 @@ from src.models.schemas import (
     target_timestamps,
 )
 
-# Variantes servies par predict_24h ; les modèles entraînés s'ajouteront ici.
 REFERENCE_VARIANTS: dict[str, Callable[..., ForecastResult]] = {
     "reference": baseline.weekly_reference,
     baseline.PROFILE_VARIANT: baseline.weekly_profile_reference,
 }
+MLP_VARIANT = "mlp"
+HGB_VARIANT = "hgb"
 # Variantes servies par un modèle entraîné : variante -> module qui déclare sa méthode
 # (register_backend). Importé seulement à la demande : torch n'est chargé que pour "mlp".
 TRAINED_VARIANTS: dict[str, str] = {
-    "mlp": "src.models.known.neural",
-    "hgb": "src.models.known.tabular",
+    MLP_VARIANT: "src.models.known.neural",
+    HGB_VARIANT: "src.models.known.tabular",
+}
+SUPPORTED_VARIANTS = (*REFERENCE_VARIANTS, *TRAINED_VARIANTS)  # lu par l'application (E5)
+# Modèle servi quand model_run_id n'est pas donné : versions déclarées dans EXP-E2-03,
+# provisoires jusqu'au choix de cette fiche.
+DEFAULT_MODEL_RUN_IDS: dict[str, str] = {
+    MLP_VARIANT: "e2-mlp-ctx-20260701-s0-9ce9",
+    HGB_VARIANT: "e2-hgb-ctx-20260701-s0-b357",
 }
 _MODEL_CACHE: dict[tuple[str, str], train.TrainedModel] = {}
 VALUE_POLICIES = ("measured", "e1_filled")
@@ -136,45 +144,90 @@ def load_trained(model_run_id: str, variant: str, root: Path | None = None) -> t
     return _MODEL_CACHE[key]
 
 
+def _load_model(variant: str, model_run_id: str | None) -> train.TrainedModel:
+    """Modèle d'une variante entraînée : model_run_id donné, sinon celui par défaut."""
+    run_id = model_run_id or DEFAULT_MODEL_RUN_IDS.get(variant)
+    if run_id is None:
+        raise ValueError(f"variante {variant!r} : model_run_id obligatoire")
+    return load_trained(run_id, variant)
+
+
+def eligibility_reason(inputs: ForecastInputs, model, method: str) -> str | None:
+    """Code de refus avant tout calcul (None si le modèle peut servir ce cas).
+
+    Contrôles proposés par E5 (Sandra), réécrits ici pour toutes les méthodes entraînées :
+    instantané du modèle ; origine avant la coupure ; site connu absent de l'apprentissage ;
+    nouveau site qui n'est pas confirmé réservé ; version du contexte différente.
+    """
+    case = inputs.case
+    config = model.config
+    if config.snapshot_id and config.snapshot_id != case.snapshot_id:
+        return f"{method}_snapshot_incompatible"
+    if case.origin < config.fit_cutoff:
+        return f"{method}_origin_before_fit_cutoff"
+    if case.scenario == "known_site" and case.site_group_id not in model.donor_site_groups:
+        return f"{method}_site_not_in_training"
+    if case.scenario == "new_site" and (
+        case.site_group_id in model.donor_site_groups
+        or case.site_group_id not in getattr(model, "excluded_site_groups", [])
+    ):
+        return f"{method}_site_not_confirmed_reserved"
+    if config.use_context and config.context_version != inputs.context_version:
+        if inputs.context_version is None:
+            return f"{method}_context_missing"
+        return f"{method}_context_incompatible"
+    return None
+
+
 def trained_forecast(
     inputs: ForecastInputs,
-    variant: str,
+    method: str,
     model: train.TrainedModel,
     *,
+    variant: str | None = None,
     method_run_id: str | None = None,
 ) -> ForecastResult:
     """Prévoir un cas avec un modèle entraîné (mlp, hgb), ou se replier sur la référence.
 
-    - le modèle prévoit : 24 valeurs, method_used = variante, statut ok ;
-    - il refuse (code mlp_* / hgb_*) : la référence de sa fiche (model.fallback) prévoit
-      les 24 horizons ; statut fallback, raison = code de refus, method_used = méthode
-      réellement employée par la référence. Un horizon que la référence ne sait pas
-      prévoir reste vide (unavailable), jamais 0.
+    - eligibility_reason, puis le modèle lui-même, peuvent refuser (code mlp_* / hgb_*) ;
+    - le modèle prévoit : 24 valeurs finies >= 0, method_used = méthode, statut ok ;
+    - il refuse : la référence de sa fiche (model.fallback, "reference" par défaut) prévoit
+      les 24 horizons ; statut fallback, status_reason = code de refus (cas et horizons),
+      method_used = méthode réellement employée. Un horizon sans repli reste vide
+      (unavailable), jamais 0.
+    variant : étiquette écrite dans le résultat (par défaut la méthode ; E3 passe "frozen").
     model_run_id et fit_cutoff du modèle sont tracés dans les deux cas.
     """
     started = time.perf_counter()
-    raw = _raw_forecast(variant, model, inputs)
-    if raw.ok:
+    variant = variant or method
+    reason = eligibility_reason(inputs, model, method)
+    values = None
+    if reason is None:
+        try:
+            raw = _raw_forecast(method, model, inputs)
+            values, reason = raw.values, raw.reason
+        except ValueError as error:
+            reason = f"{method}_inputs_incompatible: {error}"
+    if values is not None:
+        values = np.asarray(values, dtype=float)
+        if values.shape != (HORIZON_HOURS,) or not (np.isfinite(values) & (values >= 0)).all():
+            raise ValueError(f"{method} : 24 valeurs finies et positives ou nulles attendues")
         predictions = target_timestamps(inputs.case.origin).assign(
-            y_pred=np.asarray(raw.values, dtype=float),
-            method_used=variant,
-            prediction_status="ok",
-            status_reason=None,
+            y_pred=values, method_used=method, prediction_status="ok", status_reason=None
         )
         status, reason = "ok", None
     else:
-        fallback = REFERENCE_VARIANTS.get(model.fallback or "")
-        if fallback is None:
-            raise ValueError(f"{model.model_run_id} : repli {model.fallback!r} inconnu")
-        ref = fallback(inputs, variant)
+        if not reason:
+            raise ValueError(f"{method} : prévision refusée sans raison")
+        fallback_name = getattr(model, "fallback", "reference")
+        if fallback_name not in REFERENCE_VARIANTS:
+            raise ValueError(f"{model.model_run_id} : repli {fallback_name!r} inconnu")
+        ref = REFERENCE_VARIANTS[fallback_name](inputs, variant)
         predictions = ref.predictions.copy()
-        served = predictions["prediction_status"] != "unavailable"
-        predictions.loc[served, "prediction_status"] = "fallback"
-        predictions["status_reason"] = [
-            raw.reason if pd.isna(r) else f"{raw.reason};{r}" for r in predictions["status_reason"]
-        ]
-        status = "unavailable" if ref.status == "unavailable" else "fallback"
-        reason = raw.reason if ref.status_reason is None else f"{raw.reason}; {ref.status_reason}"
+        served = predictions["y_pred"].notna()
+        predictions["prediction_status"] = np.where(served, "fallback", "unavailable")
+        predictions["status_reason"] = reason
+        status = "fallback" if served.all() else "unavailable"
     return ForecastResult(
         case=inputs.case,
         method_run_id=method_run_id or model.model_run_id,
@@ -194,14 +247,18 @@ def trained_forecast(
     )
 
 
-def _raw_forecast(variant: str, model: train.TrainedModel, inputs: ForecastInputs):
-    """Sortie brute du modèle : objet avec ok, values (24,) et reason (code de refus)."""
-    module = importlib.import_module(TRAINED_VARIANTS[variant])
-    if variant == "mlp":
-        return module.predict_mlp(model.estimator, inputs, fit_cutoff=model.config.fit_cutoff)
-    if variant == "hgb":
-        return module.predict_hgb(model.estimator, inputs)
-    raise ValueError(f"variante {variant!r} sans prévision entraînée")
+def _raw_forecast(method: str, model: train.TrainedModel, inputs: ForecastInputs):
+    """Sortie brute du modèle : objet avec values (24,) ou None, et reason (code de refus).
+
+    Module importé à la demande : torch n'est chargé que pour le MLP.
+    """
+    if method == MLP_VARIANT:
+        neural = importlib.import_module(TRAINED_VARIANTS[MLP_VARIANT])
+        return neural.predict_mlp(model.estimator, inputs, fit_cutoff=model.config.fit_cutoff)
+    if method == HGB_VARIANT:
+        tabular = importlib.import_module(TRAINED_VARIANTS[HGB_VARIANT])
+        return tabular.predict_hgb(model.estimator, inputs)
+    raise ValueError(f"méthode {method!r} sans prévision entraînée")
 
 
 def load_context(snapshot_id: str, path: Path | None = None) -> pd.DataFrame:
@@ -268,8 +325,8 @@ def predict_24h(
 
     - reference -> baseline.weekly_reference (weekly_naive) ;
     - reference_profile -> baseline.weekly_profile_reference (médiane sur 4 semaines) ;
-    - mlp, hgb -> modèle entraîné model_run_id (obligatoire), chargé une fois
-      (load_trained), repli sur la référence s'il refuse le cas (trained_forecast).
+    - mlp, hgb -> modèle entraîné (model_run_id, sinon DEFAULT_MODEL_RUN_IDS), chargé
+      une fois, repli sur la référence s'il refuse le cas (trained_forecast).
       Le MLP et le HGB avec contexte en ont besoin : sans context, ils se replient.
     Le temps de préparation (filtrage causal) est compté dans preparation_seconds ; le
     chargement du modèle, fait une seule fois par expérience, n'y est pas compté.
@@ -279,9 +336,7 @@ def predict_24h(
         raise ValueError(f"variante {variant!r} indisponible ; disponibles : {available}")
     model = None
     if variant in TRAINED_VARIANTS:
-        if model_run_id is None:
-            raise ValueError(f"variante {variant!r} : model_run_id obligatoire")
-        model = load_trained(model_run_id, variant)
+        model = _load_model(variant, model_run_id)
     started = time.perf_counter()
     inputs = build_inputs(case, history, context, publication_lag_hours)
     preparation = time.perf_counter() - started
@@ -308,8 +363,8 @@ def run_experiment(
     """Prévoir tous les cas puis écrire .pred.csv et .runs.csv ; retourner leurs chemins.
 
     Un cas qui échoue n'est pas retiré : 24 lignes vides, statut error et message.
-    Aucune observation cible n'est écrite dans les sorties. model_run_id : obligatoire
-    pour les variantes mlp et hgb (modèle chargé une seule fois pour tous les cas).
+    Aucune observation cible n'est écrite dans les sorties. model_run_id : modèle des
+    variantes mlp et hgb (défaut : DEFAULT_MODEL_RUN_IDS), chargé une fois pour tous les cas.
     """
     results = []
     for _, row in cases.iterrows():
@@ -464,12 +519,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cases", required=True, type=Path)
     parser.add_argument("--snapshot", required=True)
     parser.add_argument("--experiment", required=True)
+    parser.add_argument("--variant", default="reference", choices=sorted(SUPPORTED_VARIANTS))
+    parser.add_argument("--model-run-id", help=f"mlp et hgb ; défaut : {DEFAULT_MODEL_RUN_IDS}")
     parser.add_argument(
-        "--variant",
-        default="reference",
-        choices=sorted(REFERENCE_VARIANTS) + sorted(TRAINED_VARIANTS),
+        "--context", type=Path, help="défaut pour les modèles : context.csv de l'instantané"
     )
-    parser.add_argument("--model-run-id", help="obligatoire pour mlp et hgb")
     parser.add_argument("--method-run-id")
     parser.add_argument("--values", default="measured", choices=VALUE_POLICIES)
     parser.add_argument("--split", action="append", default=None, help="défaut : validation")
@@ -480,14 +534,13 @@ def main(argv: list[str] | None = None) -> int:
     if "test" in splits and not args.allow_test:
         parser.error("bloc test refusé : réservé à la mesure finale après gel (--allow-test)")
     trained = args.variant in TRAINED_VARIANTS
-    if trained and not args.model_run_id:
-        parser.error(f"--variant {args.variant} demande --model-run-id")
     if trained and args.values != "measured":
         parser.error("les modèles ont appris sur les mesures seules (D-11) : --values measured")
     if not trained and args.model_run_id:
         parser.error(f"--model-run-id sans objet pour la variante {args.variant}")
     if trained:
-        load_trained(args.model_run_id, args.variant)  # échoue tôt, avant de lire counts.csv
+        model = _load_model(args.variant, args.model_run_id)  # échoue tôt, avant counts.csv
+        args.model_run_id = model.model_run_id
     cases = pd.read_csv(args.cases, dtype=str, keep_default_na=False)
     selected, report = select_cases(
         cases, args.snapshot, splits, train_site_counters(args.snapshot)
@@ -497,7 +550,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     started = time.perf_counter()
     loader = counts_history_loader(args.snapshot, values=args.values)
-    context = load_context(args.snapshot) if trained else None
+    context = load_context(args.snapshot, path=args.context) if trained else None
     loading = time.perf_counter() - started
     pred, runs = run_experiment(
         selected,
