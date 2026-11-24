@@ -21,12 +21,15 @@ Commencer par de petits exemples créés par les étudiants, puis un cas réel p
 
 ## Fiabilité, export et parcours complet - E5
 
-Lancer : `uv run --locked --group dl pytest tests/test_reliability.py tests/test_parcours_complet.py tests/test_export.py`. Données synthétiques uniquement.
+Lancer : `uv run --locked --group dl pytest tests/test_reliability.py tests/test_parcours_complet.py tests/test_parcours_reel.py tests/test_export.py`.
 
-| Fichier | Ce qui est vérifié |
-| --- | --- |
-| `test_reliability.py` | Historique requis selon la méthode (168 h, 4 semaines, budget local E3) ; historique complet, partiel ou absent ; zéro observé compté comme mesure ; heures cibles et non publiées jamais comptées ; horizons absents ou en double, valeurs vides ou négatives ; traduction des codes `status_reason` et des exceptions en messages lisibles |
-| `test_parcours_complet.py` | Parcours de l'interface (contrôle → prévision → export masqué → révélation → export) sur un **cas normal**, un **cas difficile** (panne de 6 h avant l'origine et heure cible manquante : 6 replis, 23 heures comparées), un compteur sans historique (24 heures `unavailable`, expliquées) et un **nouveau site** (support local de 168 h puis de 24 h) ; aucune cible dans le zip avant révélation ; prévision inchangée après révélation |
-| `test_export.py` | `export_study` : colonnes du contrat, format `true`/`false`/vide/JSON, observations et scores absents avant révélation et supprimés d'un export révélé précédent, identifiant de dossier sûr, manifeste non falsifiable |
+| Fichier | Données | Ce qui est vérifié |
+| --- | --- | --- |
+| `test_reliability.py` | synthétiques | Mesures exactement lues par la méthode (24 pour « semaine précédente », 96 pour le profil 4 semaines, le budget local pour un nouveau site) ; l'annonce « N mesures manquent » est égale au nombre d'heures ensuite en repli ; heure estimée par E1 non comptée ; zéro observé compté ; futur et période non publiée jamais lus ; blocage seulement si aucune mesure sur 4 semaines ; horizons absents/en double, valeurs vides ou négatives ; messages lisibles pour codes `status_reason` et exceptions |
+| `test_parcours_complet.py` | synthétiques | Contrôle → prévision → export masqué → révélation → export, sur un cas normal, un cas difficile (panne de 6 h : 6 replis, cible manquante : 23 heures comparées), un compteur sans historique et un nouveau site ; aucune cible ni score dans le zip avant révélation ; empreinte SHA-256 de chaque fichier vérifiée ; `scores.csv` (MAE, RMSE, biais, couverture) ; prévision inchangée après révélation |
+| `test_parcours_reel.py` | instantané E1 `hist-20261117`, ignoré s'il est absent | Six cas réels décrits en tête du fichier : normal, une mesure manquante, semaine précédente vide, cibles absentes le 25/10/2026 (score nul et expliqué, jamais zéro), compteur sans historique, nouveau site |
+| `test_export.py` | synthétiques | `export_study` : colonnes du contrat, format `true`/`false`/vide/JSON, observations et scores absents avant révélation, identifiant de dossier sûr, manifeste non falsifiable |
 
-Module testé : `src/app/reliability.py`, appelé par `streamlit_app.py` avant le calcul (historique, bouton désactivé si aucune mesure) et après (détail des heures sans prévision).
+Validation du contrôle d'historique sur 3 783 cas réels (97 sites connus × 39 origines, octobre–novembre 2026) : le nombre de mesures manquantes annoncé avant le calcul est égal au nombre d'heures en repli dans 100 % des cas, et le blocage correspond exactement aux 156 cas où la référence ne produit aucune heure.
+
+Module testé : `src/app/reliability.py`, appelé par `streamlit_app.py` avant le calcul (historique, bouton désactivé si aucune mesure) et après (détail des heures sans prévision, message clair si une méthode échoue). L'export `study_zip` ajoute après révélation `scores.csv` et inscrit dans `manifest.json` l'empreinte SHA-256 de chaque fichier.

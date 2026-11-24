@@ -20,7 +20,7 @@ import pandas as pd
 
 from src.app import service
 from src.models.known.baseline import FALLBACK_WEEKS, MIN_HISTORY_HOURS
-from src.models.schemas import HORIZON_HOURS, Case
+from src.models.schemas import HORIZON_HOURS, Case, target_timestamps
 
 # Niveaux renvoyés par check_history (affichés en st.success / st.warning / st.error).
 LEVEL_OK = "ok"
@@ -87,14 +87,33 @@ class ForecastCheck:
 
 
 def required_history_hours(case: Case, method: str | None = None) -> int:
-    """Heures de passé dont la méthode a besoin pour ne pas recourir au repli."""
+    """Nombre de mesures passées que la méthode lit directement.
+
+    - site connu, « semaine précédente » : y(t − 168 h) pour chacune des 24 cibles ;
+    - site connu, profil 4 semaines : y(t − k × 168 h), k = 1…4, soit 96 mesures ;
+    - nouveau site : toutes les heures du support local (budget du cas).
+    """
     if case.scenario == "new_site":
         if not case.local_budget_hours or case.local_budget_hours <= 0:
             raise ValueError("Le cas nouveau site doit préciser un budget local positif.")
         return int(case.local_budget_hours)
-    if method in PROFILE_METHODS:
-        return FALLBACK_WEEKS * MIN_HISTORY_HOURS
-    return MIN_HISTORY_HOURS
+    weeks = FALLBACK_WEEKS if method in PROFILE_METHODS else 1
+    return weeks * HORIZON_HOURS
+
+
+def _needed_timestamps(case: Case, method: str | None, end: pd.Timestamp) -> pd.DatetimeIndex:
+    """Heures exactes lues par la méthode (cf. required_history_hours)."""
+    if case.scenario == "new_site":
+        return pd.date_range(
+            end - pd.Timedelta(hours=required_history_hours(case, method)),
+            end,
+            freq="h",
+            inclusive="left",
+        )
+    targets = pd.to_datetime(target_timestamps(case.origin)["target_timestamp"], utc=True)
+    weeks = FALLBACK_WEEKS if method in PROFILE_METHODS else 1
+    lags = [targets - k * pd.Timedelta(hours=MIN_HISTORY_HOURS) for k in range(1, weeks + 1)]
+    return pd.DatetimeIndex(pd.concat(lags)).sort_values()
 
 
 def check_history(
@@ -103,39 +122,54 @@ def check_history(
     publication_lag_hours: int,
     method: str | None = None,
 ) -> HistoryCheck:
-    """Compter les mesures autorisées dans la fenêtre lue par la méthode.
+    """Compter les mesures autorisées que la méthode va réellement lire.
 
-    La fenêtre se termine à la coupure d'information ``origin - délai`` ; pour un nouveau
-    site, elle est en plus limitée au support local du cas. Une heure compte si elle a été
-    réellement mesurée (``is_observed``) et porte une valeur ; le zéro observé compte.
+    Seul le passé publié à l'origine est lu (coupure ``origin − délai``, support local pour
+    un nouveau site). Une heure compte si elle a été réellement mesurée (``is_observed``) et
+    porte une valeur ; le zéro observé compte, une heure estimée par E1 ne compte pas.
+
+    - ``ok`` : toutes les mesures lues directement sont présentes ;
+    - ``partial`` : certaines manquent ; ces heures passeront par le repli (une semaine
+      plus ancienne pour un site connu) ou resteront sans prévision ;
+    - ``none`` : aucune mesure dans tout le passé utilisable (4 semaines pour un site connu,
+      support local pour un nouveau site) : le calcul ne peut rien produire.
     """
     required = required_history_hours(case, method)
     end = case.origin - pd.Timedelta(hours=publication_lag_hours)
-    start = end - pd.Timedelta(hours=required)
+    needed = _needed_timestamps(case, method, end)
     past = service.published_history(case, history, publication_lag_hours)
-    timestamps = pd.to_datetime(past["timestamp"], utc=True)
-    in_window = past.loc[timestamps.ge(start)]
-    values = pd.to_numeric(in_window["count_raw"], errors="coerce")
-    measured = in_window["is_observed"].eq(True) & values.notna()
-    observed = int(in_window.loc[measured, "timestamp"].nunique())
+    values = pd.to_numeric(past["count_raw"], errors="coerce")
+    measured_times = pd.to_datetime(
+        past.loc[past["is_observed"].eq(True) & values.notna(), "timestamp"], utc=True
+    )
+    observed = int(pd.Index(needed).isin(measured_times).sum())
 
-    if observed == 0:
+    usable_hours = required if case.scenario == "new_site" else FALLBACK_WEEKS * MIN_HISTORY_HOURS
+    usable_start = end - pd.Timedelta(hours=usable_hours)
+    any_measured = bool(measured_times.ge(usable_start).any())
+    missing = required - observed
+
+    if not any_measured:
         level = LEVEL_NONE
         message = (
-            f"Historique insuffisant : aucune mesure disponible sur les {required} heures "
-            "précédant la coupure. La prévision ne peut pas être calculée pour ce cas."
+            f"Historique insuffisant : aucune mesure sur les {usable_hours} heures autorisées "
+            "avant la prévision. Elle ne peut pas être calculée pour ce compteur à cette date."
         )
-    elif observed < required:
+    elif missing > 0:
         level = LEVEL_PARTIAL
+        consequence = (
+            "Ces heures utiliseront une semaine plus ancienne (repli) ou resteront sans prévision."
+            if case.scenario == "known_site"
+            else "La méthode ne dispose que des mesures restantes du support local."
+        )
         message = (
-            f"Historique incomplet : {observed} heures mesurées sur {required} nécessaires "
-            f"({observed / required:.0%}). Les heures estimées ou absentes ne comptent pas ; "
-            "certaines heures peuvent utiliser un repli ou rester sans prévision."
+            f"Historique incomplet : {missing} des {required} mesures lues par la méthode "
+            f"manquent (heures absentes ou estimées par E1). {consequence}"
         )
     else:
         level = LEVEL_OK
-        message = f"Historique suffisant : {observed} heures mesurées sur {required}."
-    return HistoryCheck(level, required, observed, start, end, message)
+        message = f"Historique suffisant : les {required} mesures lues par la méthode sont là."
+    return HistoryCheck(level, required, observed, needed.min(), end, message)
 
 
 def explain_reason(reason: object) -> str:

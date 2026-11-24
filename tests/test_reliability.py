@@ -67,9 +67,9 @@ def make_forecast(case, statuses=None, values=None, reasons=None):
 
 
 def test_heures_requises_selon_la_methode():
-    assert reliability.required_history_hours(known_case(), "reference") == 168
-    assert reliability.required_history_hours(known_case(), "reference_profile") == 4 * 168
-    assert reliability.required_history_hours(known_case(), service.COMPARE_REFERENCES) == 672
+    assert reliability.required_history_hours(known_case(), "reference") == 24
+    assert reliability.required_history_hours(known_case(), "reference_profile") == 4 * 24
+    assert reliability.required_history_hours(known_case(), service.COMPARE_REFERENCES) == 96
     assert reliability.required_history_hours(new_case(72), None) == 72
 
 
@@ -78,22 +78,46 @@ def test_historique_complet_est_suffisant():
     check = reliability.check_history(case, make_history(case), LAG, "reference")
 
     assert check.level == reliability.LEVEL_OK
-    assert check.observed_hours == check.required_hours == 168
+    assert check.observed_hours == check.required_hours == 24
     assert check.can_forecast
+    assert check.window_start == case.origin - pd.Timedelta(hours=168)
     assert check.window_end == case.origin - pd.Timedelta(hours=LAG)
 
 
-def test_historique_partiel_donne_un_avertissement():
+def test_trou_hors_des_heures_lues_ne_declenche_pas_d_alerte():
+    """Un trou la veille de l'origine n'est pas lu par « semaine précédente »."""
     case = known_case()
     cutoff = case.origin - pd.Timedelta(hours=LAG)
     history = blank(make_history(case), cutoff - pd.Timedelta(hours=48), cutoff)
 
     check = reliability.check_history(case, history, LAG, "reference")
+    assert check.level == reliability.LEVEL_OK
 
+
+def test_mesures_lues_manquantes_annoncent_le_repli():
+    case = known_case()
+    week_ago = case.origin - pd.Timedelta(hours=168)
+    history = blank(make_history(case), week_ago, week_ago + pd.Timedelta(hours=3))
+
+    check = reliability.check_history(case, history, LAG, "reference")
     assert check.level == reliability.LEVEL_PARTIAL
-    assert check.observed_hours == 120
+    assert check.observed_hours == 21
     assert check.can_forecast
-    assert "120 heures mesurées sur 168" in check.message
+    assert "3 des 24 mesures" in check.message
+
+    # L'annonce correspond exactement aux heures qui passent ensuite par le repli.
+    (study,) = service.run_studies(case, "reference", None, history, None, LAG)
+    assert study.forecast["prediction_status"].ne("ok").sum() == 3
+
+
+def test_heure_estimee_par_e1_ne_compte_pas():
+    case = known_case()
+    week_ago = case.origin - pd.Timedelta(hours=168)
+    history = make_history(case)
+    history.loc[history["timestamp"].eq(week_ago), "is_observed"] = False  # valeur comblée
+
+    check = reliability.check_history(case, history, LAG, "reference")
+    assert check.observed_hours == 23
 
 
 def test_compteur_sans_historique_bloque_le_calcul():
@@ -107,6 +131,19 @@ def test_compteur_sans_historique_bloque_le_calcul():
     assert "Historique insuffisant" in check.message
 
 
+def test_semaine_precedente_vide_mais_repli_possible_ne_bloque_pas():
+    """Les 24 mesures directes manquent, mais 2 semaines avant existent : pas de blocage."""
+    case = known_case()
+    week_ago = case.origin - pd.Timedelta(hours=168)
+    history = blank(make_history(case), week_ago, week_ago + pd.Timedelta(hours=24))
+
+    check = reliability.check_history(case, history, LAG, "reference")
+    assert check.level == reliability.LEVEL_PARTIAL
+    assert check.can_forecast
+    (study,) = service.run_studies(case, "reference", None, history, None, LAG)
+    assert study.forecast["prediction_status"].eq("fallback").all()
+
+
 def test_historique_trop_court_pour_le_profil_quatre_semaines():
     case = known_case()
     history = make_history(case, days=10)
@@ -114,6 +151,7 @@ def test_historique_trop_court_pour_le_profil_quatre_semaines():
     assert reliability.check_history(case, history, LAG, "reference").level == "ok"
     profile = reliability.check_history(case, history, LAG, "reference_profile")
     assert profile.level == reliability.LEVEL_PARTIAL
+    assert profile.observed_hours == 24  # seule la première semaine existe
 
 
 def test_zero_observe_compte_comme_une_mesure():
@@ -125,11 +163,11 @@ def test_zero_observe_compte_comme_une_mesure():
 def test_le_futur_n_est_jamais_compte():
     """Les heures cibles et la période non publiée ne comptent pas dans l'historique."""
     case = known_case()
-    history = make_history(case, days=0)  # seulement les 24 heures cibles
-    history = pd.concat([history, make_history(case, days=1).iloc[:LAG]])
+    history = make_history(case, days=1)  # la veille (non publiée) + les 24 heures cibles
 
     check = reliability.check_history(case, history, LAG, "reference")
     assert check.observed_hours == 0
+    assert check.level == reliability.LEVEL_NONE
 
 
 def test_nouveau_site_limite_au_support_local():
@@ -139,6 +177,16 @@ def test_nouveau_site_limite_au_support_local():
     assert check.required_hours == 72
     assert check.observed_hours == 72  # les semaines antérieures au support sont ignorées
     assert check.level == reliability.LEVEL_OK
+
+
+def test_nouveau_site_support_incomplet():
+    case = new_case(budget=72)
+    cutoff = case.origin - pd.Timedelta(hours=LAG)
+    history = blank(make_history(case), cutoff - pd.Timedelta(hours=10), cutoff)
+
+    check = reliability.check_history(case, history, LAG)
+    assert check.level == reliability.LEVEL_PARTIAL
+    assert "10 des 72 mesures" in check.message
 
 
 def test_nouveau_site_sans_budget_refuse():

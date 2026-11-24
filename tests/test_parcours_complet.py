@@ -7,6 +7,7 @@ Trois parcours, comme dans l'application :
 Données synthétiques uniquement, séparées des performances réelles.
 """
 
+import hashlib
 import io
 import json
 from zipfile import ZipFile
@@ -15,12 +16,12 @@ import pandas as pd
 import pytest
 
 from src.app import reliability, service
-from src.app.export import study_zip
+from src.app.export import SCORE_COLUMNS, study_zip
 from src.models.schemas import HORIZON_HOURS
 
 LAG = 24
 DAY = pd.Timestamp("2026-10-20").date()
-HIDDEN_FILES = {"observations.csv", "errors.csv"}
+HIDDEN_FILES = {"observations.csv", "errors.csv", "scores.csv"}
 
 
 def make_case(role="S_train", budget=None):
@@ -55,6 +56,11 @@ def make_history(case, past=10.0, target=25.0):
 def zip_names(study, evaluation=None):
     with ZipFile(io.BytesIO(study_zip(study, evaluation))) as archive:
         manifest = json.loads(archive.read("manifest.json"))
+        # Chaque fichier du zip est déclaré avec son empreinte SHA-256 exacte.
+        declared = {entry["name"]: entry["sha256"] for entry in manifest["files"]}
+        assert set(declared) == set(archive.namelist()) - {"manifest.json"}
+        for name, digest in declared.items():
+            assert hashlib.sha256(archive.read(name)).hexdigest() == digest
         return set(archive.namelist()), manifest
 
 
@@ -83,7 +89,7 @@ def assert_reveal_rule(journey):
     assert not HIDDEN_FILES & journey["hidden_files"]
     assert journey["hidden_manifest"]["targets_revealed"] is False
     assert "evaluation" not in journey["hidden_manifest"]
-    assert "observations.csv" in journey["revealed_files"]
+    assert HIDDEN_FILES <= journey["revealed_files"]
     assert journey["revealed_manifest"]["targets_revealed"] is True
 
 
@@ -137,7 +143,7 @@ def test_parcours_cas_difficile_panne_et_cible_manquante():
     journey = run_journey(case, history, "reference")
 
     assert journey["history"].level == reliability.LEVEL_PARTIAL
-    assert "162 heures mesurées sur 168" in journey["history"].message
+    assert "6 des 24 mesures" in journey["history"].message
     assert journey["forecast"].is_complete  # le repli comble les heures manquantes
     assert journey["forecast"].n_fallback == 6
     reasons = journey["study"].forecast["status_reason"].map(reliability.explain_reason)
@@ -175,7 +181,7 @@ def test_parcours_nouveau_site_support_local():
     case = make_case(role="S_dev_new", budget=168)
     journey = run_journey(case, make_history(case), service.LOCAL_REFERENCE)
 
-    assert journey["history"].required_hours == 168
+    assert journey["history"].required_hours == 168  # budget local du nouveau site
     assert journey["history"].level == reliability.LEVEL_OK
     assert journey["forecast"].is_complete
     assert_reveal_rule(journey)
@@ -193,3 +199,23 @@ def test_nouveau_site_support_trop_court():
     assert result.is_complete
     assert result.n_fallback == HORIZON_HOURS
     assert study.forecast["status_reason"].eq("lag168_missing").all()
+
+
+def test_scores_csv_apres_revelation():
+    case = make_case()
+    history = make_history(case)
+    (study,) = service.run_studies(case, "reference", None, history, None, LAG)
+    evaluation = service.reveal(study, history)
+
+    with ZipFile(io.BytesIO(study_zip(study, evaluation))) as archive:
+        scores = pd.read_csv(archive.open("scores.csv"))
+
+    assert list(scores.columns) == SCORE_COLUMNS
+    row = scores.iloc[0]
+    assert row["mae_macro"] == pytest.approx(15.0)
+    assert row["rmse"] == pytest.approx(15.0)
+    assert row["bias"] == pytest.approx(-15.0)  # prévision 10, mesure 25
+    assert row["n_compared_hours"] == 24
+    assert row["coverage_24h"] == 1.0
+    assert row["n_complete_cases"] == 1
+    assert row["comparison_population_id"] == f"case:{case.case_id}"

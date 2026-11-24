@@ -11,8 +11,10 @@ Les prévisions restent indépendantes de la révélation.
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
+import math
 import re
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -53,6 +55,48 @@ def csv_text(tables: list[pd.DataFrame]) -> str:
     )
 
 
+def case_scores_csv(scored: list[tuple[Study, dict]]) -> str:
+    """Score local du cas, une ligne par méthode, aux colonnes SCORE_COLUMNS du contrat.
+
+    Un seul compteur : la MAE du compteur est aussi sa moyenne entre compteurs. Ce n'est
+    pas le score E4 du protocole, d'où ``comparison_population_id = case:<case_id>``.
+    """
+    rows = []
+    for item, score in scored:
+        errors = score["errors"]
+        valid = errors.loc[errors["is_scoreable"].eq(True)]
+        n = len(valid)
+        forecast = item.forecast
+        n_valid = int(forecast["prediction_status"].isin(VALID_STATUSES).sum())
+        rows.append(
+            {
+                "experiment_id": "",
+                "scenario": item.case.scenario,
+                "temporal_split": item.case.temporal_split,
+                "method_run_id": forecast["method_run_id"].iloc[0],
+                "comparison_population_id": f"case:{item.case.case_id}",
+                "n_expected_cases": 1,
+                "n_complete_cases": int(n_valid == len(forecast) == 24),
+                "n_compared_cases": int(n > 0),
+                "n_compared_hours": n,
+                "n_evaluable_counters": int(n > 0),
+                "mae_macro": score["mae"],
+                "rmse": math.sqrt(valid["squared_error"].mean()) if n else None,
+                "bias": float(valid["signed_error"].mean()) if n else None,
+                "coverage_24h": n_valid / 24,
+                "n_fallback_cases": int(forecast["prediction_status"].eq("fallback").any()),
+                "protocol_id": item.case.protocol_id,
+                "snapshot_id": item.case.snapshot_id,
+            }
+        )
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=SCORE_COLUMNS, lineterminator="\n")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({column: _csv_value(row.get(column)) for column in SCORE_COLUMNS})
+    return buffer.getvalue()
+
+
 def study_zip(
     study: Study,
     evaluation: dict | None = None,
@@ -73,20 +117,33 @@ def study_zip(
         ]
     studies = [study, *(item for item, _ in alternatives)]
     runs = [item.runs for item in studies if not item.runs.empty]
+    files: dict[str, str] = {
+        "forecasts.csv": csv_text([item.forecast for item in studies]),
+        "cases.csv": case_csv(study.case),
+    }
+    if runs:
+        files["case_runs.csv"] = csv_text(runs)
+    if evaluation is not None:
+        scored = [(study, evaluation), *((item, s) for item, s in alternatives if s is not None)]
+        files["observations.csv"] = evaluation["observations"].to_csv(index=False)
+        files["errors.csv"] = csv_text([score["errors"] for _, score in scored])
+        files["scores.csv"] = case_scores_csv(scored)
+    # Provenance : empreinte de chaque fichier, vérifiable après téléchargement.
+    manifest["files"] = [
+        {
+            "name": name,
+            "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            "bytes": len(text.encode("utf-8")),
+        }
+        for name, text in files.items()
+    ]
     buffer = io.BytesIO()
     with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
         archive.writestr(
             "manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2, default=str)
         )
-        archive.writestr("forecasts.csv", csv_text([item.forecast for item in studies]))
-        archive.writestr("cases.csv", case_csv(study.case))
-        if runs:
-            archive.writestr("case_runs.csv", csv_text(runs))
-        if evaluation is not None:
-            archive.writestr("observations.csv", evaluation["observations"].to_csv(index=False))
-            errors = [evaluation["errors"]]
-            errors.extend(score["errors"] for _, score in alternatives if score is not None)
-            archive.writestr("errors.csv", csv_text(errors))
+        for name, text in files.items():
+            archive.writestr(name, text)
     return buffer.getvalue()
 
 
