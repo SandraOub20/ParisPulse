@@ -12,21 +12,18 @@ from src.app.prediction_validation import (
 def verifier_fichier_predictions_csv(chemin_fichier):
     groupes = defaultdict(list)
 
-    with open(
-        chemin_fichier,
-        "r",
-        encoding="utf-8-sig",
-        newline=""
-    ) as fichier:
+    with open(chemin_fichier, newline="") as fichier:
         lecteur = csv.DictReader(fichier)
 
         for ligne in lecteur:
-            cle = (
-                ligne["case_id"],
-                ligne["method_run_id"]
-            )
+            case_id = ligne["case_id"]
+            method_run_id = ligne["method_run_id"]
 
-            groupes[cle].append(ligne)
+            # Vérifier la cohérence du statut de chaque ligne
+            verifier_statut_ligne(ligne)
+
+            groupes[(case_id, method_run_id)].append(ligne)
+
 
     for cle, lignes in groupes.items():
         verifier_24_predictions(lignes)
@@ -40,7 +37,7 @@ def verifier_fichier_predictions_csv(chemin_fichier):
             raise ValueError(
                 f"Horizons incorrects pour {cle}"
             )
-        
+
         # Remettre les lignes dans l'ordre des horizons
         lignes_tries = sorted(
             lignes,
@@ -98,6 +95,43 @@ def verifier_fichier_predictions_csv(chemin_fichier):
             predictions, statut_cas
         )
 
-    
+
 
     return len(groupes)
+
+def verifier_statut_ligne(ligne):
+    """Vérifie la cohérence du statut de chaque ligne CSV."""
+
+    statut = ligne["prediction_status"].strip()
+    valeur = ligne["y_pred"].strip()
+    raison = ligne["status_reason"].strip()
+    methode = ligne["method_used"].strip()
+
+    if statut not in ("ok", "fallback", "unavailable"):
+        raise ValueError(f"Statut inconnu : {statut}")
+
+    if statut in ("ok", "fallback") and valeur == "":
+        raise ValueError(
+            "Une prévision ok ou fallback doit avoir une valeur."
+        )
+
+    if statut == "unavailable" and valeur != "":
+        raise ValueError(
+            "Une prévision unavailable ne doit pas avoir de valeur."
+        )
+
+    if statut == "fallback":
+        if not raison:
+            raise ValueError("Un fallback doit avoir une raison.")
+
+        if not methode:
+            raise ValueError(
+                "Un fallback doit identifier la méthode utilisée."
+            )
+
+    if statut == "unavailable" and not raison:
+        raise ValueError(
+            "Une prévision indisponible doit avoir une raison."
+        )
+
+    return True
