@@ -42,7 +42,10 @@ Format : [doc/SUIVI_ET_REMISE.md §4](../../doc/SUIVI_ET_REMISE.md). Entrées le
 
 ### Pistes gardées pour plus tard
 
-- **Ma comparaison** : [EXP-E2-05](../experiments/EXP-E2-05.md), brouillon écrit (MOD-015) : MLP appris avec ou sans fenêtres masquées, sur historiques incomplets naturels et pannes simulées. Le bras A′ (mêmes poids, même seuil abaissé) isole le masquage du changement de seuil. Code après le gel.
+- **Ma comparaison** : [EXP-E2-05](../experiments/EXP-E2-05.md), figée puis codée (MOD-015, MOD-016).
+  - `min_observed_hours` et `mask_windows` dans `build_windows` / `neural.py`, masquage dans `fit_mlp` (Esther prévenue).
+  - Avec le seuil de 84 h, un bloc de plus de 84 h ne peut pas s'appliquer : B apprend donc avec un seuil de 24 h.
+  - Contrôle sur juin : à 0,25, B perd (18,07 contre 17,68) ; à 0,10, il gagne (17,32), probablement par régularisation. B retenu à 0,10. Le bras A′ isole le masquage du changement de seuil. Scores après le gel d'EXP-E2-03.
 - Ablation par groupe de contexte pour le MLP (aujourd'hui tout ou rien).
 
 ### Partenaires

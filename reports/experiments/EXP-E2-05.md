@@ -41,7 +41,7 @@
     | --- | --- | --- | --- |
     | A | MLP actuel (`9ce9`, `s1-9318`, `s2-6278`) | non | 84 h (actuel) |
     | A′ | les mêmes poids que A | non | **24 h** (à valider) |
-    | B | MLP masqué, graines 0, 1, 2 (`mask_prob=0.25`, `min_observed_hours=24`) | **oui** | **24 h** |
+    | B | MLP masqué, graines 0, 1, 2 (`mask_prob=0.10` après le contrôle sur juin, `min_observed_hours=24`) : `e2-mlp-ctx-20260701-s0-37f5`, `s1-bd12`, `s2-f26e` | **oui** | **24 h** |
     | R | référence `reference_profile` (médiane sur 4 semaines), même entrée | sans objet | sans objet |
 
     - **A′ contre B isole le masquage** : même seuil, seul l'apprentissage change. C'est la comparaison principale.
@@ -123,7 +123,21 @@
 2. Seuil en prévision pour A′ et B : 24 h. B apprend aussi avec `min_observed_hours=24` : il garde les exemples naturellement troués (écartés aujourd'hui), ce qui fait partie de « apprendre avec des fenêtres incomplètes ».
 3. Niveaux de dégradation et tranches d'heures mesurées : ceux du tableau ci-dessus.
 4. Règle de décision : celle ci-dessus, inchangée.
-5. **Contrôle sur juin**, écrit d'avance et fait avant les scores. Juin est le holdout d'arrêt anticipé, dans la période d'apprentissage : la validation n'est pas lue.
+5. **Résultat du contrôle sur juin** (2026-11-24, même mois, mêmes 61 313 cellules et 2 560 exemples pour A et B, validation non lue) :
+
+   | Modèle | Graine 0 | Graine 1 | Graine 2 | Moyenne |
+   | --- | --- | --- | --- | --- |
+   | A (même machine) | 17,57 | 17,60 | 17,86 | 17,68 |
+   | B, `mask_prob=0.25` (`s0-a3b2`, `s1-02bb`, `s2-5238`) | 17,56 | 18,00 | 18,64 | 18,07 |
+   | B, `mask_prob=0.10` (`s0-37f5`, `s1-bd12`, `s2-f26e`) | 17,12 | 17,44 | 17,39 | 17,32 |
+
+   - À 0,25, B dépasse A de 0,39, plus que l'étendue entre graines de A (0,29). La règle s'applique : passage à 0,10, réappris.
+   - À 0,10, B fait 0,36 de moins que A sur juin, et l'arrêt anticipé arrive plus tard (époques 37, 18, 41 contre 17 à 24). Le masquage léger semble agir comme une régularisation.
+   - Juin a servi à l'arrêt anticipé de tous les modèles : ce n'est pas un score, la validation décidera.
+   - **B retenu : `mask_prob=0.10`.** Les modèles à 0,25 sont gardés pour la transparence, et ne sont pas évalués.
+   - Effet du seuil de 24 h à l'apprentissage : 1 879 exemples écartés au lieu de 2 047 ; 86 085 exemples d'apprentissage au lieu de 85 958. Environ 10 % des exemples d'apprentissage sont masqués à chaque époque.
+
+   Règle écrite au gel, appliquée telle quelle :  Juin est le holdout d'arrêt anticipé, dans la période d'apprentissage : la validation n'est pas lue.
    - Si la MAE de contrôle moyenne de B (semaines complètes, sans masque) dépasse celle de A de plus de l'étendue entre graines de A (même machine : 17,57 / 17,60 / 17,86, soit 0,29), on passe à `mask_prob=0.10`, on réapprend, et on le note ici.
    - C'est la seule adaptation permise après le gel.
 6. Code : `min_observed_hours` et `mask_windows` (Idir), branchement dans `fit_mlp` (Esther prévenue). Option désactivée par défaut : les modèles existants ne changent pas.

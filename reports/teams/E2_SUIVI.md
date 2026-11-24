@@ -40,7 +40,7 @@ Documents de référence : [sujet](../../ParisPulse_Sujet_etudiants.pdf), [archi
 
 ## 2. État d'avancement
 
-_Dernière mise à jour : 2026-11-24 - MOD-015._
+_Dernière mise à jour : 2026-11-24 - MOD-016._
 
 | Étape (README E2) | État | Renvoi |
 | --- | --- | --- |
@@ -126,6 +126,37 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
 - **Vérifications effectuées** : commandes lancées, résultats observés (ou "aucune").
 - **Points ouverts** : ce qui reste incertain ou à valider.
 ```
+
+### MOD-016 - 2026-11-24 - Seuil d'heures mesurées et masquage des fenêtres pour le MLP ; modèles B d'EXP-E2-05
+
+- **Auteur** : Idir. `fit_mlp` est la fonction d'Esther (MOD-008) : elle est prévenue de la modification, désactivée par défaut.
+- **Branche / commit** : `Team2-idir` / `08026ae` (gel de la fiche), `d7c748d` (code).
+- **Quoi** ([neural.py](../../src/models/known/neural.py), [predict.py](../../src/models/known/predict.py)) :
+  - nouveaux réglages, neutres par défaut : `min_observed_hours=84`, `mask_prob=0.0`, `mask_min_hours=24`, `mask_max_hours=144`, contrôlés dans `mlp_hyperparameters` ;
+  - `build_windows(..., min_observed_hours)` : le seuil est rangé dans `Windows`, et `refusal_reasons` applique le même ;
+  - `mask_windows` : efface un bloc continu (masque 0, jamais une valeur 0), recalcule le niveau sur les heures restantes et renormalise série et cibles. Les cibles réelles sont intactes. Une ligne qui deviendrait inutilisable n'est pas masquée ;
+  - `fit_mlp` : masquage tiré à chaque époque, sur les lignes d'apprentissage seulement, avec un générateur séparé. Le holdout n'est jamais masqué. Bilan `masking` dans `training_report` ;
+  - `predict_mlp(..., min_observed_hours)` : seuil appris par le réseau (84 pour un réseau d'avant), remplaçable (bras A′). Transmis par `predict_24h`, `trained_forecast` et la commande (`--min-observed-hours`), pour le MLP seulement.
+- **Modèles appris** (`hist-20261117`, coupure au 01/07/2026, `min_observed_hours=24`) : B à `mask_prob=0.10`, `e2-mlp-ctx-20260701-s0-37f5`, `s1-bd12`, `s2-f26e` (retenus) ; B à `mask_prob=0.25`, `s0-a3b2`, `s1-02bb`, `s2-5238` (écartés par le contrôle sur juin, gardés pour la transparence).
+- **Contrôle sur juin** (règle écrite au gel) : à 0,25, B fait 18,07 contre 17,68 pour A (écart 0,39, plus que l'étendue 0,29 entre graines de A) ; passage à 0,10 : B fait 17,32. Contrôle seulement : juin sert à l'arrêt anticipé. Détail dans la fiche.
+- **Pourquoi** : EXP-E2-05, approfondissement « historique incomplet » (sujet) et fiabilité (PROTOCOLE §7).
+- **Fichiers** : [neural.py](../../src/models/known/neural.py), [predict.py](../../src/models/known/predict.py), [test_known_neural_mask.py](../../tests/test_known_neural_mask.py), [test_known_predict_trained.py](../../tests/test_known_predict_trained.py), [EXP-E2-05](../experiments/EXP-E2-05.md), ce fichier.
+- **Impact partenaires / contrats** : aucun changement pour les modèles existants : réglages neutres, et `predict_mlp` sans argument se comporte comme avant. Nouvel argument facultatif `min_observed_hours` dans `predict_24h` et `predict_mlp`.
+- **Vérifications effectuées** :
+  - 19 tests ajoutés. Les points couverts :
+    - un bloc continu par ligne ;
+    - aucune valeur 0 inventée, cibles intactes ;
+    - original non modifié ;
+    - même graine = mêmes masques et mêmes poids ;
+    - désactivé = poids identiques ;
+    - holdout jamais masqué ;
+    - seuil 84 qui limite les blocs, seuil 24 qui sert une fenêtre de 24 h ;
+    - seuil refusé hors MLP.
+  - `pytest -q` : tous les tests E2 passent (le seul échec reste le test E3 qui échoue sur `dev`). `ruff check` sans problème sur les fichiers E2.
+  - Sur 23 vrais cas de validation (cibles non lues), le MLP `9ce9` donne exactement les mêmes prévisions et refus avec l'ancien et le nouveau code.
+- **Points ouverts** :
+  - prévisions et scores d'EXP-E2-05 après le gel d'EXP-E2-03 ;
+  - les 3 modèles B à 0,25 peuvent être supprimés une fois la fiche close.
 
 ### MOD-015 - 2026-11-24 - Brouillon de la fiche EXP-E2-05 (MLP appris avec fenêtres masquées)
 
@@ -569,7 +600,8 @@ Prioriser dans l'ordre. Cocher avec le renvoi `MOD-NNN` uniquement une fois vér
 - [ ] Désigner le `model_run_id` utilisé par l'application (avec E5). Provisoire : modèles par défaut (D-24, MOD-014), à revoir selon EXP-E2-03.
 - [ ] Fusionner `Team2` dans `dev` avec E5 (PR) : sans conflit depuis la reconstruction (MOD-014).
 - [ ] Confirmer avec Ania le plafond `max_iter=2000` du HGB, puis supprimer les modèles écartés `e2-hgb-noctx-20260701-s0-409c` et `e2-hgb-ctx-20260701-s0-8b7a` (MOD-013).
-- [ ] Fiche EXP-E2-05 (Idir) : MLP appris avec ou sans masquage des fenêtres, sur les historiques incomplets ; écrite avant le code. Brouillon : MOD-015 ; 6 points à trancher, puis code fonction par fonction.
+- [x] Fiche EXP-E2-05 (Idir) figée pour le code ; code, tests et modèles B appris, contrôle sur juin fait. MOD-015, MOD-016.
+- [ ] EXP-E2-05 : prévisions (5 niveaux × 4 bras) et scores, après le gel d'EXP-E2-03.
 - [ ] Présenter MOD-008 à Idir et Ania (contrôle de latence dans `train.fit`, format 2), à E3 (réseau réutilisable), à E4/E5 (codes `mlp_*`, couverture) ; consigner leur retour au §8.
 - [x] MLP : apprendre 3 graines pour mesurer la variabilité (contrôle de juin : étendue 0,29 vélo/h). MOD-013 ; la variabilité sur la validation sera lue avec EXP-E2-03.
 - [ ] Fiche EXP-E2-03 (MLP contre HGB contre références) avec les décisions figées avant les scores. Brouillon : MOD-012 ; 5 points à trancher en équipe.
@@ -629,7 +661,7 @@ Chaque expérience a sa fiche dans `reports/experiments/` (gabarit [experiment.m
 | E2-TECH-004 | 2026-11-24 | Essai technique : premier apprentissage du HGB sur données réelles (pas de comparaison) | `hgb` avec contexte, `absolute_error`, graine 0 | aucun protocole validé (`fit_cutoff` 01/07/2026, D-17) / `hist-20261117` | non calculée (E4) | couverture de la validation non mesurée | 278 s au total, dont 125 s pour les deux apprentissages HGB ; CPU | Apprentissage sans fuite ; 342 arbres ; contrôle interne sur juin, hors scores E4 (voir fiche) ; loss à fixer par E4 | [fiche](../experiments/E2-TECH-004.md) |
 | EXP-E2-03 | 2026-11-24 | Quelle méthode pour les sites connus ? **Brouillon, non figé** | `reference`, `reference_profile`, `mlp` (graine 0, + graines 1-2 pour la variabilité), `hgb` | `proto-v1` (non validé) / `hist-20261117`, validation | à venir (E4) | 6 014 attendus | à mesurer | à venir | [fiche](../experiments/EXP-E2-03.md) |
 | EXP-E2-04 | 2026-11-24 | Le contexte aide-t-il nos modèles ? **Brouillon, non figé** | MLP et HGB, chacun avec et sans contexte (même méthode, même graine) | `proto-v1` (non validé) / `hist-20261117`, validation | à venir (E4) | 6 014 attendus | à mesurer | à venir | [fiche](../experiments/EXP-E2-04.md) |
-| EXP-E2-05 | 2026-11-24 | Apprendre avec des fenêtres masquées rend-il le MLP plus robuste ? **Brouillon, non figé** (Idir) | MLP actuel (seuil 84 h et 24 h) contre MLP masqué (3 graines), référence | `proto-v1` (non validé) / `hist-20261117`, validation naturelle et dégradée | à venir (E4) | 6 014 attendus par niveau | à mesurer | à venir | [fiche](../experiments/EXP-E2-05.md) |
+| EXP-E2-05 | 2026-11-24 | Apprendre avec des fenêtres masquées rend-il le MLP plus robuste ? **Figée pour le code ; modèles B appris** (Idir) | MLP actuel (seuil 84 h et 24 h) contre MLP masqué (3 graines), référence | `proto-v1` (non validé) / `hist-20261117`, validation naturelle et dégradée | à venir (E4) | 6 014 attendus par niveau | B : environ 45 s d'apprentissage par graine | à venir | [fiche](../experiments/EXP-E2-05.md) |
 
 ---
 
