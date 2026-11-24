@@ -42,7 +42,7 @@ Format : [doc/SUIVI_ET_REMISE.md §4](../../doc/SUIVI_ET_REMISE.md). Entrées le
 
 ### Pistes gardées pour plus tard
 
-- **Ma comparaison (EXP-E2-05)** : MLP appris avec ou sans masquage des fenêtres, sur les historiques incomplets des sites connus. Fiche avant le code.
+- **Ma comparaison** : [EXP-E2-05](../experiments/EXP-E2-05.md), brouillon écrit (MOD-015) : MLP appris avec ou sans fenêtres masquées, sur historiques incomplets naturels et pannes simulées. Le bras A′ (mêmes poids, même seuil abaissé) isole le masquage du changement de seuil. Code après le gel.
 - Ablation par groupe de contexte pour le MLP (aujourd'hui tout ou rien).
 
 ### Partenaires

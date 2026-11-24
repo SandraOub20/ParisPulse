@@ -40,7 +40,7 @@ Documents de référence : [sujet](../../ParisPulse_Sujet_etudiants.pdf), [archi
 
 ## 2. État d'avancement
 
-_Dernière mise à jour : 2026-11-24 - MOD-014._
+_Dernière mise à jour : 2026-11-24 - MOD-015._
 
 | Étape (README E2) | État | Renvoi |
 | --- | --- | --- |
@@ -128,6 +128,22 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
 - **Vérifications effectuées** : commandes lancées, résultats observés (ou "aucune").
 - **Points ouverts** : ce qui reste incertain ou à valider.
 ```
+
+### MOD-015 - 2026-11-24 - Brouillon de la fiche EXP-E2-05 (MLP appris avec fenêtres masquées)
+
+- **Auteur** : Idir.
+- **Branche / commit** : `Team2-idir` / commit de ce brouillon.
+- **Quoi** : brouillon de [EXP-E2-05](../experiments/EXP-E2-05.md), **non figé**, résultats vides, aucun code écrit.
+  - Question : un MLP appris en voyant des fenêtres trouées prévoit-il mieux les historiques incomplets, sans perdre sur les semaines complètes ?
+  - Bras : A (MLP actuel, seuil 84 h), A′ (mêmes poids, seuil 24 h), B (MLP masqué, seuil 24 h, 3 graines), R (`reference_profile`). A′ contre B isole le masquage.
+  - Populations : validation naturelle découpée par heures mesurées, et validation dégradée artificiellement (pannes de 48, 96 et 144 h, 50 % de trous), mêmes cibles (PROTOCOLE §7).
+  - Masquage proposé : probabilité 0,5, un bloc contigu de 24 à 144 h, holdout jamais masqué.
+  - Règle de décision fixée d'avance : B remplace A seulement s'il ne perd pas sur les semaines complètes et gagne nettement sur les pannes.
+- **Pourquoi** : approfondissement E2 « historique incomplet » (sujet) et étude de fiabilité (PROTOCOLE §7) ; comparaison individuelle d'Idir.
+- **Fichiers** : [EXP-E2-05.md](../experiments/EXP-E2-05.md), ce fichier.
+- **Impact partenaires / contrats** : aucun pour l'instant. Le code prévu (`min_observed_hours`, `mask_windows`, masquage dans `fit_mlp`) gardera 84 h par défaut : les modèles existants ne changent pas.
+- **Vérifications effectuées** : aucune mesure ; cohérence vérifiée avec PROTOCOLE §6 et §7, D-18, D-23 et EXP-E2-03.
+- **Points ouverts** : les 6 points à trancher en fin de fiche, dont le masquage dans `fit_mlp` avec Esther.
 
 ### MOD-014 - 2026-11-24 - Réconciliation avec le branchement MLP d'E5 sur `dev` (une seule implémentation pour `mlp` et `hgb`)
 
@@ -547,7 +563,7 @@ Prioriser dans l'ordre. Cocher avec le renvoi `MOD-NNN` uniquement une fois vér
 - [ ] Désigner le `model_run_id` utilisé par l'application (avec E5). Provisoire : modèles par défaut (D-24, MOD-014), à revoir selon EXP-E2-03.
 - [ ] Fusionner `Team2` dans `dev` avec E5 (PR) : sans conflit depuis MOD-014.
 - [ ] Confirmer avec Ania le plafond `max_iter=2000` du HGB, puis supprimer les modèles écartés `e2-hgb-noctx-20260701-s0-409c` et `e2-hgb-ctx-20260701-s0-8b7a` (MOD-013).
-- [ ] Fiche EXP-E2-05 (Idir) : MLP appris avec ou sans masquage des fenêtres, sur les historiques incomplets ; écrite avant le code.
+- [ ] Fiche EXP-E2-05 (Idir) : MLP appris avec ou sans masquage des fenêtres, sur les historiques incomplets ; écrite avant le code. Brouillon : MOD-015 ; 6 points à trancher, puis code fonction par fonction.
 - [ ] Présenter MOD-008 à Idir et Ania (contrôle de latence dans `train.fit`, format 2), à E3 (réseau réutilisable), à E4/E5 (codes `mlp_*`, couverture) ; consigner leur retour au §8.
 - [x] MLP : apprendre 3 graines pour mesurer la variabilité (contrôle de juin : étendue 0,29 vélo/h). MOD-013 ; la variabilité sur la validation sera lue avec EXP-E2-03.
 - [ ] Fiche EXP-E2-03 (MLP contre HGB contre références) avec les décisions figées avant les scores. Brouillon : MOD-012 ; 5 points à trancher en équipe.
@@ -606,6 +622,7 @@ Chaque expérience a sa fiche dans `reports/experiments/` (gabarit [experiment.m
 | E2-TECH-004 | 2026-11-24 | Essai technique : premier apprentissage du HGB sur données réelles (pas de comparaison) | `hgb` avec contexte, `absolute_error`, graine 0 | aucun protocole validé (`fit_cutoff` 01/07/2026, D-17) / `hist-20261117` | non calculée (E4) | couverture de la validation non mesurée | 278 s au total, dont 125 s pour les deux apprentissages HGB ; CPU | Apprentissage sans fuite ; 342 arbres ; contrôle interne sur juin, hors scores E4 (voir fiche) ; loss à fixer par E4 | [fiche](../experiments/E2-TECH-004.md) |
 | EXP-E2-03 | 2026-11-24 | Quelle méthode pour les sites connus ? **Brouillon, non figé** | `reference`, `reference_profile`, `mlp` (graine 0, + graines 1-2 pour la variabilité), `hgb` | `proto-v1` (non validé) / `hist-20261117`, validation | à venir (E4) | 6 014 attendus | à mesurer | à venir | [fiche](../experiments/EXP-E2-03.md) |
 | EXP-E2-04 | 2026-11-24 | Le contexte aide-t-il nos modèles ? **Brouillon, non figé** | MLP et HGB, chacun avec et sans contexte (même méthode, même graine) | `proto-v1` (non validé) / `hist-20261117`, validation | à venir (E4) | 6 014 attendus | à mesurer | à venir | [fiche](../experiments/EXP-E2-04.md) |
+| EXP-E2-05 | 2026-11-24 | Apprendre avec des fenêtres masquées rend-il le MLP plus robuste ? **Brouillon, non figé** (Idir) | MLP actuel (seuil 84 h et 24 h) contre MLP masqué (3 graines), référence | `proto-v1` (non validé) / `hist-20261117`, validation naturelle et dégradée | à venir (E4) | 6 014 attendus par niveau | à mesurer | à venir | [fiche](../experiments/EXP-E2-05.md) |
 
 ---
 
