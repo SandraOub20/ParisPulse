@@ -103,28 +103,44 @@ def predict_24h(
         elif variant == "adapted":
             method_run_id = "e3-chronos-2-adapted-v1"
             model_run_id= "amazon-chronos-2"
-            pass
+            manager.load_model(model_name)
+            raise NotImplementedError(f"adapted n'est pas encore implémenté pour {model_name}.")
     elif model_name == GOOGLE_MODEL_NAME:
-        manager.load_model(model_name)
         if variant == "frozen":
             method_run_id = "e3-google-TimesFM_2.5-frozen-v1"
             model_run_id= "google-TimesFM_2.5"
-            pass
+
+            model = manager.load_model(model_name)
+
+            inference_started = time.perf_counter()
+            google_output = model.forecast(
+                horizon=forecast_length,
+                inputs=[context_df["target"].to_numpy(dtype=float)],
+            )
+            inference_seconds = time.perf_counter() - inference_started
+
+            predictions = _extract_timesfm_predictions(
+                google_output,
+                inputs.case.origin,
+                inputs.case.support_end,
+                forecast_length,
+                "google-TimesFM-2.5",
+            )
         elif variant == "adapted":
             method_run_id = "e3-google-TimesFM_2.5-adapted-v1"
             model_run_id= "google-TimesFM_2.5"
-            pass
-        raise NotImplementedError(f"{model_name} n'est pas encore implémenté dans E3.")
+            manager.load_model(model_name)
+            raise NotImplementedError(f"adapted n'est pas encore implémenté pour {model_name}.")
     elif model_name == TEAM2_MODEL_NAME:
         manager.load_model(model_name)
         if variant == "frozen":
             method_run_id = "e3-team3-mlp-frozen-v1"
             model_run_id= "team3-frozen"
-            pass
+            raise NotImplementedError(f"frozen n'est pas encore implémenté pour {model_name}.")
         elif variant == "adapted":
             method_run_id = "e3-team3-mlp-adapted-v1"
             model_run_id= "team3-adapted"
-            pass
+            raise NotImplementedError(f"adapted n'est pas encore implémenté pour {model_name}.")
 
     return ForecastResult(
         case=inputs.case,
@@ -309,6 +325,62 @@ def _extract_predictions(output: pd.DataFrame, origin: pd.Timestamp, method_name
         status_reason=np.where(clipped, "negative_quantile_clipped_to_zero", None),
     )
     return predictions
+
+
+def _extract_timesfm_predictions(
+    output: Any,
+    origin: pd.Timestamp,
+    support_end: pd.Timestamp,
+    forecast_length: int,
+    method_name: str,
+) -> pd.DataFrame:
+    if not isinstance(output, (tuple, list)) or len(output) != 2:
+        raise TypeError("TimesFM 2.5 doit retourner (point_forecast, quantile_forecast).")
+
+    point_forecast, quantile_forecast = output
+    point = np.asarray(point_forecast)
+    quantiles = np.asarray(quantile_forecast)
+
+    if point.ndim == 2 and point.shape[0] == 1:
+        point = point[0]
+    point = np.asarray(point).reshape(-1)
+
+    values = point
+    if quantiles.size:
+        quantiles = np.asarray(quantiles)
+        if quantiles.ndim == 3 and quantiles.shape[0] == 1:
+            quantiles = quantiles[0]
+        if quantiles.ndim == 2:
+            if quantiles.shape[1] >= 6:
+                values = quantiles[:, 5]
+            else:
+                values = quantiles[:, 0]
+        elif quantiles.ndim == 1 and quantiles.size >= 6:
+            values = quantiles
+    values = np.asarray(values, dtype=float).reshape(-1)
+
+    if len(values) != forecast_length:
+        raise ValueError(
+            f"TimesFM 2.5 a retourné {len(values)} prévisions au lieu de {forecast_length}."
+        )
+
+    forecast_start = support_end
+    timestamps = pd.date_range(forecast_start, periods=forecast_length, freq="h")
+    forecasts = pd.Series(values, index=timestamps)
+
+    targets = target_timestamps(origin)
+    array = pd.to_numeric(forecasts.reindex(targets["target_timestamp"]), errors="coerce").to_numpy(
+        dtype=float
+    )
+    if len(array) != HORIZON_HOURS or not np.isfinite(array).all():
+        raise ValueError("TimesFM 2.5 n'a pas retourné 24 prévisions finies pour l'origine demandée.")
+    clipped = array < 0
+    return targets.assign(
+        y_pred=np.maximum(array, 0.0),
+        method_used=method_name,
+        prediction_status="ok",
+        status_reason=np.where(clipped, "negative_quantile_clipped_to_zero", None),
+    )
 
 
 def _observed_mask(history: pd.DataFrame) -> pd.Series:

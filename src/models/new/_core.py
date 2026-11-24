@@ -21,8 +21,22 @@ class ModelManager:
                 device_map="auto"
             )
         elif model_name == "google_TimesFM_2.5":
-            # TODO : initialisation du modèle Google TimesFM 2.5
-            model = None
+            import timesfm
+
+            model = timesfm.TimesFM_2p5_200M_torch.from_pretrained(
+                "google/timesfm-2.5-200m-pytorch"
+            )
+            model.compile(
+                timesfm.ForecastConfig(
+                    max_context=1024,
+                    max_horizon=256,
+                    normalize_inputs=True,
+                    use_continuous_quantile_head=True,
+                    force_flip_invariance=True,
+                    infer_is_positive=True,
+                    fix_quantile_crossing=True,
+                )
+            )
         elif model_name == "team2":
             # TODO : initialisation du modèle E2
             model = None

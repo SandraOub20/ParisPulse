@@ -3,9 +3,9 @@
 ## Prévision Chronos-2
 
 `predict.py` fournit `predict_24h(case, history, variant="frozen")` et
-`save_forecasts(result, path)`. Seul Chronos-2 en variante `frozen` produit une prévision.
-Les chemins `adapted`, `google_TimesFM_2.5` et `team2` sont présents comme points d'extension
-et lèvent `NotImplementedError` jusqu'à leur implémentation.
+`save_forecasts(result, path)`. Chronos-2 et Google TimesFM 2.5 en variante `frozen`
+produisent une prévision. Les chemins `adapted` et `team2` sont présents comme points
+d'extension et lèvent `NotImplementedError` jusqu'à leur implémentation.
 
 Le cas doit être un `new_site` d'un site réservé (`S_dev_new` ou `S_test_new`) avec un
 budget local positif (1, 3 ou 7 jours). L'historique fourni est refiltré sur le compteur, le support du cas et
