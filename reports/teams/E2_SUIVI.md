@@ -50,8 +50,8 @@ _Dernière mise à jour : 2026-11-24 - MOD-014._
 | 2. Référence 168 h + repli causal (`baseline.py`) | ✅ Codée et testée sur cas synthétique ; repli N = 4 provisoire (D-03) ; seconde référence médiane 4 semaines | MOD-003, MOD-004 |
 | 3. Vérification manuelle + raccord E4/E5 | 🟡 Vérifié à la main sur cas synthétique et sur 11 valeurs réelles ; consommation par E4/E5 à obtenir | MOD-003, MOD-005 |
 | 4. Variables communes (`features.py`) | 🟡 `f1.0` codée, testée, jeu d'apprentissage réel construit (E2-TECH-002) ; à présenter à E3 et E1 | MOD-006 |
-| 5. Méthode justifiée + variante explicative (`train.py`) | 🟡 Socle commun `train.py` fait et testé (`fit`, sauvegarde, chargement) ; MLP : apprentissage (`fit_mlp`) et prévision (`predict_mlp`) faits et testés, premier apprentissage réel (E2-TECH-003) ; HGB (`tabular.py`) fait et testé, premier apprentissage réel (E2-TECH-004), loss à fixer par E4 ; comparaison après validation du protocole | MOD-007, MOD-008, MOD-010 |
-| 6. Calcul exécutable et exports, recalcul autre origine (`predict.py`) | 🟡 Chaîne complète et commande `python -m src.models.known.predict` ; 10 858 cas de validation calculés (E2-TECH-001) ; recalcul par E5 à faire ; variantes `mlp` et `hgb` branchées avec repli sur la référence, vérifiées sur 25 cas réels (calcul complet après la fiche EXP-E2-03) | MOD-003, MOD-005, MOD-008, MOD-011 |
+| 5. Méthode justifiée + variante explicative (`train.py`) | 🟡 Socle commun `train.py` fait et testé (`fit`, sauvegarde, chargement) ; MLP : apprentissage (`fit_mlp`) et prévision (`predict_mlp`) faits et testés, premier apprentissage réel (E2-TECH-003) ; HGB (`tabular.py`) fait et testé, premier apprentissage réel (E2-TECH-004), loss à fixer par E4 ; 3 graines du MLP et versions sans contexte apprises ; fiches [EXP-E2-03](../experiments/EXP-E2-03.md) (méthodes) et [EXP-E2-04](../experiments/EXP-E2-04.md) (contexte) en brouillon, à figer avant les scores | MOD-007, MOD-008, MOD-010, MOD-012, MOD-013 |
+| 6. Calcul exécutable et exports, recalcul autre origine (`predict.py`) | 🟡 Chaîne complète et commande `python -m src.models.known.predict` ; 10 858 cas de validation calculés (E2-TECH-001) ; recalcul par E5 à faire ; variantes `mlp` et `hgb` branchées avec repli sur la référence, vérifiées sur 25 cas réels (calcul complet après la fiche EXP-E2-03) ; réconcilié avec le branchement MLP d'E5 (une seule implémentation, contrôles d'éligibilité, modèles par défaut D-24) ; fusion vers `dev` à faire avec E5 | MOD-003, MOD-005, MOD-008, MOD-011, MOD-014 |
 | 7. Cas difficile, extension, test final après gel | 🔲 | - |
 
 Légende : ✅ fait et vérifié · 🟡 en cours · ⏳ bloqué/en attente · 🔲 non commencé.
@@ -132,7 +132,7 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
 ### MOD-014 - 2026-11-24 - Réconciliation avec le branchement MLP d'E5 sur `dev` (une seule implémentation pour `mlp` et `hgb`)
 
 - **Auteur** : Idir, avec l'accord de Sandra (E5).
-- **Branche / commit** : `Team2-idir`, fusion de `origin/dev` (`fdc06c1`).
+- **Branche / commit** : `Team2-idir` / `fe2903b` (fusion de `origin/dev`, qui contient `fdc06c1`).
 - **Quoi** :
   - Sur `dev`, E5 avait branché le MLP dans `predict.py` en parallèle de MOD-011, avec `src/models/known/mlp_forecast.py` (utilisé par l'application et par E3). Conflit résolu avec **une seule implémentation**, `predict.trained_forecast`, pour le MLP et le HGB.
   - Repris d'E5 dans `trained_forecast` : contrôles avant prévision (`eligibility_reason`) étendus au HGB : instantané, origine avant la coupure, site connu absent de l'apprentissage, nouveau site non confirmé réservé, version du contexte. Codes `mlp_*` / `hgb_*` : `_snapshot_incompatible`, `_origin_before_fit_cutoff`, `_site_not_in_training`, `_site_not_confirmed_reserved`, `_context_missing`, `_context_incompatible`, `_inputs_incompatible`. `status_reason` contient exactement le code de refus, pour le cas et pour chaque horizon.
@@ -149,7 +149,7 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
 ### MOD-013 - 2026-11-24 - Graines du MLP, modèles sans contexte, contrôle de reproductibilité ; mise à jour des documents E2
 
 - **Auteur** : Idir.
-- **Branche / commit** : `Team2-idir` / voir l'historique de ce fichier.
+- **Branche / commit** : `Team2-idir` / `ea076f6`.
 - **Quoi** :
   - Modèles appris (code de MOD-008 et MOD-010, inchangé ; `hist-20261117`, coupure au 01/07/2026, réglages par défaut sauf mention) :
 
@@ -174,7 +174,7 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
 ### MOD-012 - 2026-11-24 - Brouillon de la fiche EXP-E2-03 (MLP, HGB, références)
 
 - **Auteur** : Idir.
-- **Branche / commit** : `Team2-idir` / voir l'historique de [EXP-E2-03.md](../experiments/EXP-E2-03.md).
+- **Branche / commit** : `Team2-idir` / `43739f9` (brouillon), `f9b2b12` (calcul du score par E4).
 - **Quoi** : brouillon de [EXP-E2-03](../experiments/EXP-E2-03.md), **non figé**, résultats vides.
   - Un seul facteur : la méthode (`reference`, `reference_profile`, `mlp`, `hgb`), avec contexte. L'ablation du contexte, la loss du HGB et le masquage du MLP auront leur propre fiche.
   - Population fixée d'avance : les 6 014 cas `known_site` de validation de `proto-v1`. Le test n'est pas lu.
@@ -538,13 +538,16 @@ Prioriser dans l'ordre. Cocher avec le renvoi `MOD-NNN` uniquement une fois vér
 - [ ] Présenter les variables `f1.0` et les nouvelles signatures à E3 (bibliothèque partagée) et à E1 (lecture de `context.csv`) ; consigner leur retour au §8.
 - [ ] Tester Prophet hors intégration (viabilité, coût par cas) avant toute discussion d'ajout au projet (D-10).
 - [ ] Traiter les incohérences restantes du §10 (C3 après version finale des données, C4 avec E5, I1–I5, M1–M3).
-- [ ] Choisir une méthode justifiée par la bibliographie (statistique, tabulaire, réseau compact, modèle partagé...).
-- [ ] Ablation : même modèle avec / sans calendrier ou météo, réglages figés avant le test.
+- [ ] Choisir une méthode justifiée par la bibliographie (statistique, tabulaire, réseau compact, modèle partagé...). Comparaison préparée : [EXP-E2-03](../experiments/EXP-E2-03.md) (brouillon, MOD-012).
+- [ ] Ablation : même modèle avec / sans calendrier ou météo, réglages figés avant le test. Modèles sans contexte appris et fiche [EXP-E2-04](../experiments/EXP-E2-04.md) en brouillon (MOD-013) ; par groupe : HGB seulement (D-12).
 - [x] `train.py` : `exclude_reserved_sites` (par `site_group_id`), `fit`, `save_model` avec `metadata.json` + SHA-256. MOD-007
 - [x] Brancher le HGB sur `train.fit` (`register_backend("hgb", …)`). MOD-009 (squelette), MOD-010 (implémentation, premier apprentissage réel)
 - [x] MLP : `fit_mlp` (perte MAE sur les cibles mesurées, arrêt anticipé sur les 4 semaines avant `fit_cutoff`, cibles extrêmes) et `predict_mlp` (proposés à Esther). MOD-008 (E2-TECH-003)
 - [x] `predict.py` : variantes `mlp` et `hgb` (modèle chargé une fois, repli sur la référence). MOD-011
-- [ ] Désigner le `model_run_id` utilisé par l'application (avec E5).
+- [ ] Désigner le `model_run_id` utilisé par l'application (avec E5). Provisoire : modèles par défaut (D-24, MOD-014), à revoir selon EXP-E2-03.
+- [ ] Fusionner `Team2` dans `dev` avec E5 (PR) : sans conflit depuis MOD-014.
+- [ ] Confirmer avec Ania le plafond `max_iter=2000` du HGB, puis supprimer les modèles écartés `e2-hgb-noctx-20260701-s0-409c` et `e2-hgb-ctx-20260701-s0-8b7a` (MOD-013).
+- [ ] Fiche EXP-E2-05 (Idir) : MLP appris avec ou sans masquage des fenêtres, sur les historiques incomplets ; écrite avant le code.
 - [ ] Présenter MOD-008 à Idir et Ania (contrôle de latence dans `train.fit`, format 2), à E3 (réseau réutilisable), à E4/E5 (codes `mlp_*`, couverture) ; consigner leur retour au §8.
 - [x] MLP : apprendre 3 graines pour mesurer la variabilité (contrôle de juin : étendue 0,29 vélo/h). MOD-013 ; la variabilité sur la validation sera lue avec EXP-E2-03.
 - [ ] Fiche EXP-E2-03 (MLP contre HGB contre références) avec les décisions figées avant les scores. Brouillon : MOD-012 ; 5 points à trancher en équipe.
@@ -610,6 +613,9 @@ Chaque expérience a sa fiche dans `reports/experiments/` (gabarit [experiment.m
 
 | Date | Équipe | Objet | Résultat / preuve d'usage |
 | --- | --- | --- | --- |
+| 2026-11-24 | E5 (Sandra) | Branchement MLP en double sur `dev` (`fdc06c1`, `mlp_forecast.py`) et MOD-011 sur `Team2` | Réconcilié avec son accord (MOD-014) : une seule implémentation, ses points d'entrée et ses tests conservés, HGB disponible pour l'application ; `method_run_id` par défaut = `model_run_id`. Fusion vers `dev` à faire ensemble. |
+| 2026-11-24 | E4 | Lecture de `src/eval/Metric.py` (branche `Team4`, `7a5c3e0`) pour EXP-E2-03 | Même masque, intersection commune et MAE macro présents. **À demander** : version de référence et arrivée sur `dev` ; biais dans la moyenne globale ; accord sur une version « brute » des prévisions (heures `fallback` marquées `unavailable`). |
+| 2026-11-24 | E3 | Chargement du MLP E2 dans `src/models/new/` | Sur `Team3` : `train.load_model` appelé sans importer `neural` (`KeyError` vérifié) et `manager` non importé dans `adapt.py` ; corrigés sur `dev` par E5. **À transmettre** : mettre `Team3` à jour depuis `dev` ; conditions du MLP (84 h sur 168 h, budgets 24 et 72 h refusés) ; versions sans contexte disponibles. |
 | 2026-11-23 | E2 (Idir, Ania) | MOD-008 : contrôle de la latence dans `train.fit` (D-22), format 2 de `weights.pt`, test « pas encore entraînable » remplacé | **À transmettre** ; retour à consigner. |
 | 2026-11-23 | E4, E5 | Codes de refus `mlp_*` (D-21), couverture du MLP sur la validation (94,7 %, 4 sites en panne), coût par cas (0,39 s) contre 3,2 s en bloc (E2-TECH-003) | **À transmettre** avant le branchement dans `predict.py`. |
 | 2026-11-23 | E3 | MLP sans identifiant de compteur, sites E3 exclus (`excluded_site_groups` de `metadata.json`), réutilisable comme base apprise ailleurs | **À présenter** (D-05). |
@@ -654,7 +660,7 @@ Statuts : ✅ corrigé · ⏸️ reporté (décision prise) · 🔲 à traiter.
 | C1 | « y_pred nul » et « cibles nulles » : confusion possible entre zéro et manquant. Un 0 rendrait le cas complet et fausserait la MAE ; exclure les zéros contredit le sujet. | Sujet p. 3 ; CONTRATS §7 | Appliquer la correction : manquant = NaN, zéro observé conservé. | ✅ MOD-002 |
 | C2 | L'ablation calendrier n'est pas isolée : fériés et vacances dans `calendar_features`, alors que `use_context` ne coupe que `context_features`. | Sujet p. 6 ; plan §5 | Appliquer la correction : fériés et vacances déplacés dans `context_features`. | ✅ MOD-002 |
 | C3 | `counts.csv` n'a ni `available_at` ni `site_group_id` : `build_inputs` et `exclude_reserved_sites` ne peuvent pas être codées telles quelles ; latence fixée à 24 h en dur au lieu de `config/project.yaml`. | CONTRATS §3, §5 ; gabarit `counts.csv` | Attendre la version finale des données avant de choisir (D-08). | ⏸️ En partie levée (MOD-006) : `site_group_id` lu dans `inventory_quality.csv` par `training_counters`, latence lue dans la configuration ; `available_at` toujours absent |
-| C4 | Deux points d'entrée (`predict_24h(case, history, …)` et `ForecastMethod(inputs, variant)`), ambiguïté sur qui filtre l'historique, routage en double (`predict_24h` et `select_method`), alors que le sujet confie l'implémentation du routage à E5. | Sujet p. 9 ; CONTRATS §9 | Signature exigée par E5 ; la cohérence sera traitée plus tard (D-09). | ⏸️ |
+| C4 | Deux points d'entrée (`predict_24h(case, history, …)` et `ForecastMethod(inputs, variant)`), ambiguïté sur qui filtre l'historique, routage en double (`predict_24h` et `select_method`), alors que le sujet confie l'implémentation du routage à E5. | Sujet p. 9 ; CONTRATS §9 | Signature exigée par E5 ; la cohérence sera traitée plus tard (D-09). MOD-011 / MOD-014 : `predict_24h` choisit le modèle et le repli (`trained_forecast`, `eligibility_reason`) ; `registry.py` reste non implémenté et inutilisé. À trancher avec E5 : registre comme couche de routage au-dessus de `predict_24h`, ou suppression. | ⏸️ |
 | C5 | Prophet non déclaré dans `pyproject.toml` (calcul non reproductible par l'enseignant), absent de la bibliographie, placé dans `baseline.py`, et ne compte pas comme expérience DL. | Sujet p. 2, 4, 10 | Tester d'abord sa viabilité ; intégration discutée ensuite (D-10). | ⏸️ |
 
 ### Importantes
@@ -673,7 +679,7 @@ Statuts : ✅ corrigé · ⏸️ reporté (décision prise) · 🔲 à traiter.
 | --- | --- | --- |
 | M1 | `check_eligibility` exige `fit_cutoff < origin`, le protocole admet `<=` (un modèle gelé au 01/09 00:00 serait refusé pour l'origine du 01/09 00:00) ; `MethodSpec.fit_cutoff` est une chaîne au lieu d'un `Timestamp`. Le §9 de ce fichier reprend aussi `<`. | 🔲 MOD-008 : `predict_mlp` applique la règle du protocole (refus si `origin < fit_cutoff`, donc `origin = fit_cutoff` admis) ; `check_eligibility` reste à corriger |
 | M2 | `ForecastInputs.information_cutoff` mal défini : comparé à `available_at` (= `origin`) ou à `interval_end` (= `origin − latence`) selon les docstrings. Lié à C3. | 🟡 MOD-003 : `weekly_reference` compare `interval_end` à `information_cutoff` = `origin − latence` (provisoire, à confirmer avec D-08) |
-| M3 | Expérience deep learning non planifiée concrètement dans le squelette (D-05 ouvert), alors qu'elle est obligatoire. | 🟡 MOD-007 : `neural.py` créé (données, réseau, sauvegarde) ; apprentissage à écrire. MOD-008 : apprentissage et prévision écrits et testés, premier apprentissage réel (E2-TECH-003) ; la comparaison (EXP-E2-03) reste à faire après validation du protocole, et D-05 à confirmer avec E3 |
+| M3 | Expérience deep learning non planifiée concrètement dans le squelette (D-05 ouvert), alors qu'elle est obligatoire. | 🟡 MOD-007 : `neural.py` créé (données, réseau, sauvegarde) ; apprentissage à écrire. MOD-008 : apprentissage et prévision écrits et testés, premier apprentissage réel (E2-TECH-003) ; la comparaison (EXP-E2-03) reste à faire après validation du protocole, et D-05 à confirmer avec E3. MOD-011 à MOD-014 : MLP branché dans `predict.py` et utilisé par l'application et par E3 (« MLP E2 transféré ») ; 3 graines apprises ; EXP-E2-03 et EXP-E2-04 en brouillon |
 
 ### Points vérifiés cohérents
 
