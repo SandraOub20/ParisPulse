@@ -220,3 +220,73 @@ def test_bloc_refuse_une_autre_latence(counts, model):
 def test_bloc_vide(counts, model):
     values, reasons = B.batch_raw_mlp([], counts, None, model, publication_lag_hours=LAG)
     assert values.shape == (0, 24) and reasons == []
+
+
+# --- HGB -----------------------------------------------------------------------------------
+
+
+def _hgb(counts: pd.DataFrame, use_context: bool) -> train.TrainedModel:
+    from src.models.known import tabular as T
+
+    learn = counts.loc[counts["counter_id"].isin(list(LEVELS))]
+    config = train.TrainConfig(
+        method="hgb",
+        fit_cutoff=CUTOFF,
+        use_context=use_context,
+        hyperparameters=T.hgb_hyperparameters(max_iter=20, min_samples_leaf=5, patience=20),
+        feature_version=F.FEATURE_VERSION,
+    )
+    origins = F.training_origins(learn, sorted(LEVELS), CUTOFF, publication_lag_hours=LAG)
+    estimator = T.fit_hgb(config, learn, _context() if use_context else None, origins)
+    return train.TrainedModel(
+        model_run_id="e2-hgb-test",
+        config=config,
+        estimator=estimator,
+        donor_site_groups=[],
+        label_interval=(CUTOFF, CUTOFF),
+        train_seconds=0.0,
+    )
+
+
+def _one_by_one_hgb(cases, counts, context, model):
+    from src.models.known import tabular as T
+
+    values, reasons = [], []
+    for case in cases:
+        history = counts.loc[counts["counter_id"] == case.counter_id]
+        inputs = P.build_inputs(case, history, context, publication_lag_hours=LAG)
+        out = T.predict_hgb(model.estimator, inputs)
+        values.append(out.values if out.ok else np.full(24, np.nan))
+        reasons.append(out.reason)
+    return np.array(values), reasons
+
+
+@pytest.mark.parametrize("use_context", [False, True])
+def test_hgb_bloc_egal_cas_par_cas(counts, use_context):
+    from src.models.known import tabular as T
+
+    model = _hgb(counts, use_context)
+    context = _context() if use_context else None
+    cases = _cases()
+    batch = B.batch_raw_hgb(cases, counts, context, model, publication_lag_hours=LAG)
+    single = _one_by_one_hgb(cases, counts, context, model)
+    (bv, br), (sv, sr) = batch, single
+    assert br == sr
+    np.testing.assert_allclose(bv, sv, rtol=0, atol=1e-9, equal_nan=True)
+    # le HGB sert la semaine trouée de A-2 ; il refuse le compteur pas encore installé
+    assert T.REFUSE_NO_HISTORY in br and T.REFUSE_NOT_MIDNIGHT in br
+    assert {r for r, c in zip(br, cases, strict=True) if c.counter_id == "A-2"} <= {None}
+
+
+def test_hgb_bloc_sans_contexte_pour_un_modele_avec_contexte(counts):
+    from src.models.known import tabular as T
+
+    model = _hgb(counts, use_context=True)
+    _, reasons = B.batch_raw_hgb(_cases()[:5], counts, None, model, publication_lag_hours=LAG)
+    assert set(reasons) == {T.REFUSE_CONTEXT}
+
+
+def test_hgb_bloc_refuse_une_autre_latence(counts):
+    model = _hgb(counts, use_context=False)
+    with pytest.raises(ValueError, match="latence"):
+        B.batch_raw_hgb(_cases()[:2], counts, None, model, publication_lag_hours=48)

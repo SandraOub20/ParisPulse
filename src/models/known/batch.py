@@ -134,3 +134,108 @@ def batch_raw_mlp(
         else:
             values[i] = predicted[row]
     return values, reasons
+
+
+def batch_raw_hgb(
+    cases: list[Case],
+    counts: pd.DataFrame,
+    context: pd.DataFrame | None,
+    model: train.TrainedModel,
+    *,
+    publication_lag_hours: int | None = None,
+) -> tuple[np.ndarray, list[str | None]]:
+    """Sortie brute du HGB pour tous les cas : valeurs (n, 24) et code de refus par cas.
+
+    Mêmes contrôles, dans le même ordre, que tabular.refusal_reason puis predict_hgb :
+    1. origine hors minuit (Paris) ; 2. origine avant fit_cutoff du modèle ; 3. aucune
+    mesure publiée avant origin - latence (le HGB tolère une semaine trouée, mais pas un
+    historique vide) ; 4. contexte absent alors que le modèle l'utilise ; 5. toutes les
+    valeurs de contexte du cas inconnues à l'origine ; 6. sortie non finie.
+    Variables : features._assemble, le calcul commun à build_feature_frame (cas par cas)
+    et build_training_frame, appelé sans étiquette : les 24 heures de chaque cas sont
+    gardées et aucune cible n'est lue.
+    Lève ValueError si la latence diffère de celle du modèle (erreur de configuration).
+    """
+    from src.models.known import features as F
+
+    tabular = importlib.import_module(P.TRAINED_VARIANTS[P.HGB_VARIANT])
+    hgb = model.estimator
+    lag = P.default_publication_lag() if publication_lag_hours is None else publication_lag_hours
+    if int(lag) != int(hgb.publication_lag_hours):
+        raise ValueError(
+            f"latence {lag} h différente de celle de l'apprentissage "
+            f"({hgb.publication_lag_hours} h)"
+        )
+    n = len(cases)
+    values = np.full((n, HORIZON_HOURS), np.nan)
+    reasons: list[str | None] = [None] * n
+    if n == 0:
+        return values, reasons
+
+    origins = pd.DatetimeIndex([pd.Timestamp(c.origin).tz_convert("UTC") for c in cases])
+    counter_ids = np.array([str(c.counter_id) for c in cases])
+    local = origins.tz_convert(LOCAL_TZ)
+    not_midnight = np.asarray(local != local.normalize())
+    fit_cutoff = pd.Timestamp(hgb.fit_cutoff)
+    fit_cutoff = (
+        fit_cutoff.tz_convert("UTC") if fit_cutoff.tzinfo else fit_cutoff.tz_localize("UTC")
+    )
+    before_cutoff = np.asarray(origins < fit_cutoff)
+
+    measured = pd.to_numeric(counts["count"], errors="coerce").notna()
+    ends = pd.to_datetime(counts.loc[measured, "interval_end"], utc=True)
+    first_end = ends.groupby(counts.loc[measured, "counter_id"].astype(str)).min()
+    first = pd.DatetimeIndex(first_end.reindex(counter_ids).to_numpy()).tz_localize(None)
+    information = (origins - pd.Timedelta(hours=int(lag))).tz_localize(None)
+    no_history = np.asarray(first.isna() | (first > information))
+    context_absent = hgb.use_context and (context is None or len(context) == 0)
+
+    for i in range(n):
+        if not_midnight[i]:
+            reasons[i] = tabular.REFUSE_NOT_MIDNIGHT
+        elif before_cutoff[i]:
+            reasons[i] = tabular.REFUSE_BEFORE_CUTOFF
+        elif no_history[i]:
+            reasons[i] = tabular.REFUSE_NO_HISTORY
+        elif context_absent:
+            reasons[i] = tabular.REFUSE_CONTEXT
+    todo = np.flatnonzero([r is None for r in reasons])
+    if todo.size == 0:
+        return values, reasons
+
+    groups = tuple(hgb.context_groups)
+    prepared = F._prepare_context(context, groups) if groups else {}
+    context_columns = [c for g in groups for c in F.CONTEXT_GROUPS[g]]
+    by_counter = {str(k): v for k, v in counts.groupby(counts["counter_id"].astype(str))}
+    steps = np.arange(HORIZON_HOURS, dtype=np.int64)
+    for counter_id in sorted(set(counter_ids[todo])):
+        idx = todo[counter_ids[todo] == counter_id]
+        rows = by_counter[counter_id]
+        grid = F._make_grid(
+            F._to_hours(rows["timestamp"], "timestamp"),
+            pd.to_numeric(rows["count"], errors="coerce").to_numpy(dtype=float),
+        )
+        origin_h = F._to_hours(pd.Series(origins[idx]), "origin")
+        X = F._assemble(
+            grid,
+            prepared,
+            groups,
+            np.repeat(origin_h, HORIZON_HOURS),
+            np.repeat(origin_h, HORIZON_HOURS) + np.tile(steps, idx.size),
+            int(lag),
+            case_ids=np.repeat(np.array([cases[i].case_id for i in idx], dtype=object), 24),
+            counter_id=counter_id,
+        )
+        predicted = tabular.predict_frame(hgb, X).reshape(idx.size, HORIZON_HOURS)
+        if context_columns:
+            unknown = X[context_columns].isna().to_numpy().reshape(idx.size, -1).all(axis=1)
+        else:
+            unknown = np.zeros(idx.size, dtype=bool)
+        for row, i in enumerate(idx):
+            if unknown[row]:
+                reasons[i] = tabular.REFUSE_CONTEXT
+            elif not np.isfinite(predicted[row]).all():
+                reasons[i] = tabular.REFUSE_NON_FINITE
+            else:
+                values[i] = predicted[row]
+    return values, reasons
