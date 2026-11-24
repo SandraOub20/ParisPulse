@@ -18,6 +18,7 @@ import pandas as pd
 
 import src.eval.metrics as mt
 from src.common.config import ROOT, load_config
+from src.eval.utils import write_manifest
 
 # CONFIGURATION
 cfg = load_config()
@@ -666,17 +667,19 @@ def make_coverage(cases, forecast, observations, path):
 
 ##############################################################################################################################
 
-
 if __name__ == "__main__":
 
     # CHARGEMENT DES DONNEES
+    cases_path = EVAL / PROTOCOLE_ID / "cases.csv"
+    counts_path = DATA / SNAPSHOT_ID / "counts.csv"
+
     cases = pd.read_csv(
-        EVAL / PROTOCOLE_ID / "cases.csv",
+        cases_path,
         dtype={"case_id": str, "counter_id": str},
     )
 
     counts = pd.read_csv(
-        DATA / SNAPSHOT_ID / "counts.csv",
+        counts_path,
         dtype={"counter_id": str},
     )
 
@@ -716,8 +719,7 @@ if __name__ == "__main__":
                     "counter_id": str,
                 },
             )
-            if not f.name.endswith("-one-case.pred.csv"):
-                all_forecasts.append(f_df)
+            all_forecasts.append(f_df)
 
             print(f"\nMaking evaluation files for {f}.....\n")
 
@@ -732,9 +734,23 @@ if __name__ == "__main__":
             all_coverage.append(make_coverage(cases, f_df, counts, out / "coverage.csv"))
             print("Coverage Completed.")
 
-        all_scores.append(make_common_scores(cases, all_forecasts, counts, e))
+        if all_forecasts:
+            all_scores.append(make_common_scores(cases, all_forecasts, counts, e))
 
-        pd.concat(all_errors, ignore_index=True).to_csv(out / "errors.csv", index=False)
-        pd.concat(all_scores, ignore_index=True).to_csv(out / "scores.csv", index=False)
-        pd.concat(all_coverage, ignore_index=True).to_csv(out / "coverage.csv", index=False)
-        pd.concat(all_counters, ignore_index=True).to_csv(out / "scores_by_counter.csv", index=False)
+        output_files = {
+            "errors.csv": pd.concat(all_errors, ignore_index=True),
+            "scores.csv": pd.concat(all_scores, ignore_index=True),
+            "coverage.csv": pd.concat(all_coverage, ignore_index=True),
+            "scores_by_counter.csv": pd.concat(all_counters, ignore_index=True),
+        }
+
+        for filename, df_out in output_files.items():
+            df_out.to_csv(out / filename, index=False)
+
+        write_manifest(
+            out / "scoring_manifest.json",
+            "src/eval/backtest.py",
+            inputs=[cases_path, counts_path, *prediction_files],
+            outputs=[out / filename for filename in output_files],
+            experiment_id=e,
+        )
