@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-11-24T19:52:10+00:00",
+  "script": "src/eval/backtest.py",
+  "snapshot_id": "hist-20261117",
+  "protocol_id": "proto-v1",
+  "experiment_id": "EXP-E3",
+  "inputs_sha256": {
+    "data/evaluation/proto-v1/cases.csv": "2f09e096be138c1be5a2ef65e1395752593a4c270cbb75b379e2fa470ea8ac0d",
+    "data/processed/hist-20261117/counts.csv": "6bd3039dc68a62eb69a822caffe41f9434ee83de36d8495921439fc9ece9b79f",
+    "data/prediction_results/EXP-E3/e3-chronos-2-frozen-v1-validation-all.pred.csv": "c804b5f30bce994af9c874f51d573f5ce4fb211552d41d11e718f04ca99a9f8f",
+    "data/prediction_results/EXP-E3/e3-google-TimesFM_2.5-frozen-v1-validation-all.pred.csv": "1a8e8415801490041000d22a7600d8b4a44d99f4513431804a5bb5f9559d0553",
+    "data/prediction_results/EXP-E3/e3-team3-mlp-frozen-v1-validation-b-168.pred.csv": "6731a3553ed1d6711f6b7fe39a4d70e65f466ac478434928ec87e639a44d566e"
+  },
+  "outputs_sha256": {
+    "data/evaluation/proto-v1/EXP-E3/errors.csv": "0361a8562284df462fef14fadb77858c46c10706fdd41447c9f5bec5aab7cf4f",
+    "data/evaluation/proto-v1/EXP-E3/scores.csv": "8e3b889255c98e5055c9fdcbdb4ebfd61bff90c3a3c0c92c678aced5855cc445",
+    "data/evaluation/proto-v1/EXP-E3/coverage.csv": "1262242a47ec8fb67c30cdf44bc4469248bfe54137fc275646a219104ee5c12d",
+    "data/evaluation/proto-v1/EXP-E3/scores_by_counter.csv": "dddbd150b3a7aa6312d1086bef6a044cdf17a16ee34fe58d8ec343d39fc80c6a"
+  }
+}
