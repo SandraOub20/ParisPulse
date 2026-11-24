@@ -201,7 +201,6 @@ def trained_forecast(
     model_run_id et fit_cutoff du modèle sont tracés dans les deux cas.
     """
     started = time.perf_counter()
-    variant = variant or method
     reason = eligibility_reason(inputs, model, method)
     values = None
     if reason is None:
@@ -210,6 +209,32 @@ def trained_forecast(
             values, reason = raw.values, raw.reason
         except ValueError as error:
             reason = f"{method}_inputs_incompatible: {error}"
+    result = _assemble_result(
+        inputs, method, model, values, reason, variant=variant, method_run_id=method_run_id
+    )
+    result.cost.inference_seconds = time.perf_counter() - started
+    return result
+
+
+def _assemble_result(
+    inputs: ForecastInputs,
+    method: str,
+    model: train.TrainedModel,
+    values,
+    reason: str | None,
+    *,
+    variant: str | None = None,
+    method_run_id: str | None = None,
+) -> ForecastResult:
+    """Résultat d'un cas à partir de la sortie brute du modèle (values ou reason).
+
+    Seul endroit qui écrit statuts, repli et provenance : le calcul cas par cas
+    (trained_forecast) et le calcul en bloc l'utilisent tous les deux, et leurs fichiers
+    sont donc identiques, au coût près.
+    - values (24 valeurs) : statut ok, method_used = méthode ;
+    - sinon : repli sur la référence de la fiche du modèle, status_reason = reason.
+    """
+    variant = variant or method
     if values is not None:
         values = np.asarray(values, dtype=float)
         if values.shape != (HORIZON_HOURS,) or not (np.isfinite(values) & (values >= 0)).all():
@@ -242,10 +267,7 @@ def trained_forecast(
         support_id=inputs.support_id,
         context_version=inputs.context_version,
         feature_version=model.config.feature_version,
-        cost=RunCost(
-            inference_seconds=time.perf_counter() - started,
-            hardware=f"{platform.system()}-{platform.machine()}",
-        ),
+        cost=RunCost(hardware=f"{platform.system()}-{platform.machine()}"),
     )
 
 
