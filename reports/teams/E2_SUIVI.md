@@ -40,7 +40,7 @@ Documents de référence : [sujet](../../ParisPulse_Sujet_etudiants.pdf), [archi
 
 ## 2. État d'avancement
 
-_Dernière mise à jour : 2026-11-24 - MOD-016._
+_Dernière mise à jour : 2026-11-24 - MOD-017._
 
 | Étape (README E2) | État | Renvoi |
 | --- | --- | --- |
@@ -126,6 +126,42 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
 - **Vérifications effectuées** : commandes lancées, résultats observés (ou "aucune").
 - **Points ouverts** : ce qui reste incertain ou à valider.
 ```
+
+### MOD-017 - 2026-11-24 - Calcul en bloc des prévisions (`batch.py`) ; prévisions d'EXP-E2-03 et score provisoire
+
+- **Auteur** : Idir.
+- **Branche / commit** : `Team2-idir` / `3e96363`, `638d7e9`, `89a76af`, `f3fa188`, `e6df090`.
+- **Quoi** :
+  - [predict.py](../../src/models/known/predict.py) :
+    - `_assemble_result` : le seul code qui écrit statuts, repli et provenance, partagé par le cas par cas et le calcul en bloc ;
+    - option `--batch` de la commande.
+  - [batch.py](../../src/models/known/batch.py) :
+    - `batch_raw_mlp` (`build_windows` / `predict_windows`) et `batch_raw_hgb` (`features._assemble` sans étiquette, puis `predict_frame`) : mêmes contrôles, dans le même ordre, que `predict_mlp` et `predict_hgb` ;
+    - `run_experiment_batch` : mêmes paramètres et mêmes fichiers que `run_experiment`, seul le coût diffère.
+  - Correctif mémoire : l'historique n'est plus recopié pour chaque cas ni retenu par une vue (`iloc[0:0]`). Le premier essai avait saturé la mémoire de la machine (7 Go). Les calculs suivants ont tourné sous une limite de 3 Go (`systemd-run --user --scope -p MemoryMax=3G`).
+  - Prévisions d'EXP-E2-03 : 6 fichiers dans `data/prediction_results/EXP-E2/` (là où les lit `src/eval/backtest.py` d'E4) : `reference`, `reference_profile`, `hgb` (`b357`), `mlp` graines 0, 1, 2.
+- **Pourquoi** : le cas par cas coûte environ 0,4 s par cas, soit environ 45 min par modèle ; EXP-E2-03 à 05 demandent des dizaines de passages.
+- **Fichiers** : [predict.py](../../src/models/known/predict.py), [batch.py](../../src/models/known/batch.py), [test_known_batch.py](../../tests/test_known_batch.py), [EXP-E2-03](../experiments/EXP-E2-03.md), ce fichier.
+- **Impact partenaires / contrats** :
+  - Aucun pour E3 et E5 : ils appellent toujours `predict_24h`, inchangé.
+  - Pour E4 : les fichiers ont le format du gabarit, une méthode par fichier, et leur `check_forecasts.py` passe sans erreur. `fit_cutoff` est vide pour les références (elles n'apprennent rien).
+  - Le coût écrit dans `.runs.csv` en bloc est une part du temps total, pas le coût d'un calcul isolé dans l'application.
+- **Vérifications effectuées** :
+  - 17 tests ([test_known_batch.py](../../tests/test_known_batch.py)) :
+    - sortie brute identique au cas par cas (MLP à 1e-3 près, arrondi float32 ; HGB à 1e-9), avec et sans contexte, avec le seuil remplacé ;
+    - fichiers `.pred.csv` / `.runs.csv` identiques hors coût ;
+    - commande `--batch` ;
+    - garde-fou mémoire.
+  - Vrais cas :
+    - 205 cas comparés au cas par cas : mêmes refus, écart maximal 0,0003 vélo/h (MLP) et 0 (HGB) ;
+    - les 6 014 cas en 2 à 3 min par modèle ;
+    - pic de mémoire 1,4 Go.
+  - `check_forecasts.py` (E4) sur les 6 fichiers : tout conforme.
+  - `pytest -q` : tous les tests E2 passent. Le seul échec reste le test E3, qui échoue aussi sur `dev`.
+- **Résultat** (provisoire, code de score d'E4, calculé par E2) : MAE macro système HGB 22,25, MLP 22,23 / 22,35 / 22,59, `reference_profile` 27,01, `reference` 29,75. Selon la règle figée (D-26), les deux modèles passent (environ +17 %) et le **HGB est retenu** (écart MLP − HGB plus petit que l'écart entre graines). Détail dans la fiche.
+- **Points ouverts** :
+  - livrer les prévisions à E4 (format de livraison à décider : 235 Mo en clair, 12,9 Mo compressés) et obtenir `scores.csv` ;
+  - prévenir E5 du modèle retenu une fois le score confirmé.
 
 ### MOD-016 - 2026-11-24 - Seuil d'heures mesurées et masquage des fenêtres pour le MLP ; modèles B d'EXP-E2-05
 
@@ -605,7 +641,8 @@ Prioriser dans l'ordre. Cocher avec le renvoi `MOD-NNN` uniquement une fois vér
 - [ ] Présenter MOD-008 à Idir et Ania (contrôle de latence dans `train.fit`, format 2), à E3 (réseau réutilisable), à E4/E5 (codes `mlp_*`, couverture) ; consigner leur retour au §8.
 - [x] MLP : apprendre 3 graines pour mesurer la variabilité (contrôle de juin : étendue 0,29 vélo/h). MOD-013 ; la variabilité sur la validation sera lue avec EXP-E2-03.
 - [x] Fiche EXP-E2-03 (MLP contre HGB contre références) avec les décisions figées avant les scores. MOD-012, gel validé par l'équipe le 2026-11-24 (D-26).
-- [ ] EXP-E2-03 : calculer les prévisions des 6 modèles, les livrer à E4 (Git LFS), puis lire les scores.
+- [x] EXP-E2-03 : calculer les prévisions des 6 modèles (MOD-017), score provisoire : HGB retenu.
+- [ ] EXP-E2-03 : livrer les prévisions à E4 et obtenir le score officiel (`scores.csv`).
 - [ ] Enregistrer la référence et les modèles dans le registre (`register_defaults`).
 - [ ] Recalcul de la référence sur une autre origine avec E5 (`use_cache=False`).
 
@@ -661,7 +698,7 @@ Chaque expérience a sa fiche dans `reports/experiments/` (gabarit [experiment.m
 | E2-TECH-002 | 2026-11-20 | Essai technique : jeu d'apprentissage des variables `f1.0` (pas de modèle) | sans objet | aucun (`fit_cutoff` 01/06/2026 provisoire) / `hist-20261117` | sans objet | 87 826 couples, 2 075 614 lignes | 204 s, 374 Mo | Variables sans fuite, chemins identiques ; prêtes pour un modèle | [fiche](../experiments/E2-TECH-002.md) |
 | E2-TECH-003 | 2026-11-23 | Essai technique : premier apprentissage du MLP sur données réelles (pas de comparaison) | `mlp` avec contexte, graine 0 | aucun protocole validé (`fit_cutoff` 01/07/2026, D-17) / `hist-20261117` | non calculée (E4) | 5 694 / 6 014 cas de validation servis par le MLP (94,7 %) | apprentissage 33 s, 1,25 Go, CPU | Apprentissage sans fuite et rapide ; contrôle interne sur juin, hors scores E4 (voir fiche) ; 4 sites en panne pendant la validation | [fiche](../experiments/E2-TECH-003.md) |
 | E2-TECH-004 | 2026-11-24 | Essai technique : premier apprentissage du HGB sur données réelles (pas de comparaison) | `hgb` avec contexte, `absolute_error`, graine 0 | aucun protocole validé (`fit_cutoff` 01/07/2026, D-17) / `hist-20261117` | non calculée (E4) | couverture de la validation non mesurée | 278 s au total, dont 125 s pour les deux apprentissages HGB ; CPU | Apprentissage sans fuite ; 342 arbres ; contrôle interne sur juin, hors scores E4 (voir fiche) ; loss à fixer par E4 | [fiche](../experiments/E2-TECH-004.md) |
-| EXP-E2-03 | 2026-11-24 | Quelle méthode pour les sites connus ? **Figée le 2026-11-24 (équipe)** | `reference`, `reference_profile`, `mlp` (graine 0, + graines 1-2 pour la variabilité), `hgb` | `proto-v1` (non validé) / `hist-20261117`, validation | à venir (E4) | 6 014 attendus | à mesurer | à venir | [fiche](../experiments/EXP-E2-03.md) |
+| EXP-E2-03 | 2026-11-24 | Quelle méthode pour les sites connus ? **Figée le 2026-11-24 (équipe)** | `reference`, `reference_profile`, `mlp` (graine 0, + graines 1-2 pour la variabilité), `hgb` | `proto-v1` (non validé) / `hist-20261117`, validation | à venir (E4) | HGB 22,25 ; MLP 22,23 (graines 0-2 : étendue 0,36) ; `reference_profile` 27,01 ; `reference` 29,75 (**provisoire**, code d'E4) | 6 014 / 6 014 pour toutes | 2 à 3 min par modèle en bloc | HGB retenu (règle D-26) ; à confirmer par E4 | [fiche](../experiments/EXP-E2-03.md) |
 | EXP-E2-04 | 2026-11-24 | Le contexte aide-t-il nos modèles ? **Brouillon, non figé** | MLP et HGB, chacun avec et sans contexte (même méthode, même graine) | `proto-v1` (non validé) / `hist-20261117`, validation | à venir (E4) | 6 014 attendus | à mesurer | à venir | [fiche](../experiments/EXP-E2-04.md) |
 | EXP-E2-05 | 2026-11-24 | Apprendre avec des fenêtres masquées rend-il le MLP plus robuste ? **Figée pour le code ; modèles B appris** (Idir) | MLP actuel (seuil 84 h et 24 h) contre MLP masqué (3 graines), référence | `proto-v1` (non validé) / `hist-20261117`, validation naturelle et dégradée | à venir (E4) | 6 014 attendus par niveau | B : environ 45 s d'apprentissage par graine | à venir | [fiche](../experiments/EXP-E2-05.md) |
 

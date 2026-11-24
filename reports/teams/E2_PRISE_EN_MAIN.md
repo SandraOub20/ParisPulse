@@ -185,7 +185,7 @@ result = predict.predict_24h(case, history, "hgb", context=ctx,
     --snapshot hist-20261117 --experiment <EXP> --variant hgb --model-run-id e2-hgb-ctx-20260701-s0-b357
   ```
 
-  Environ 0,5 s par cas. Sans `--model-run-id`, le modèle par défaut est servi (D-24, MOD-014). Refus d'un modèle avec `--values e1_filled` (D-11).
+  Environ 0,5 s par cas ; ajouter `--batch` pour `mlp` / `hgb` : mêmes fichiers, environ 2 min 30 pour les 6 014 cas (`batch.py`, MOD-017). Limiter la mémoire sur un portable : `systemd-run --user --scope -p MemoryMax=3G <commande>`. Sans `--model-run-id`, le modèle par défaut est servi (D-24, MOD-014). Refus d'un modèle avec `--values e1_filled` (D-11).
 - Avant de prévoir, `eligibility_reason` refuse : instantané différent, origine avant la coupure, site absent de l'apprentissage, nouveau site non réservé, version de contexte différente (idée d'E5, MOD-014).
 
 ## Règles à garder

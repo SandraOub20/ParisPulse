@@ -117,21 +117,32 @@
 
 - **Résultats mesurés : MAE, cas complets/comparables, échecs et coût** :
 
-  _À remplir avec les valeurs de `scores.csv` d'E4, après le gel._
+  **Résultats provisoires du 2026-11-24**, calculés par E2 avec le code de score d'E4 (`src/eval/metrics.evaluate_all`, intersection des cas complets, même masque, MAE par compteur puis moyenne). **À remplacer par `scores.csv` d'E4.**
+  - Prévisions : `data/prediction_results/EXP-E2/`, 6 fichiers, contrôlés par `src/eval/checks/check_forecasts.py` (tout conforme ; `fit_cutoff` vide pour les références, qui n'apprennent rien).
+  - Calcul : `tmp/score_provisoire_exp_e2_03.py`, hors Git.
+  - Population : les 6 014 cas, complets pour les 6 méthodes ; 95 compteurs avec des heures évaluables.
 
-  | Méthode | MAE macro brute (intersection) | MAE macro système (6 014 cas) | Couverture brute | Taux de repli | Biais | Inférence / cas |
+  | Méthode | MAE macro brute | MAE macro système | Couverture brute | Taux de repli (système) | Biais | Coût du calcul |
   | --- | --- | --- | --- | --- | --- | --- |
-  | `reference` | | | | | | |
-  | `reference_profile` | | | | | | |
-  | `mlp` (graine 0) | | | | | | |
-  | `mlp` (graines 0-2 : moyenne, étendue) | | | | | | |
-  | `hgb` | | | | | | |
+  | `reference` | 29,78 | 29,75 | 100 % | 10,4 % (son repli D-03) | à venir (E4) | cas par cas, 3 min 11 |
+  | `reference_profile` | 27,00 | 27,01 | 100 % | 3,4 % (son repli D-03) | à venir (E4) | cas par cas, 3 min 19 |
+  | `mlp` (graine 0) | 22,20 | 22,23 | 94,7 % | 5,3 % (`mlp_window_too_sparse`) | à venir (E4) | en bloc, 2 min 41 |
+  | `mlp` (graines 0-2 : moyenne, étendue) | 22,36 ; 0,36 | 22,39 ; 0,36 | 94,7 % | 5,3 % | à venir (E4) | en bloc, environ 2 min 36 chacune |
+  | `hgb` | 22,24 | 22,25 | 100 % | 0 % | à venir (E4) | en bloc, 2 min 07 |
 
-  Taille de l'intersection commune : _à remplir_ cas, _à remplir_ compteurs.
+  En brut, les heures en repli des modèles sont marquées non prévues ; les références gardent leur propre repli (il fait partie de leur méthode). Le calcul cas par cas coûte environ 0,4 s par cas, celui de l'application.
 
-- **Analyse, limites et décision** :
+- **Analyse, limites et décision** (provisoire, à confirmer avec les scores d'E4) :
 
-  _À remplir après les scores._
+  - **Règle 1, appliquée telle quelle.** Face à la meilleure référence (`reference_profile`, 27,01) :
+    - HGB : +17,6 %, meilleur sur 97 % des compteurs ;
+    - MLP graine 0 : +17,7 %, sur 93 % ;
+    - MLP graine 1 : +17,3 %, sur 94 % ;
+    - MLP graine 2 : +16,4 %, sur 94 %.
+
+    Les deux modèles passent largement le seuil de 5 % et la majorité des compteurs.
+  - **Règle 2.** MLP graine 0 − HGB = −0,02 vélo/h, alors que l'étendue entre les graines du MLP est de 0,36 : l'écart n'est pas significatif. **Le HGB est retenu pour l'application** : plus simple, il sert 100 % des cas et n'a pas besoin de torch. Conclusion identique en brut.
+  - L'erreur de validation (environ 22 vélos/h) est plus élevée que le contrôle sur juin (environ 17,5) : l'été est plus difficile (vacances, 14 juillet, 15 août). Mais le gain sur les références est plus grand (environ 17 % contre 12 à 14 %).
 
   Limites connues dès maintenant :
   - protocole non validé ;

@@ -55,10 +55,17 @@ Format : [doc/SUIVI_ET_REMISE.md §4](../../doc/SUIVI_ET_REMISE.md). Entrées le
 - E4 : `Metric.py` (version de référence ? biais global ? version « brute » des prévisions), date de début d'apprentissage dans `project.yaml`.
 - Esther et Ania : 5 points à trancher pour EXP-E2-03, plafond `max_iter=2000` à confirmer.
 
+### Soirée : calcul en bloc et premiers résultats
+
+- **Calcul en bloc** ([batch.py](../../src/models/known/batch.py), MOD-017) : les 6 014 cas en 2 à 3 min au lieu d'environ 45, avec des fichiers identiques au cas par cas (tests et 205 vrais cas).
+- **Erreur de ma part** : mon premier essai a saturé la mémoire du PC (7 Go), parce que l'historique était recopié pour chaque cas, puis retenu par une vue `iloc[0:0]`. Corrigé, et depuis chaque calcul tourne sous une limite de 3 Go.
+- **EXP-E2-03 figée par l'équipe** (D-26), puis les 6 fichiers de prévision, conformes au contrôle d'E4.
+- **Score provisoire** (code d'E4) : HGB 22,25, MLP 22,23, `reference_profile` 27,01. Les deux modèles font environ 17 % de mieux que la meilleure référence, sur plus de 90 % des compteurs ; l'écart entre MLP et HGB est plus petit que l'écart entre graines, donc **le HGB est retenu**.
+
 ### Prochaine étape
 
-- Pousser `Team2` reconstruite, puis fusion vers `dev` avec Sandra.
-- Figer EXP-E2-03 et EXP-E2-04 avec l'équipe, puis calcul complet de la validation (≈ 50 min par modèle).
+- Livrer les prévisions à E4 et obtenir le score officiel.
+- Prévisions d'EXP-E2-04 (sans contexte) et d'EXP-E2-05 (pannes simulées), en bloc.
 
 ---
 
