@@ -8,9 +8,10 @@ from src.models.known.predict import (
     write_predictions,
     write_runs,
 )
-from src.models.new.predict import METHOD_RUN_ID, predict_24h
+from src.models.new.predict import  predict_24h
 from src.models.schemas import Case
 
+METHOD_RUN_ID = "e3-chronos-2-adapted-v1"
 snapshot_id = "hist-20261117"
 cases_path = Path("data/evaluation/proto-v1/cases.csv")
 cases = pd.read_csv(cases_path, dtype=str, keep_default_na=False)

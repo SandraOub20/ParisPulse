@@ -72,7 +72,7 @@ def predict_24h(
             "('S_dev_new' ou 'S_test_new')."
         )
     started = time.perf_counter()
-    inputs, context_df, forecast_offset = _prepare_inputs(
+    inputs, context_df, forecast_offset = prepare_inputs(
         case, history, publication_lag_hours, context
     )
     preparation_seconds = time.perf_counter() - started
@@ -149,7 +149,7 @@ def predict_24h(
             raise NotImplementedError(f"adapted n'est pas encore implémenté pour {model_name}.")
     elif model_name == TEAM2_MODEL_NAME:
         if variant == "frozen":
-            method_run_id = "e3-team3-mlp-frozen-v1"
+            method_run_id = "e3-team2-mlp-frozen-v1"
             model = manager.load_model(model_name)
             model_run_id = model.model_run_id
             fit_cutoff = model.config.fit_cutoff
