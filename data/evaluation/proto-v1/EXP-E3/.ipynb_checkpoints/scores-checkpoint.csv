@@ -1,2 +1,0 @@
-experiment_id,scenario,temporal_split,method_run_id,comparison_population_id,n_expected_cases,n_complete_cases,n_compared_cases,n_compared_hours,n_evaluable_counters,mae_macro,rmse,r2,bias,coverage_24h,n_fallback_cases,protocol_id,snapshot_id
-EXP-E3,new_site,validation,e3-chronos-2-frozen-v1,,930,925,925,22200,5,33.332792976310664,58.34866785484601,-0.23229965318538026,-26.285794878908106,,5,proto-v1,hist-20261117
