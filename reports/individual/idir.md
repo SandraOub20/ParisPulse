@@ -4,6 +4,45 @@ Format : [doc/SUIVI_ET_REMISE.md §4](../../doc/SUIVI_ET_REMISE.md). Entrées le
 
 ---
 
+## 2026-11-24 - Vérification du MLP, branchement de `mlp` et `hgb` dans `predict.py`
+
+- **Objectif** : rendre le MLP (Esther) et le HGB (Ania) calculables par E4 et appelables par E5, avec repli sur la référence.
+
+### Travail réalisé
+
+- Branche mise à jour depuis `dev` et `Team2` (MLP, HGB sauvegardé, E3, appli E5) : fusion sans conflit.
+- **[predict.py](../../src/models/known/predict.py)** (MOD-011) : `load_trained`, `trained_forecast`, `load_context` ; variantes `mlp` / `hgb` dans `predict_24h`, `run_experiment` et la commande.
+- **Tests** : 21 tests ([test_known_predict_trained.py](../../tests/test_known_predict_trained.py)), 371 au total, tous passants.
+
+### Contrôles
+
+- **MLP recalculé indépendamment** sur le holdout de juin : MAE 17,49, comme le rapport d'Esther. Sur les mêmes cellules : médiane 4 semaines 20,3 ; `t − 168 h` 24,5. Le gain honnête est donc ≈ 14 % (face à la médiane), pas 29 %. Meilleur que la médiane sur 84 compteurs sur 95 ; biais −1,1 vélo/h. Contrôle seulement : juin a servi à l'arrêt anticipé.
+- **Vrai HGB** : modifier les heures publiées après la coupure ne change rien ; témoin positif : modifier la semaine visible change la prévision.
+- **25 vrais cas de validation**, cibles non lues : HGB 25 `ok` ; MLP 10 replis sur le site troué `100047545`.
+
+### Analyse et décisions
+
+- **Le contexte est obligatoire** pour nos deux modèles : sans lui, ils se replient sur tous les cas. La commande le charge donc.
+- **Méthode lue dans `metadata.json` avant l'import** : un HGB peut tourner sans torch.
+- **Pour E3**, simulation sur sites `S_train` en juin, en gardant seulement les L dernières heures : sans le seuil de 84 h, le MLP actuel tient à 72 h (28,4 contre 38,6 pour la référence au même budget) mais se trompe à 24 h (biais +42). L'adaptation reste le travail d'E3 (sujet p. 6) ; nous fournissons les modèles et leurs conditions d'utilisation.
+
+### Pistes gardées pour plus tard
+
+- **Ma comparaison** : MLP appris avec ou sans masquage des fenêtres, sur les historiques incomplets des sites connus (approfondissement E2 « historique incomplet »). À figer dans une fiche avant les scores.
+- `min_observed_hours` en paramètre de `build_windows` (84 par défaut).
+
+### Partenaires
+
+- Emmanuelle : `predict.py` modifié.
+- E3 : `load_model` attend un identifiant, pas un chemin (`Team3-massinissa`) ; `manager` non importé dans `adapt.py`.
+- E4 / E5 : commande, codes `mlp_*` / `hgb_*`, contexte obligatoire.
+
+### Prochaine étape
+
+- Fiche EXP-E2-03 figée, puis calcul complet de la validation (≈ 50 min par modèle).
+
+---
+
 ## 2026-11-22 - Contrôle des données E1, socle `train.py`, préparation du MLP
 
 - **Objectif** : prendre en charge l'expérience de deep learning (MLP compact sur CPU). Question : **un réseau compact vaut-il son coût face au HGB et aux références ?**
@@ -70,6 +109,6 @@ Format : [doc/SUIVI_ET_REMISE.md §4](../../doc/SUIVI_ET_REMISE.md). Entrées le
 
 ### Prochaine étape
 
-- Commit sur `Team2-idir` + entrée MOD dans [E2_SUIVI.md](../teams/E2_SUIVI.md).
+- Fait : commit `4684e7c` (+ `efb7274`), fusionné dans `Team2` et poussé ; entrée MOD-007 dans [E2_SUIVI.md](../teams/E2_SUIVI.md).
 - Squelettes documentés de `fit_mlp` / `predict_mlp` pour Esther.
 - Brancher `variant="model"` dans `predict.py` (avec repli sur la référence) ; fiche EXP-E2-03 figée avant les scores.

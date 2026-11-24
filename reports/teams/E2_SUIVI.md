@@ -40,7 +40,7 @@ Documents de référence : [sujet](../../ParisPulse_Sujet_etudiants.pdf), [archi
 
 ## 2. État d'avancement
 
-_Dernière mise à jour : 2026-11-24 - MOD-010._
+_Dernière mise à jour : 2026-11-24 - MOD-011._
 
 | Étape (README E2) | État | Renvoi |
 | --- | --- | --- |
@@ -51,7 +51,7 @@ _Dernière mise à jour : 2026-11-24 - MOD-010._
 | 3. Vérification manuelle + raccord E4/E5 | 🟡 Vérifié à la main sur cas synthétique et sur 11 valeurs réelles ; consommation par E4/E5 à obtenir | MOD-003, MOD-005 |
 | 4. Variables communes (`features.py`) | 🟡 `f1.0` codée, testée, jeu d'apprentissage réel construit (E2-TECH-002) ; à présenter à E3 et E1 | MOD-006 |
 | 5. Méthode justifiée + variante explicative (`train.py`) | 🟡 Socle commun `train.py` fait et testé (`fit`, sauvegarde, chargement) ; MLP : apprentissage (`fit_mlp`) et prévision (`predict_mlp`) faits et testés, premier apprentissage réel (E2-TECH-003) ; HGB (`tabular.py`) fait et testé, premier apprentissage réel (E2-TECH-004), loss à fixer par E4 ; comparaison après validation du protocole | MOD-007, MOD-008, MOD-010 |
-| 6. Calcul exécutable et exports, recalcul autre origine (`predict.py`) | 🟡 Chaîne complète et commande `python -m src.models.known.predict` ; 10 858 cas de validation calculés (E2-TECH-001) ; recalcul par E5 à faire ; variante MLP à brancher (recette dans [E2_PRISE_EN_MAIN.md](E2_PRISE_EN_MAIN.md)) | MOD-003, MOD-005, MOD-008 |
+| 6. Calcul exécutable et exports, recalcul autre origine (`predict.py`) | 🟡 Chaîne complète et commande `python -m src.models.known.predict` ; 10 858 cas de validation calculés (E2-TECH-001) ; recalcul par E5 à faire ; variantes `mlp` et `hgb` branchées avec repli sur la référence, vérifiées sur 25 cas réels (calcul complet après la fiche EXP-E2-03) | MOD-003, MOD-005, MOD-008, MOD-011 |
 | 7. Cas difficile, extension, test final après gel | 🔲 | - |
 
 Légende : ✅ fait et vérifié · 🟡 en cours · ⏳ bloqué/en attente · 🔲 non commencé.
@@ -99,7 +99,7 @@ counts.csv (E1) --build_inputs (available_at <= origin)--> ForecastInputs --asse
   --> ForecastResult --to_forecast_frame / to_run_row--> <method_run_id>.pred.csv / .runs.csv
 ```
 
-Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_timestamps()`, `Case.from_row`, `assert_causal` ; dans `baseline.py`, `weekly_reference`, `weekly_profile_reference` (MOD-004), `admissible_history`, `lookup_lagged`, `fallback_value` ; dans `schemas.py`, `ForecastResult.is_complete`, `to_forecast_frame`, `to_run_row` ; dans `predict.py`, `counts_history_loader`, `build_inputs`, `predict_24h` (variantes `reference`, `reference_profile`), `run_experiment`, `error_result`, `select_cases`, `train_site_counters`, `write_predictions`, `write_runs` et la commande `main` ; tout `features.py` (MOD-006) ; dans `train.py`, tout sauf `compare_variants`, et dans `neural.py`, `build_windows`, `MLPNet`, `save_mlp`, `load_mlp` (MOD-007), puis tout le reste de `neural.py` : `mlp_hyperparameters`, `fit_mlp`, `predict_mlp`, `predict_windows`, `refusal_reasons` et la commande `main` (MOD-008). Toutes les autres lèvent `NotImplementedError("E2 : ...")`. Tests : [tests/test_known_baseline.py](../../tests/test_known_baseline.py), [tests/test_known_predict.py](../../tests/test_known_predict.py), [tests/test_known_features.py](../../tests/test_known_features.py), [tests/test_known_train.py](../../tests/test_known_train.py), [tests/test_known_neural.py](../../tests/test_known_neural.py), [tests/test_known_neural_fit.py](../../tests/test_known_neural_fit.py).
+Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_timestamps()`, `Case.from_row`, `assert_causal` ; dans `baseline.py`, `weekly_reference`, `weekly_profile_reference` (MOD-004), `admissible_history`, `lookup_lagged`, `fallback_value` ; dans `schemas.py`, `ForecastResult.is_complete`, `to_forecast_frame`, `to_run_row` ; dans `predict.py`, `counts_history_loader`, `build_inputs`, `predict_24h` (variantes `reference`, `reference_profile`, puis `mlp` et `hgb` en MOD-011), `load_trained`, `trained_forecast`, `load_context` (MOD-011), `run_experiment`, `error_result`, `select_cases`, `train_site_counters`, `write_predictions`, `write_runs` et la commande `main` ; tout `features.py` (MOD-006) ; dans `train.py`, tout sauf `compare_variants`, et dans `neural.py`, `build_windows`, `MLPNet`, `save_mlp`, `load_mlp` (MOD-007), puis tout le reste de `neural.py` : `mlp_hyperparameters`, `fit_mlp`, `predict_mlp`, `predict_windows`, `refusal_reasons` et la commande `main` (MOD-008). Toutes les autres lèvent `NotImplementedError("E2 : ...")`. Tests : [tests/test_known_baseline.py](../../tests/test_known_baseline.py), [tests/test_known_predict.py](../../tests/test_known_predict.py), [tests/test_known_features.py](../../tests/test_known_features.py), [tests/test_known_train.py](../../tests/test_known_train.py), [tests/test_known_neural.py](../../tests/test_known_neural.py), [tests/test_known_neural_fit.py](../../tests/test_known_neural_fit.py), [tests/test_known_predict_trained.py](../../tests/test_known_predict_trained.py).
 
 ---
 
@@ -118,6 +118,35 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
 - **Vérifications effectuées** : commandes lancées, résultats observés (ou "aucune").
 - **Points ouverts** : ce qui reste incertain ou à valider.
 ```
+
+### MOD-011 - 2026-11-24 - Branchement des variantes `mlp` et `hgb` dans `predict.py`, avec repli sur la référence
+
+- **Auteur** : Idir.
+- **Branche / commit** : `Team2-idir` / hash ajouté au commit suivant.
+- **Quoi** :
+  - [predict.py](../../src/models/known/predict.py) :
+    - `load_trained(model_run_id, variant)` charge une seule fois un modèle par `train.load_model`. La méthode est lue dans `metadata.json` avant tout import : un identifiant de MLP demandé en `hgb` est refusé sans charger torch.
+    - `trained_forecast(inputs, variant, model)` : le modèle prévoit (statut `ok`, `method_used` = `mlp`/`hgb`), ou il refuse et la référence de sa fiche (`fallback: reference`) prévoit les 24 horizons. Statut `fallback`, raison = code de refus (`mlp_*`, `hgb_*`), `method_used` = méthode réellement employée. Un horizon sans repli reste vide (`unavailable`), jamais 0. `model_run_id`, `fit_cutoff` et `feature_version` sont tracés dans les deux cas.
+    - `predict_24h` sert `mlp` et `hgb` avec `model_run_id=` obligatoire ; signature imposée par E5 inchangée, `reference` et `reference_profile` inchangées.
+    - `load_context(snapshot_id)` lit `context.csv` en texte, comme `train.load_training_data`.
+    - `run_experiment(..., model_run_id=)` et la commande : `--variant mlp|hgb --model-run-id ...`, contexte E1 chargé pour les modèles. Refus : modèle sans `--model-run-id`, modèle avec `--values e1_filled` (D-11), `--model-run-id` pour une référence.
+  - [tests/test_known_predict_trained.py](../../tests/test_known_predict_trained.py) : 21 tests, faux modèle JSON (sans torch) et vrai HGB du dépôt.
+- **Pourquoi** : rendre nos deux modèles calculables par E4 (`.pred.csv` / `.runs.csv`) et appelables par E5 ; recette de [E2_PRISE_EN_MAIN.md](E2_PRISE_EN_MAIN.md) (MOD-008) et point ouvert de MOD-010.
+- **Fichiers** : [predict.py](../../src/models/known/predict.py), [test_known_predict_trained.py](../../tests/test_known_predict_trained.py), ce fichier.
+- **Impact partenaires / contrats** :
+  - Aucune colonne CSV modifiée. Nouvelles variantes `mlp` et `hgb` de `predict_24h`, avec `model_run_id` obligatoire.
+  - **Le contexte est nécessaire** : sans `context=`, les deux modèles refusent (`*_context_missing`) et la référence répond. À dire à E5.
+  - Codes de refus visibles dans `status_reason` : `mlp_*` (E2-TECH-003) et `hgb_*` (MOD-010). À annoncer à E4 et E5.
+  - `predict.py` est le fichier d'Emmanuelle : à la prévenir.
+- **Vérifications effectuées** :
+  - `pytest -q` : 371 passés. `ruff check` et `ruff format --check` sans problème sur les fichiers E2.
+  - Vrai HGB, avec contexte : servi (`ok`) ; changer les heures publiées après `origin - 24 h` ne change pas la prévision ; témoin positif : changer la semaine visible la change.
+  - Chaîne réelle sur 25 cas de validation `proto-v1` (3 compteurs × 5 jours), sans lire les cibles : HGB 25 `ok` ; MLP 15 `ok` et 10 `fallback` (`mlp_window_too_sparse`, site `100047545`) ; 600 lignes, aucune valeur vide ; ≈ 0,5 s par cas.
+- **Points ouverts** :
+  - Coût : ≈ 50 min par modèle pour les 6 014 cas de validation, surtout le refiltrage du contexte à chaque cas ; optimisable.
+  - Le chargement du modèle (une fois par expérience) n'est pas compté dans `preparation_seconds`.
+  - Désigner le `model_run_id` servi par l'application (E5).
+  - Calcul complet de la validation à lancer seulement avec la fiche EXP-E2-03 figée.
 
 ### MOD-010 - 2026-11-24 - HGB implémenté (`tabular.py`), tests et premier apprentissage réel (complète MOD-009)
 
@@ -447,7 +476,8 @@ Prioriser dans l'ordre. Cocher avec le renvoi `MOD-NNN` uniquement une fois vér
 - [x] `train.py` : `exclude_reserved_sites` (par `site_group_id`), `fit`, `save_model` avec `metadata.json` + SHA-256. MOD-007
 - [x] Brancher le HGB sur `train.fit` (`register_backend("hgb", …)`). MOD-009 (squelette), MOD-010 (implémentation, premier apprentissage réel)
 - [x] MLP : `fit_mlp` (perte MAE sur les cibles mesurées, arrêt anticipé sur les 4 semaines avant `fit_cutoff`, cibles extrêmes) et `predict_mlp` (proposés à Esther). MOD-008 (E2-TECH-003)
-- [ ] `predict.py` : variante `"model"` (charger le modèle une fois, repli sur la référence) ; désigner le `model_run_id` utilisé par l'application. Recette pour le MLP : [E2_PRISE_EN_MAIN.md](E2_PRISE_EN_MAIN.md) (MOD-008).
+- [x] `predict.py` : variantes `mlp` et `hgb` (modèle chargé une fois, repli sur la référence). MOD-011
+- [ ] Désigner le `model_run_id` utilisé par l'application (avec E5).
 - [ ] Présenter MOD-008 à Idir et Ania (contrôle de latence dans `train.fit`, format 2), à E3 (réseau réutilisable), à E4/E5 (codes `mlp_*`, couverture) ; consigner leur retour au §8.
 - [ ] MLP : mesurer la variabilité entre graines (au moins 3) avant la comparaison EXP-E2-03.
 - [ ] Fiche EXP-E2-03 (MLP contre HGB contre références) avec les décisions figées avant les scores.

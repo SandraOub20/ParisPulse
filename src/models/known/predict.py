@@ -20,6 +20,9 @@ valeur livrée par E1 reste disponible dans ``count_e1`` et via ``values="e1_fil
 
 from __future__ import annotations
 
+import importlib
+import json
+import platform
 import time
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -28,7 +31,7 @@ import numpy as np
 import pandas as pd
 
 from src.common.config import data_path, load_config
-from src.models.known import baseline
+from src.models.known import baseline, train
 from src.models.schemas import (
     CASE_RUNS_COLUMNS,
     FORECAST_COLUMNS,
@@ -47,6 +50,13 @@ REFERENCE_VARIANTS: dict[str, Callable[..., ForecastResult]] = {
     "reference": baseline.weekly_reference,
     baseline.PROFILE_VARIANT: baseline.weekly_profile_reference,
 }
+# Variantes servies par un modèle entraîné : variante -> module qui déclare sa méthode
+# (register_backend). Importé seulement à la demande : torch n'est chargé que pour "mlp".
+TRAINED_VARIANTS: dict[str, str] = {
+    "mlp": "src.models.known.neural",
+    "hgb": "src.models.known.tabular",
+}
+_MODEL_CACHE: dict[tuple[str, str], train.TrainedModel] = {}
 VALUE_POLICIES = ("measured", "e1_filled")
 COUNT_COLUMNS = [
     "counter_id",
@@ -94,6 +104,116 @@ def counts_history_loader(
     load.snapshot_id = snapshot_id  # type: ignore[attr-defined]
     load.values = values  # type: ignore[attr-defined]
     return load
+
+
+def load_trained(model_run_id: str, variant: str, root: Path | None = None) -> train.TrainedModel:
+    """Charger une seule fois le modèle entraîné d'une variante (mlp, hgb).
+
+    1. La méthode écrite dans metadata.json doit être celle de la variante : lue avant
+       tout import, pour qu'un identifiant de MLP demandé en "hgb" n'importe pas torch.
+    2. Le module de la méthode est importé (il déclare son backend), puis
+       train.load_model vérifie poids (SHA-256) et fiche.
+    3. Le modèle est gardé en mémoire : un seul chargement par dossier et identifiant.
+    """
+    if variant not in TRAINED_VARIANTS:
+        raise ValueError(
+            f"variante {variant!r} sans modèle entraîné ; disponibles : {sorted(TRAINED_VARIANTS)}"
+        )
+    root = Path(root) if root else data_path("models")
+    key = (str(root.resolve()), model_run_id)
+    if key in _MODEL_CACHE:
+        method = _MODEL_CACHE[key].config.method
+    else:
+        metadata_path = root / model_run_id / train.METADATA_FILE
+        if not metadata_path.exists():
+            raise FileNotFoundError(f"modèle {model_run_id} introuvable : {metadata_path}")
+        method = json.loads(metadata_path.read_text(encoding="utf-8")).get("model_name")
+    if method != variant:
+        raise ValueError(f"{model_run_id} est un modèle {method!r}, pas {variant!r}")
+    if key not in _MODEL_CACHE:
+        importlib.import_module(TRAINED_VARIANTS[variant])
+        _MODEL_CACHE[key] = train.load_model(model_run_id, root)
+    return _MODEL_CACHE[key]
+
+
+def trained_forecast(
+    inputs: ForecastInputs,
+    variant: str,
+    model: train.TrainedModel,
+    *,
+    method_run_id: str | None = None,
+) -> ForecastResult:
+    """Prévoir un cas avec un modèle entraîné (mlp, hgb), ou se replier sur la référence.
+
+    - le modèle prévoit : 24 valeurs, method_used = variante, statut ok ;
+    - il refuse (code mlp_* / hgb_*) : la référence de sa fiche (model.fallback) prévoit
+      les 24 horizons ; statut fallback, raison = code de refus, method_used = méthode
+      réellement employée par la référence. Un horizon que la référence ne sait pas
+      prévoir reste vide (unavailable), jamais 0.
+    model_run_id et fit_cutoff du modèle sont tracés dans les deux cas.
+    """
+    started = time.perf_counter()
+    raw = _raw_forecast(variant, model, inputs)
+    if raw.ok:
+        predictions = target_timestamps(inputs.case.origin).assign(
+            y_pred=np.asarray(raw.values, dtype=float),
+            method_used=variant,
+            prediction_status="ok",
+            status_reason=None,
+        )
+        status, reason = "ok", None
+    else:
+        fallback = REFERENCE_VARIANTS.get(model.fallback or "")
+        if fallback is None:
+            raise ValueError(f"{model.model_run_id} : repli {model.fallback!r} inconnu")
+        ref = fallback(inputs, variant)
+        predictions = ref.predictions.copy()
+        served = predictions["prediction_status"] != "unavailable"
+        predictions.loc[served, "prediction_status"] = "fallback"
+        predictions["status_reason"] = [
+            raw.reason if pd.isna(r) else f"{raw.reason};{r}" for r in predictions["status_reason"]
+        ]
+        status = "unavailable" if ref.status == "unavailable" else "fallback"
+        reason = raw.reason if ref.status_reason is None else f"{raw.reason}; {ref.status_reason}"
+    return ForecastResult(
+        case=inputs.case,
+        method_run_id=method_run_id or model.model_run_id,
+        model_run_id=model.model_run_id,
+        variant=variant,
+        predictions=predictions,
+        status=status,
+        status_reason=reason,
+        fit_cutoff=model.config.fit_cutoff,
+        support_id=inputs.support_id,
+        context_version=inputs.context_version,
+        feature_version=model.config.feature_version,
+        cost=RunCost(
+            inference_seconds=time.perf_counter() - started,
+            hardware=f"{platform.system()}-{platform.machine()}",
+        ),
+    )
+
+
+def _raw_forecast(variant: str, model: train.TrainedModel, inputs: ForecastInputs):
+    """Sortie brute du modèle : objet avec ok, values (24,) et reason (code de refus)."""
+    module = importlib.import_module(TRAINED_VARIANTS[variant])
+    if variant == "mlp":
+        return module.predict_mlp(model.estimator, inputs, fit_cutoff=model.config.fit_cutoff)
+    if variant == "hgb":
+        return module.predict_hgb(model.estimator, inputs)
+    raise ValueError(f"variante {variant!r} sans prévision entraînée")
+
+
+def load_context(snapshot_id: str, path: Path | None = None) -> pd.DataFrame:
+    """Lire context.csv d'E1 en texte, comme train.load_training_data (même lecture).
+
+    Texte partout : la colonne value mêle nombres et booléens ; features la convertit.
+    build_inputs ne garde ensuite que le contexte connu à l'origine de chaque cas.
+    """
+    path = Path(path) if path else data_path("processed") / snapshot_id / "context.csv"
+    if not path.exists():
+        raise FileNotFoundError(f"context.csv introuvable : {path}")
+    return pd.read_csv(path, dtype=str)
 
 
 def build_inputs(
@@ -148,17 +268,27 @@ def predict_24h(
 
     - reference -> baseline.weekly_reference (weekly_naive) ;
     - reference_profile -> baseline.weekly_profile_reference (médiane sur 4 semaines) ;
-    - autre variante -> modèle entraîné (train.load_model), à venir : refus explicite.
-    Le temps de préparation (filtrage causal) est compté dans preparation_seconds.
+    - mlp, hgb -> modèle entraîné model_run_id (obligatoire), chargé une fois
+      (load_trained), repli sur la référence s'il refuse le cas (trained_forecast).
+      Le MLP et le HGB avec contexte en ont besoin : sans context, ils se replient.
+    Le temps de préparation (filtrage causal) est compté dans preparation_seconds ; le
+    chargement du modèle, fait une seule fois par expérience, n'y est pas compté.
     """
-    if variant not in REFERENCE_VARIANTS:
-        raise ValueError(
-            f"variante {variant!r} indisponible ; disponibles : {sorted(REFERENCE_VARIANTS)}"
-        )
+    if variant not in REFERENCE_VARIANTS and variant not in TRAINED_VARIANTS:
+        available = sorted(REFERENCE_VARIANTS) + sorted(TRAINED_VARIANTS)
+        raise ValueError(f"variante {variant!r} indisponible ; disponibles : {available}")
+    model = None
+    if variant in TRAINED_VARIANTS:
+        if model_run_id is None:
+            raise ValueError(f"variante {variant!r} : model_run_id obligatoire")
+        model = load_trained(model_run_id, variant)
     started = time.perf_counter()
     inputs = build_inputs(case, history, context, publication_lag_hours)
     preparation = time.perf_counter() - started
-    result = REFERENCE_VARIANTS[variant](inputs, variant, method_run_id=method_run_id)
+    if model is None:
+        result = REFERENCE_VARIANTS[variant](inputs, variant, method_run_id=method_run_id)
+    else:
+        result = trained_forecast(inputs, variant, model, method_run_id=method_run_id)
     result.cost.preparation_seconds = preparation
     return result
 
@@ -173,11 +303,13 @@ def run_experiment(
     context: pd.DataFrame | None = None,
     root: Path | None = None,
     publication_lag_hours: int | None = None,
+    model_run_id: str | None = None,
 ) -> tuple[Path, Path]:
     """Prévoir tous les cas puis écrire .pred.csv et .runs.csv ; retourner leurs chemins.
 
     Un cas qui échoue n'est pas retiré : 24 lignes vides, statut error et message.
-    Aucune observation cible n'est écrite dans les sorties.
+    Aucune observation cible n'est écrite dans les sorties. model_run_id : obligatoire
+    pour les variantes mlp et hgb (modèle chargé une seule fois pour tous les cas).
     """
     results = []
     for _, row in cases.iterrows():
@@ -188,6 +320,7 @@ def run_experiment(
                 history_loader(case.counter_id),
                 variant,
                 context=context,
+                model_run_id=model_run_id,
                 method_run_id=method_run_id,
                 publication_lag_hours=publication_lag_hours,
             )
@@ -318,20 +451,25 @@ def select_cases(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Calculer une référence E2 sur un cases.csv et écrire .pred.csv / .runs.csv.
+    """Calculer une référence ou un modèle E2 sur un cases.csv ; écrire .pred.csv / .runs.csv.
 
-    Exemple : python -m src.models.known.predict --cases data/evaluation/proto-v0/cases.csv
+    Exemples : python -m src.models.known.predict --cases data/evaluation/proto-v1/cases.csv
     --snapshot hist-20261117 --experiment E2-TECH-001 --variant reference
+    ... --variant hgb --model-run-id e2-hgb-ctx-20260701-s0-b357 (contexte E1 chargé).
     Le bloc test est refusé sauf --allow-test (à n'utiliser qu'après gel des choix).
     """
     import argparse
-    import json
 
     parser = argparse.ArgumentParser(description=main.__doc__.splitlines()[0])
     parser.add_argument("--cases", required=True, type=Path)
     parser.add_argument("--snapshot", required=True)
     parser.add_argument("--experiment", required=True)
-    parser.add_argument("--variant", default="reference", choices=sorted(REFERENCE_VARIANTS))
+    parser.add_argument(
+        "--variant",
+        default="reference",
+        choices=sorted(REFERENCE_VARIANTS) + sorted(TRAINED_VARIANTS),
+    )
+    parser.add_argument("--model-run-id", help="obligatoire pour mlp et hgb")
     parser.add_argument("--method-run-id")
     parser.add_argument("--values", default="measured", choices=VALUE_POLICIES)
     parser.add_argument("--split", action="append", default=None, help="défaut : validation")
@@ -341,19 +479,41 @@ def main(argv: list[str] | None = None) -> int:
     splits = args.split or ["validation"]
     if "test" in splits and not args.allow_test:
         parser.error("bloc test refusé : réservé à la mesure finale après gel (--allow-test)")
+    trained = args.variant in TRAINED_VARIANTS
+    if trained and not args.model_run_id:
+        parser.error(f"--variant {args.variant} demande --model-run-id")
+    if trained and args.values != "measured":
+        parser.error("les modèles ont appris sur les mesures seules (D-11) : --values measured")
+    if not trained and args.model_run_id:
+        parser.error(f"--model-run-id sans objet pour la variante {args.variant}")
+    if trained:
+        load_trained(args.model_run_id, args.variant)  # échoue tôt, avant de lire counts.csv
     cases = pd.read_csv(args.cases, dtype=str, keep_default_na=False)
     selected, report = select_cases(
         cases, args.snapshot, splits, train_site_counters(args.snapshot)
     )
-    method_run_id = args.method_run_id or f"e2-{args.variant}-{args.values}"
+    method_run_id = args.method_run_id or (
+        args.model_run_id if trained else f"e2-{args.variant}-{args.values}"
+    )
     started = time.perf_counter()
     loader = counts_history_loader(args.snapshot, values=args.values)
+    context = load_context(args.snapshot) if trained else None
     loading = time.perf_counter() - started
-    pred, runs = run_experiment(selected, loader, args.variant, args.experiment, method_run_id)
+    pred, runs = run_experiment(
+        selected,
+        loader,
+        args.variant,
+        args.experiment,
+        method_run_id,
+        context=context,
+        model_run_id=args.model_run_id,
+    )
     selected.to_csv(pred.parent / f"{method_run_id}.cases_used.csv", index=False)
     report.update(
         {
             "values": args.values,
+            "model_run_id": args.model_run_id,
+            "context_rows": None if context is None else len(context),
             "load_seconds": round(loading, 1),
             "total_seconds": round(time.perf_counter() - started, 1),
         }
