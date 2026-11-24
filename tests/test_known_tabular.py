@@ -417,13 +417,27 @@ def test_modele_incompatible_refuse(model, tmp_path, change):
     """Autre format, autre version de variables, autres colonnes ou autre latence : refus."""
     altered = T.HGBModel(**{**model.__dict__, **change})
     path = tmp_path / T.WEIGHTS_FILE
-    joblib.dump(altered, path)
+    T.save_hgb(altered, path)
     with pytest.raises(ValueError):
         T.load_hgb(path)
 
 
-def test_objet_qui_n_est_pas_un_modele_refuse(tmp_path):
+@pytest.mark.parametrize("content", [{"pas": "un modèle"}, ["liste"]])
+def test_objet_qui_n_est_pas_un_modele_refuse(tmp_path, content):
     path = tmp_path / T.WEIGHTS_FILE
-    joblib.dump({"pas": "un modèle"}, path)
+    joblib.dump(content, path)
     with pytest.raises(ValueError, match="HGBModel"):
         T.load_hgb(path)
+
+
+def test_fichier_sans_classe_du_module(model, tmp_path):
+    """model.joblib ne contient aucune classe de tabular.py : il reste lisible même s'il a
+    été écrit par « python -m src.models.known.tabular » (module nommé __main__)."""
+    path = tmp_path / T.WEIGHTS_FILE
+    T.save_hgb(model, path)
+    saved = joblib.load(path)
+    assert isinstance(saved, dict) and set(saved) == set(T.SAVED_FIELDS)
+    assert type(saved["estimator"]).__module__.startswith("sklearn.")
+    reloaded = T.load_hgb(path)
+    assert reloaded.fit_cutoff == model.fit_cutoff
+    assert reloaded.context_groups == model.context_groups
