@@ -4,42 +4,58 @@ Format : [doc/SUIVI_ET_REMISE.md §4](../../doc/SUIVI_ET_REMISE.md). Entrées le
 
 ---
 
-## 2026-11-24 - Vérification du MLP, branchement de `mlp` et `hgb` dans `predict.py`
+## 2026-11-24 - Vérification du MLP, branchement de `mlp` et `hgb`, fiches EXP-E2-03 / 04 / 05, reconstruction de `Team2`
 
-- **Objectif** : rendre le MLP (Esther) et le HGB (Ania) calculables par E4 et appelables par E5, avec repli sur la référence.
+- **Objectif** : rendre le MLP (Esther) et le HGB (Ania) calculables par E4 et appelables par E5, avec repli sur la référence ; préparer les comparaisons avant les scores.
 
 ### Travail réalisé
 
-- Branche mise à jour depuis `dev` et `Team2` (MLP, HGB sauvegardé, E3, appli E5) : fusion sans conflit.
+- Branche mise à jour depuis `dev` et `Team2` (MLP, HGB sauvegardé, E3, appli E5).
 - **[predict.py](../../src/models/known/predict.py)** (MOD-011) : `load_trained`, `trained_forecast`, `load_context` ; variantes `mlp` / `hgb` dans `predict_24h`, `run_experiment` et la commande.
-- **Tests** : 21 tests ([test_known_predict_trained.py](../../tests/test_known_predict_trained.py)), 371 au total, tous passants.
+- **Fiches** (brouillons, MOD-012 et MOD-013) : [EXP-E2-03](../experiments/EXP-E2-03.md), MLP / HGB / références, règle de choix fixée d'avance ; [EXP-E2-04](../experiments/EXP-E2-04.md), avec ou sans contexte.
+- **Modèles appris** (MOD-013) : MLP graines 1 et 2, MLP sans contexte, HGB sans contexte (`max_iter=2000`).
+- **Reconstruction de `Team2`** (MOD-014) : le commit d'E5 `fdc06c1` a été retiré de `dev`. Notre fusion l'avait fait entrer dans `Team2` : branche reconstruite à partir de MOD-013, sur le `dev` propre. Les contrôles d'éligibilité (idée de Sandra) et les modèles par défaut (D-24) sont réécrits dans `predict.py`, sans son fichier `mlp_forecast.py`. Ancienne version gardée dans `sauvegarde/Team2-idir-09d9891`.
+- **Documents d'équipe** : [E2_PRISE_EN_MAIN.md](../teams/E2_PRISE_EN_MAIN.md) et [E2_SUIVI.md](../teams/E2_SUIVI.md) mis à jour (HGB, branchement, architecture).
+- **Tests** : 384 au total ; tous les tests E2 passent. Un seul échec, dans un test d'E3 (`test_new_predict.py`, cas `team2-adapted`), qui échoue aussi sur `dev` seul.
 
 ### Contrôles
 
-- **MLP recalculé indépendamment** sur le holdout de juin : MAE 17,49, comme le rapport d'Esther. Sur les mêmes cellules : médiane 4 semaines 20,3 ; `t − 168 h` 24,5. Le gain honnête est donc ≈ 14 % (face à la médiane), pas 29 %. Meilleur que la médiane sur 84 compteurs sur 95 ; biais −1,1 vélo/h. Contrôle seulement : juin a servi à l'arrêt anticipé.
+- **MLP recalculé indépendamment** sur le holdout de juin : MAE 17,49, comme le rapport d'Esther. Sur les mêmes cellules : médiane 4 semaines 20,3 ; `t − 168 h` 24,5. Le gain honnête est ≈ 14 % (face à la médiane), pas 29 %. Contrôle seulement : juin a servi à l'arrêt anticipé.
 - **Vrai HGB** : modifier les heures publiées après la coupure ne change rien ; témoin positif : modifier la semaine visible change la prévision.
-- **25 vrais cas de validation**, cibles non lues : HGB 25 `ok` ; MLP 10 replis sur le site troué `100047545`.
+- **Reproductibilité** : MLP graine 0 réappris avec le même code, résultat différent (MAE 17,57 contre 17,51) à cause de la machine (threads). Écart plus petit que l'écart entre graines (0,29) ; le modèle servi reste celui déclaré (D-23).
+- **Plafond du HGB** : sans contexte, il touchait 500 arbres ; avec 2 000 il s'arrête seul à 679. Avec contexte, rien ne change (342 arbres, prévisions identiques).
+- **Code de score d'E4** (`Metric.py`) relu : même masque, intersection commune et MAE macro déjà présents ; il ne sait pas noter les modèles bruts (repli compté comme valide).
+- **Vrais cas de validation**, cibles non lues : le HGB prévoit le site troué `100047545`, le MLP s'y replie.
+
+### Résultats (contrôle sur juin, pas des scores)
+
+- MLP : 17,51 / 17,60 / 17,86 selon la graine ; sans contexte 19,22.
+- HGB : 17,86 ; sans contexte 18,76.
+- Le contexte semble aider les deux, à vérifier sur la validation (EXP-E2-04).
 
 ### Analyse et décisions
 
-- **Le contexte est obligatoire** pour nos deux modèles : sans lui, ils se replient sur tous les cas. La commande le charge donc.
-- **Méthode lue dans `metadata.json` avant l'import** : un HGB peut tourner sans torch.
-- **Pour E3**, simulation sur sites `S_train` en juin, en gardant seulement les L dernières heures : sans le seuil de 84 h, le MLP actuel tient à 72 h (28,4 contre 38,6 pour la référence au même budget) mais se trompe à 24 h (biais +42). L'adaptation reste le travail d'E3 (sujet p. 6) ; nous fournissons les modèles et leurs conditions d'utilisation.
+- **Un seul facteur par fiche** : la méthode (03), le contexte (04), le masquage (05, à écrire).
+- **Réglages par défaut**, sans validation croisée ni recherche ; un réglage éventuel se ferait par validation croisée temporelle avant le 01/07.
+- **Pour E3**, simulation sur sites `S_train` : sans le seuil de 84 h, le MLP tient à 72 h mais se trompe à 24 h (biais +42). L'adaptation reste le travail d'E3 ; nous fournissons les modèles et leurs conditions.
+- **Erreur corrigée** : j'avais écrit que les modèles étaient exclus de Git ; la ligne du `.gitignore` est commentée, ils sont commités.
 
 ### Pistes gardées pour plus tard
 
-- **Ma comparaison** : MLP appris avec ou sans masquage des fenêtres, sur les historiques incomplets des sites connus (approfondissement E2 « historique incomplet »). À figer dans une fiche avant les scores.
-- `min_observed_hours` en paramètre de `build_windows` (84 par défaut).
+- **Ma comparaison** : [EXP-E2-05](../experiments/EXP-E2-05.md), brouillon écrit (MOD-015) : MLP appris avec ou sans fenêtres masquées, sur historiques incomplets naturels et pannes simulées. Le bras A′ (mêmes poids, même seuil abaissé) isole le masquage du changement de seuil. Code après le gel.
+- Ablation par groupe de contexte pour le MLP (aujourd'hui tout ou rien).
 
 ### Partenaires
 
-- Emmanuelle : `predict.py` modifié.
-- E3 : `load_model` attend un identifiant, pas un chemin (`Team3-massinissa`) ; `manager` non importé dans `adapt.py`.
-- E4 / E5 : commande, codes `mlp_*` / `hgb_*`, contexte obligatoire.
+- E5 (Sandra) : contrôles d'éligibilité repris dans notre `predict.py` ; règle de propriété des dossiers (D-25) ; l'appli doit passer le contexte pour proposer `mlp` / `hgb`.
+- E3 : sur `Team3`, `load_model` sans import de `neural` et `manager` non importé ; corrigés sur `dev`, `Team3` à mettre à jour.
+- E4 : `Metric.py` (version de référence ? biais global ? version « brute » des prévisions), date de début d'apprentissage dans `project.yaml`.
+- Esther et Ania : 5 points à trancher pour EXP-E2-03, plafond `max_iter=2000` à confirmer.
 
 ### Prochaine étape
 
-- Fiche EXP-E2-03 figée, puis calcul complet de la validation (≈ 50 min par modèle).
+- Pousser `Team2` reconstruite, puis fusion vers `dev` avec Sandra.
+- Figer EXP-E2-03 et EXP-E2-04 avec l'équipe, puis calcul complet de la validation (≈ 50 min par modèle).
 
 ---
 
