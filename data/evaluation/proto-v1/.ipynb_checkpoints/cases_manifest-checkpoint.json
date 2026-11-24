@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-11-21T13:19:37+00:00",
+  "script": "src/eval/make_cases.py",
+  "snapshot_id": "hist-20261117",
+  "protocol_id": "proto-v1",
+  "periods": {
+    "validation": [
+      "2026-07-01",
+      "2026-08-31"
+    ],
+    "test": [
+      "2026-10-01",
+      "2026-11-14"
+    ]
+  },
+  "publication_lag_hours": 24,
+  "budgets": [
+    24,
+    72,
+    168
+  ],
+  "n_cases": 12659,
+  "last_data_timestamp": "2026-11-14 22:00:00+00:00",
+  "inputs_sha256": {
+    "inventory_quality.csv": "5fa7a4c94319a35920814dddcdb0f22623d74282c5a409c9bb6189e40b8feed7",
+    "counters.csv": "3f5600012720f9918fb34501873aa6439ba645abcdf47dd8c8b613c06fd7daa9",
+    "selection_summary.json": "f84f4a8a7d2b2d783b8eabfb93be97ec98fa58b4062ea0869a2cf232fb0d56b4",
+    "counts.csv": "6bd3039dc68a62eb69a822caffe41f9434ee83de36d8495921439fc9ece9b79f"
+  },
+  "cases_sha256": "2f09e096be138c1be5a2ef65e1395752593a4c270cbb75b379e2fa470ea8ac0d"
+}
