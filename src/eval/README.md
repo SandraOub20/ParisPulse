@@ -13,3 +13,17 @@ Vérité terrain : `data/processed/<snapshot_id>/counts.csv`. Prévisions : `dat
 Comparer sur les mêmes cas complets de 24 heures et le même masque de mesures réelles. Rapporter également les cas attendus, échecs, causes et coûts ; séparer sites connus/nouveaux et modèle brut/système après repli. Une cible absente n'est pas une erreur de zéro.
 
 Transmettre un diagnostic à un partenaire puis vérifier sa réponse. Les fichiers présents sont des instructions, pas un évaluateur implémenté.
+
+
+
+## Exécution
+```
+# Génère cases.csv
+uv run python -m src.eval.protocol 
+# Évalue les prévisions (EXP-E2, EXP-E3)
+uv run python -m src.eval.backtest
+```
+
+## Sorties 
+`data/evaluation/<protocol_id>/` : cases.csv, cases_manifest.json
+`data/evaluation/<protocol_id>/<experiment_id>/` : errors.csv, scores.csv, coverage.csv, scores_by_counter.csv, scoring_manifest.json
