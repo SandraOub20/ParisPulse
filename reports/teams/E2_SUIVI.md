@@ -40,7 +40,7 @@ Documents de référence : [sujet](../../ParisPulse_Sujet_etudiants.pdf), [archi
 
 ## 2. État d'avancement
 
-_Dernière mise à jour : 2026-11-24 - MOD-012._
+_Dernière mise à jour : 2026-11-24 - MOD-013._
 
 | Étape (README E2) | État | Renvoi |
 | --- | --- | --- |
@@ -84,8 +84,13 @@ src/models/
                     masquée pondérée par le niveau, arrêt anticipé), predict_mlp / predict_windows /
                     refusal_reasons (24 valeurs ou refus motivé), save_mlp/load_mlp (format 2),
                     commande python -m src.models.known.neural
-    predict.py      build_inputs, predict_24h (signature imposée), run_experiment,
-                    write_predictions, write_runs
+    tabular.py      HGB : hgb_hyperparameters, fit_hgb (variables f1.0, arrêt anticipé sur le
+                    nombre d'arbres), predict_hgb / predict_frame / refusal_reason (codes hgb_*),
+                    save_hgb/load_hgb, commande python -m src.models.known.tabular (MOD-010)
+    predict.py      build_inputs, load_context, predict_24h (signature imposée ; variantes
+                    reference, reference_profile, mlp, hgb), load_trained (un chargement par
+                    modèle), trained_forecast (modèle ou repli tracé), run_experiment,
+                    write_predictions, write_runs, commande (MOD-011)
 ```
 
 Flux prévu d'un cas :
@@ -94,8 +99,10 @@ Flux prévu d'un cas :
 cases.csv (E4) --Case.from_row--> Case
 counts.csv (E1) --build_inputs (available_at <= origin)--> ForecastInputs --assert_causal
   --> predict_24h(case, history, variant, context=...)
-        variant="reference" -> baseline.weekly_reference (+ fallback_value)
-        autre variante      -> train.load_model -> modèle ; repli référence si inéligible
+        variant="reference"   -> baseline.weekly_reference (+ fallback_value)
+        variant="mlp" / "hgb" -> load_trained(model_run_id) -> trained_forecast :
+                                 predict_mlp / predict_hgb, ou refus (mlp_*, hgb_*) et
+                                 repli sur la référence, statut fallback (MOD-011)
   --> ForecastResult --to_forecast_frame / to_run_row--> <method_run_id>.pred.csv / .runs.csv
 ```
 
@@ -118,6 +125,31 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
 - **Vérifications effectuées** : commandes lancées, résultats observés (ou "aucune").
 - **Points ouverts** : ce qui reste incertain ou à valider.
 ```
+
+### MOD-013 - 2026-11-24 - Graines du MLP, modèles sans contexte, contrôle de reproductibilité ; mise à jour des documents E2
+
+- **Auteur** : Idir.
+- **Branche / commit** : `Team2-idir` / voir l'historique de ce fichier.
+- **Quoi** :
+  - Modèles appris (code de MOD-008 et MOD-010, inchangé ; `hist-20261117`, coupure au 01/07/2026, réglages par défaut sauf mention) :
+
+    | Modèle | Rôle | Arbres / époque retenus | MAE macro de contrôle (juin) |
+    | --- | --- | --- | --- |
+    | `e2-mlp-ctx-20260701-s1-9318` | MLP, graine 1 (EXP-E2-03, variabilité) | époque 24 / 32 | 17,60 |
+    | `e2-mlp-ctx-20260701-s2-6278` | MLP, graine 2 (EXP-E2-03, variabilité) | époque 24 / 32 | 17,86 |
+    | `e2-mlp-noctx-20260701-s0-5114` | MLP sans contexte (EXP-E2-04) | époque 8 / 16 | 19,22 |
+    | `e2-hgb-noctx-20260701-s0-0af3` | HGB sans contexte, `max_iter=2000` (EXP-E2-04) | 679 arbres | 18,76 |
+    | `e2-hgb-ctx-20260701-s0-8b7a` | HGB avec contexte, `max_iter=2000` (contrôle) | 342 arbres, prévisions identiques à `b357` | 17,86 |
+    | `e2-hgb-noctx-20260701-s0-409c` | HGB sans contexte, plafond 500 atteint | 499 / 500 arbres, **écarté** | 18,83 |
+
+    Rappel : `e2-mlp-ctx-20260701-s0-9ce9` (graine 0, Esther) 17,51 ; `e2-hgb-ctx-20260701-s0-b357` (Ania) 17,86. La MAE de contrôle porte sur juin, mois qui sert à l'arrêt anticipé : ce n'est ni un score E4 ni une comparaison.
+  - **Contrôle de reproductibilité** : MLP graine 0 réappris sans sauvegarde, code identique à `f07599a`, mêmes exemples. Résultat différent (époque 17 au lieu de 20, MAE 17,57 au lieu de 17,51), dû à la machine (4 cœurs et 2 threads torch, contre 8 et 4). Écart machine (0,06) bien plus petit que l'écart entre graines (étendue 0,29 sur la même machine).
+  - Documents mis à jour : [E2_PRISE_EN_MAIN.md](E2_PRISE_EN_MAIN.md) (HGB, branchement MOD-011, règle de la graine, commande de prévision), §3 de ce fichier (`tabular.py`, `predict.py`, flux), §7 (EXP-E2-04), fiches [EXP-E2-03](../experiments/EXP-E2-03.md) et [EXP-E2-04](../experiments/EXP-E2-04.md) (brouillon).
+- **Pourquoi** : graines pour la règle de choix d'EXP-E2-03 ; modèles sans contexte pour l'ablation demandée par le sujet (EXP-E2-04) ; plafond d'arbres relevé pour que l'arrêt anticipé décide seul.
+- **Fichiers** : `artifacts/models/` (4 dossiers commités : `s1-9318`, `s2-6278`, `noctx-…-5114`, `noctx-…-0af3` ; `409c` et `8b7a` gardés en local, non commités), fiches EXP-E2-03 et EXP-E2-04, [E2_PRISE_EN_MAIN.md](E2_PRISE_EN_MAIN.md), ce fichier.
+- **Impact partenaires / contrats** : aucun (pas de code modifié). Les modèles sont commités comme ceux de MOD-008 et MOD-010 : les réapprendre ailleurs ne redonnerait pas exactement les mêmes poids (D-23).
+- **Vérifications effectuées** : les 6 modèles se rechargent (`load_trained`, SHA-256) ; `8b7a` et `b357` donnent les mêmes prévisions sur 15 cas de validation tirés au hasard (cibles non lues) ; aucune donnée de juillet-août lue pour apprendre.
+- **Points ouverts** : `max_iter=2000` à confirmer par Ania ; `409c` et `8b7a` à supprimer une fois ce choix confirmé ; D-23 ci-dessous à confirmer par l'équipe.
 
 ### MOD-012 - 2026-11-24 - Brouillon de la fiche EXP-E2-03 (MLP, HGB, références)
 
@@ -494,7 +526,7 @@ Prioriser dans l'ordre. Cocher avec le renvoi `MOD-NNN` uniquement une fois vér
 - [x] `predict.py` : variantes `mlp` et `hgb` (modèle chargé une fois, repli sur la référence). MOD-011
 - [ ] Désigner le `model_run_id` utilisé par l'application (avec E5).
 - [ ] Présenter MOD-008 à Idir et Ania (contrôle de latence dans `train.fit`, format 2), à E3 (réseau réutilisable), à E4/E5 (codes `mlp_*`, couverture) ; consigner leur retour au §8.
-- [ ] MLP : mesurer la variabilité entre graines (au moins 3) avant la comparaison EXP-E2-03.
+- [x] MLP : apprendre 3 graines pour mesurer la variabilité (contrôle de juin : étendue 0,29 vélo/h). MOD-013 ; la variabilité sur la validation sera lue avec EXP-E2-03.
 - [ ] Fiche EXP-E2-03 (MLP contre HGB contre références) avec les décisions figées avant les scores. Brouillon : MOD-012 ; 5 points à trancher en équipe.
 - [ ] Enregistrer la référence et les modèles dans le registre (`register_defaults`).
 - [ ] Recalcul de la référence sur une autre origine avec E5 (`use_cache=False`).
@@ -534,6 +566,7 @@ Prioriser dans l'ordre. Cocher avec le renvoi `MOD-NNN` uniquement une fois vér
 | D-20 | 2026-11-23 | Arrêt anticipé du MLP | Décidé (Esther), à confirmer par l'équipe | Origines des 4 dernières semaines avant `fit_cutoff` (dates locales : du 03/06 au 29/06 pour une coupure au 01/07), jamais la validation ; patience 8, 100 époques au plus ; réseau rendu = meilleure époque, sans réapprentissage sur ces semaines (choix simple, à rediscuter : ce sont les données les plus récentes). MOD-008 | E2 |
 | D-21 | 2026-11-23 | Conditions d'utilisation du MLP | Décidé (Esther) | Origines à minuit (Paris) ; origine ≥ `fit_cutoff`, lue aussi dans le bilan du réseau ; latence du cas égale à celle de l'apprentissage (sinon `ValueError`) ; contexte complet si le modèle l'utilise. Tout autre cas reçoit un refus motivé (codes `mlp_*`), et le repli sur la référence revient à l'appelant (`predict.py`). MOD-008 | E2, E4, E5 |
 | D-22 | 2026-11-23 | Une seule latence pour toutes les méthodes | Décidé (Esther), à valider par Idir | `train.fit` refuse une `publication_lag_hours` différente de la configuration : `backend.fit` ne la reçoit pas, et `build_training_frame` comme `build_windows` prennent celle de la configuration. Pour une sensibilité à 48 h, changer `protocol.publication_lag_hours` dans `config/project.yaml`. MOD-008 | E2, E4 |
+| D-23 | 2026-11-24 | Reproductibilité des modèles | Proposé (Idir) | Un modèle ne se reproduit à l'identique que sur la même machine et le même nombre de threads (contrôle MOD-013 : écart de 0,06 vélo/h, plus petit que l'écart entre graines). Le modèle servi est toujours celui déclaré d'avance par son `model_run_id`, jamais un réapprentissage ; la machine est notée dans `metadata.json` (`hardware`). MOD-013 | E2, E4 |
 
 ---
 
@@ -548,6 +581,7 @@ Chaque expérience a sa fiche dans `reports/experiments/` (gabarit [experiment.m
 | E2-TECH-003 | 2026-11-23 | Essai technique : premier apprentissage du MLP sur données réelles (pas de comparaison) | `mlp` avec contexte, graine 0 | aucun protocole validé (`fit_cutoff` 01/07/2026, D-17) / `hist-20261117` | non calculée (E4) | 5 694 / 6 014 cas de validation servis par le MLP (94,7 %) | apprentissage 33 s, 1,25 Go, CPU | Apprentissage sans fuite et rapide ; contrôle interne sur juin, hors scores E4 (voir fiche) ; 4 sites en panne pendant la validation | [fiche](../experiments/E2-TECH-003.md) |
 | E2-TECH-004 | 2026-11-24 | Essai technique : premier apprentissage du HGB sur données réelles (pas de comparaison) | `hgb` avec contexte, `absolute_error`, graine 0 | aucun protocole validé (`fit_cutoff` 01/07/2026, D-17) / `hist-20261117` | non calculée (E4) | couverture de la validation non mesurée | 278 s au total, dont 125 s pour les deux apprentissages HGB ; CPU | Apprentissage sans fuite ; 342 arbres ; contrôle interne sur juin, hors scores E4 (voir fiche) ; loss à fixer par E4 | [fiche](../experiments/E2-TECH-004.md) |
 | EXP-E2-03 | 2026-11-24 | Quelle méthode pour les sites connus ? **Brouillon, non figé** | `reference`, `reference_profile`, `mlp` (graine 0, + graines 1-2 pour la variabilité), `hgb` | `proto-v1` (non validé) / `hist-20261117`, validation | à venir (E4) | 6 014 attendus | à mesurer | à venir | [fiche](../experiments/EXP-E2-03.md) |
+| EXP-E2-04 | 2026-11-24 | Le contexte aide-t-il nos modèles ? **Brouillon, non figé** | MLP et HGB, chacun avec et sans contexte (même méthode, même graine) | `proto-v1` (non validé) / `hist-20261117`, validation | à venir (E4) | 6 014 attendus | à mesurer | à venir | [fiche](../experiments/EXP-E2-04.md) |
 
 ---
 

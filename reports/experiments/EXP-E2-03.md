@@ -29,7 +29,7 @@
     | `reference` (`weekly_naive`) | sans objet | `y(t − 168 h)`, repli D-03 (N = 4) |
     | `reference_profile` (`weekly_profile_median`) | sans objet | médiane de 4 semaines, même repli |
     | `mlp` | `e2-mlp-ctx-20260701-s0-9ce9` (graine 0) | `mlp_hyperparameters()` par défaut ; L1 pondérée par le niveau (D-19) ; arrêt anticipé sur 4 semaines, sans réapprentissage (D-20) ; seuil 84 h (D-18) |
-    | `mlp`, graines 1 et 2 | à entraîner, mêmes réglages | seulement pour mesurer la variabilité, jamais pour choisir |
+    | `mlp`, graines 1 et 2 | `e2-mlp-ctx-20260701-s1-9318`, `e2-mlp-ctx-20260701-s2-6278` (appris le 2026-11-24, même code que MOD-008) | seulement pour mesurer la variabilité, jamais pour choisir |
     | `hgb` | `e2-hgb-ctx-20260701-s0-b357` | `hgb_hyperparameters()` par défaut ; `loss="absolute_error"` ; `refit_on_holdout=False` ; `categorical=False` (**à valider**, E2-TECH-004) |
 
   - Communs à toutes les méthodes :
@@ -38,6 +38,16 @@
     - entrées : mesures seules (D-11) ;
     - contexte complet `e1-context/0.3.0` pour les deux modèles ;
     - 97 compteurs `S_train`, groupes E3 exclus.
+  - **Réglages : valeurs par défaut, sans recherche.**
+    - Aucune validation croisée ni recherche d'hyperparamètres n'a été faite. Seuls le nombre d'époques (MLP) et le nombre d'arbres (HGB) sont choisis automatiquement, sur les 4 semaines avant la coupure (juin), qui font partie de l'apprentissage.
+    - C'est équitable : les deux modèles sont dans le même cas. Mais leurs erreurs ne sont pas les meilleures possibles, ce sera écrit dans les limites.
+    - Un réglage éventuel se ferait par validation croisée temporelle **avant le 01/07**, jamais sur juillet-août.
+  - **Contrôle de reproductibilité**, fait le 2026-11-24 : le MLP en graine 0 a été réappris avec le code actuel, sans sauvegarde.
+    - Code identique au commit d'Esther (`f07599a`, aucune différence dans `neural.py`, `train.py`, `features.py`), mêmes exemples (85 958 / 2 560), même `torch` 2.15.0.
+    - **Le résultat n'est pas identique** : meilleure époque 17 contre 20, MAE macro de contrôle (juin) 17,57 contre 17,51.
+    - Cause : la machine (4 cœurs et 2 threads torch, contre 8 et 4). L'ordre des additions en virgule flottante change, l'arrêt anticipé choisit une autre époque. Le rapport d'Esther le disait : « même graine, même machine : mêmes poids ».
+    - Conséquence : l'écart dû à la machine (0,06) est bien plus petit que l'écart entre graines (17,57 / 17,60 / 17,86 sur la même machine, étendue 0,29). Les graines 1 et 2 servent donc bien à mesurer la variabilité. Le modèle servi reste `e2-mlp-ctx-20260701-s0-9ce9`, déclaré d'avance.
+    - À retenir pour la remise : un modèle ne se reproduit à l'identique que sur la même machine, avec le même nombre de threads.
 
 - **Scénario, sites, dates et budget d'information autorisé** :
   - Scénario `known_site` : 97 compteurs `S_train`, 49 groupes de sites.
@@ -50,7 +60,7 @@
   - **Facteur modifié** : la méthode de prévision (4 méthodes).
   - **Facteurs conservés** : cas, instantané, coupure, latence, entrées, contexte, masque de score, règle de repli.
   - **Hors de cette fiche**, une fiche par facteur :
-    - avec ou sans contexte, et par groupe de contexte (D-12) ;
+    - avec ou sans contexte, et par groupe de contexte (D-12) : [EXP-E2-04](EXP-E2-04.md) ;
     - variabilité entre graines du MLP (mesurée ici, pas choisie ici) ;
     - MLP appris avec ou sans masquage des fenêtres (comparaison d'Idir) ;
     - choix de la loss du HGB (E4).
@@ -144,6 +154,6 @@
 
 1. Accord de l'équipe sur la règle de choix : le seuil de 5 % et la règle des graines.
 2. Réglages du HGB : `categorical`, `refit_on_holdout`, et la loss, à confirmer avec E4.
-3. Entraîner les graines 1 et 2 du MLP (environ 1 min 30 chacune).
+3. ~~Entraîner les graines 1 et 2 du MLP~~ : fait le 2026-11-24 (`s1-9318`, `s2-6278`), voir le contrôle de reproductibilité.
 4. E4 : `Metric.py` sait faire l'intersection commune et le même masque (voir « Calcul du score »). Reste à obtenir d'E4 : (a) la confirmation que c'est leur version de référence, et son arrivée sur `dev` ; (b) le biais dans la moyenne globale (aujourd'hui calculé par compteur seulement) ; (c) leur accord sur la version « brute » des prévisions.
 5. Faut-il réapprendre au 01/08 pour la seconde moitié de la validation (exemple du PROTOCOLE §3) ? Proposition : non, pour garder une seule version par méthode, à noter comme limite.
