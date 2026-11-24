@@ -49,6 +49,25 @@ class FakeChronos2:
         )
 
 
+class FakeGoogleTimesFM:
+    def __init__(self, *, negative_target=False):
+        self.horizon = None
+        self.inputs = None
+        self.negative_target = negative_target
+
+    def forecast(self, *, horizon, inputs):
+        self.horizon = horizon
+        self.inputs = inputs
+        point = np.arange(horizon, dtype=float)
+        quantiles = np.repeat(point[:, None], 10, axis=1)
+        if self.negative_target:
+            quantiles[24, 5] = -1.0
+        return point[None, :], quantiles[None, :, :]
+
+    def compile(self, config):
+        return None
+
+
 def new_site_case(**overrides):
     support_end = ORIGIN - pd.Timedelta(hours=LAG_HOURS)
     row = {
@@ -147,6 +166,48 @@ def test_negative_quantile_is_clipped_and_marked(monkeypatch):
     assert result.predictions.loc[0, "status_reason"] == "negative_quantile_clipped_to_zero"
 
 
+def test_google_timesfm_frozen_matches_prediction_contract(monkeypatch):
+    case = new_site_case()
+    model = FakeGoogleTimesFM()
+    monkeypatch.setattr(new_predict.manager, "load_model", lambda name: model)
+
+    result = new_predict.predict_24h(
+        case,
+        history_for_case(case),
+        variant="frozen",
+        model_name="google_TimesFM_2.5",
+        publication_lag_hours=LAG_HOURS,
+    )
+
+    assert model.horizon == LAG_HOURS + 24
+    assert len(model.inputs) == 1
+    assert len(model.inputs[0]) == BUDGET_HOURS
+    assert result.method_run_id == "e3-google-TimesFM_2.5-frozen-v1"
+    assert result.model_run_id == "google-TimesFM_2.5"
+    assert result.variant == "frozen"
+    assert result.predictions["y_pred"].tolist() == list(map(float, range(24, 48)))
+
+
+def test_google_timesfm_negative_median_is_clipped(monkeypatch):
+    case = new_site_case()
+    monkeypatch.setattr(
+        new_predict.manager,
+        "load_model",
+        lambda name: FakeGoogleTimesFM(negative_target=True),
+    )
+
+    result = new_predict.predict_24h(
+        case,
+        history_for_case(case),
+        variant="frozen",
+        model_name="google_TimesFM_2.5",
+        publication_lag_hours=LAG_HOURS,
+    )
+
+    assert result.predictions.loc[0, "y_pred"] == 0.0
+    assert result.predictions.loc[0, "status_reason"] == "negative_quantile_clipped_to_zero"
+
+
 def test_prediction_marks_adaptation_unimplemented_and_refuses_known_site(monkeypatch):
     case = new_site_case()
     loaded_models = []
@@ -171,7 +232,6 @@ def test_prediction_marks_adaptation_unimplemented_and_refuses_known_site(monkey
 @pytest.mark.parametrize(
     ("model_name", "variant"),
     [
-        ("google_TimesFM_2.5", "frozen"),
         ("google_TimesFM_2.5", "adapted"),
         ("team2", "adapted"),
     ],
@@ -184,6 +244,7 @@ def test_unimplemented_model_variants_load_then_raise(monkeypatch, model_name, v
         lambda name: loaded_models.append(name),
     )
 
+    case = new_site_case()
     with pytest.raises(NotImplementedError, match=model_name):
         case = new_site_case()
         new_predict.predict_24h(

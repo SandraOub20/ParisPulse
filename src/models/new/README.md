@@ -3,10 +3,9 @@
 ## Prévision Chronos-2
 
 `predict.py` fournit `predict_24h(case, history, variant="frozen")` et
-`save_forecasts(result, path)`. Chronos-2 et le MLP Team2 en variante `frozen` produisent
-une prévision. Le MLP peut utiliser le contexte disponible à l'origine; en cas de refus, la
-référence hebdomadaire est utilisée et le motif MLP est tracé. Les chemins `adapted` et
-`google_TimesFM_2.5` restent à implémenter.
+`save_forecasts(result, path)`. Chronos-2 et Google TimesFM 2.5 en variante `frozen`
+produisent une prévision. Les chemins `adapted` et `team2` sont présents comme points
+d'extension et lèvent `NotImplementedError` jusqu'à leur implémentation.
 
 Le cas doit être un `new_site` d'un site réservé (`S_dev_new` ou `S_test_new`) avec un
 budget local positif (1, 3 ou 7 jours). L'historique fourni est refiltré sur le compteur, le support du cas et
@@ -45,6 +44,13 @@ Depuis la racine du dépôt, exécuter :
 ```
 $env:PYTHONPATH = (Get-Location).Path
 py -m uv run --locked --group dl python .\src\models\new\validation.example.chronos.py
+```
+
+Pour lancer la variante gelée Google TimesFM 2.5 :
+
+```
+$env:PYTHONPATH = (Get-Location).Path
+py -m uv run --locked --group dl python .\src\models\new\validation.example.google.py
 ```
 
 Le script traite tous les cas de validation `S_dev_new` (budgets de 24, 72 et 168 heures)
