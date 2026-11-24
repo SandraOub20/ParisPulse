@@ -1,6 +1,6 @@
 # EXP-E2-05 - Apprendre avec des fenêtres masquées rend-il le MLP plus robuste aux historiques incomplets ?
 
-> **Statut : brouillon, à figer avant tout code d'apprentissage et tout score.** Les points marqués « à valider » sont des propositions. Les résultats restent vides jusqu'au gel. Même population et même calcul du score que [EXP-E2-03](EXP-E2-03.md).
+> **Statut : figée le 2026-11-24 pour le code et l'apprentissage** (commit indiqué dans l'historique de cette fiche). Les réglages ci-dessous ne changent plus, sauf par la règle de contrôle sur juin écrite d'avance. Les résultats restent vides : aucun score n'est lu avant le gel d'EXP-E2-03, dont A est le MLP déclaré. Même population et même calcul du score que [EXP-E2-03](EXP-E2-03.md).
 
 - **Date, équipe, responsables et partenaires** :
   - Brouillon le 2026-11-24, E2.
@@ -29,8 +29,9 @@
     1. `min_observed_hours` en paramètre de `build_windows`, `refusal_reasons` et `predict_mlp`, enregistré dans le modèle. Par défaut 84 : rien ne change pour les modèles existants.
     2. `mask_windows(windows, rng, ...)` dans `neural.py` : applique le masquage ci-dessous à des fenêtres déjà construites, puis recalcule le niveau sur les seules heures restantes.
     3. Dans `fit_mlp` (avec Esther) : masquage tiré à chaque époque, uniquement sur les exemples d'apprentissage, jamais sur le holdout d'arrêt anticipé. Réglages ajoutés à `mlp_hyperparameters` : ils entrent dans l'empreinte et dans `metadata.json`.
-  - **Masquage à l'apprentissage**, fixé avant tout essai (à valider) :
-    - chaque exemple d'apprentissage est masqué avec une probabilité de 0,5 ;
+  - **Masquage à l'apprentissage**, fixé avant tout essai :
+    - chaque exemple d'apprentissage est masqué avec une probabilité de **0,25**. Ce n'est pas 0,5, parce que les trous sont rares dans les vraies données (environ 0,8 % des heures) : trop masquer ferait perdre B sur les semaines complètes ;
+    - un nouveau masque est tiré à chaque époque, avec un générateur séparé (graine du modèle) : désactivé, l'apprentissage est identique à celui d'aujourd'hui ;
     - un masque efface **un bloc contigu** de la fenêtre, d'une longueur tirée uniformément entre 24 h et 144 h, à une position tirée uniformément. Une panne récente, un début de série et une coupure au milieu sont ainsi couverts ;
     - les heures effacées passent au statut « non mesurée » (masque à 0). Elles ne sont jamais remplacées par 0 ;
     - le niveau de normalisation est recalculé sur les heures restantes, comme en prévision.
@@ -40,7 +41,7 @@
     | --- | --- | --- | --- |
     | A | MLP actuel (`9ce9`, `s1-9318`, `s2-6278`) | non | 84 h (actuel) |
     | A′ | les mêmes poids que A | non | **24 h** (à valider) |
-    | B | MLP masqué, graines 0, 1, 2 (à apprendre) | **oui** | **24 h** (à valider) |
+    | B | MLP masqué, graines 0, 1, 2 (`mask_prob=0.25`, `min_observed_hours=24`) | **oui** | **24 h** |
     | R | référence `reference_profile` (médiane sur 4 semaines), même entrée | sans objet | sans objet |
 
     - **A′ contre B isole le masquage** : même seuil, seul l'apprentissage change. C'est la comparaison principale.
@@ -116,11 +117,14 @@
 
 - **Retour d'un partenaire et preuve d'utilisation** : à obtenir (E4 : scores ; E5 : seuil et repli de l'application).
 
-## Points à trancher avant le gel
+## Décisions du gel (2026-11-24)
 
-1. Masquage à l'apprentissage : probabilité de 0,5 ; bloc contigu de 24 à 144 h ; un seul bloc par exemple.
-2. Seuil en prévision de A′ et B : 24 h.
-3. Niveaux de dégradation et tranches d'heures mesurées.
-4. Règle de décision, en particulier « au moins l'étendue entre graines ».
-5. Avec Esther : masquage dans `fit_mlp`, tiré à chaque époque.
-6. Ordre : figer EXP-E2-03 et EXP-E2-04 d'abord. A est le MLP déclaré dans EXP-E2-03.
+1. Masquage : probabilité de 0,25 ; un bloc continu de 24 à 144 h, à une position tirée au hasard ; un seul bloc par exemple ; holdout jamais masqué.
+2. Seuil en prévision pour A′ et B : 24 h. B apprend aussi avec `min_observed_hours=24` : il garde les exemples naturellement troués (écartés aujourd'hui), ce qui fait partie de « apprendre avec des fenêtres incomplètes ».
+3. Niveaux de dégradation et tranches d'heures mesurées : ceux du tableau ci-dessus.
+4. Règle de décision : celle ci-dessus, inchangée.
+5. **Contrôle sur juin**, écrit d'avance et fait avant les scores. Juin est le holdout d'arrêt anticipé, dans la période d'apprentissage : la validation n'est pas lue.
+   - Si la MAE de contrôle moyenne de B (semaines complètes, sans masque) dépasse celle de A de plus de l'étendue entre graines de A (même machine : 17,57 / 17,60 / 17,86, soit 0,29), on passe à `mask_prob=0.10`, on réapprend, et on le note ici.
+   - C'est la seule adaptation permise après le gel.
+6. Code : `min_observed_hours` et `mask_windows` (Idir), branchement dans `fit_mlp` (Esther prévenue). Option désactivée par défaut : les modèles existants ne changent pas.
+7. Ordre : les scores d'EXP-E2-05 attendent le gel d'EXP-E2-03.
