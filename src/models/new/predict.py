@@ -231,12 +231,13 @@ def save_forecasts(
     )
 
 
-def _prepare_inputs(
+def prepare_inputs(
     case: Case,
     history: pd.DataFrame,
     publication_lag_hours: int | None,
     context: pd.DataFrame | None = None,
 ) -> tuple[ForecastInputs, pd.DataFrame, int]:
+    """Construire le support causal partagé avec la référence locale."""
     lag = default_publication_lag() if publication_lag_hours is None else publication_lag_hours
     if lag < 0:
         raise ValueError("publication_lag_hours ne peut pas être négatif.")
