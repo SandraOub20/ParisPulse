@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from streamlit_folium import st_folium
 
-from src.app import service, v1_service
+from src.app import reliability, service, v1_service
 from src.app.dashboard.coverage import hourly_window, show_coverage
 from src.app.dashboard.forecast_case import model_forecast_plot
 from src.app.export import study_zip
@@ -42,12 +42,6 @@ PREDICTION_LABELS = {
     "fallback": "Avec repli",
     "unavailable": "Indisponible",
     "error": "Erreur",
-}
-STATUS_REASONS = {
-    "lag168_missing": "Mesure de la semaine précédente manquante",
-    "lag168_missing;no_fallback_history": "Aucune mesure historique à cette heure",
-    "profile_weeks_missing": "Mesures de référence manquantes sur quatre semaines",
-    "profile_weeks_missing;no_fallback_history": "Aucune mesure historique à cette heure",
 }
 
 
@@ -324,9 +318,11 @@ def show_study(studies: tuple[service.Study, ...], evaluations: tuple[dict, ...]
     metrics[3].metric(
         "Temps de calcul", f"{elapsed:.3f} s" if elapsed is not None else "—", border=True
     )
-    if n_valid != HORIZON_HOURS:
+    check = reliability.check_forecast(forecast)
+    if not check.is_complete:
         st.warning(
-            "La prévision est incomplète. Le tableau horaire détaille les heures et les raisons."
+            f"La prévision est incomplète : {check.n_valid} heures valides sur "
+            f"{check.n_expected}.\n\n" + "\n".join(f"- {line}" for line in check.problems)
         )
     if evaluation is not None:
         st.caption(
@@ -353,7 +349,7 @@ def show_study(studies: tuple[service.Study, ...], evaluations: tuple[dict, ...]
                 "Vélos prévus": forecast["y_pred"].round(1),
                 "Statut": forecast["prediction_status"].map(PREDICTION_LABELS),
                 "Méthode effective": forecast["method_used"].fillna(""),
-                "Raison": forecast["status_reason"].replace(STATUS_REASONS).fillna(""),
+                "Raison": forecast["status_reason"].map(reliability.explain_reason),
             }
         )
         if len(studies) > 1:
@@ -819,7 +815,22 @@ def main() -> None:
                     help=f"Une ligne pour le cas {case.case_id}.",
                 )
                 action = "Ouvrir la prévision" if opens_only else "Calculer la prévision"
-                if st.button(action, type="primary", width="stretch"):
+                can_run = True
+                if not opens_only:
+                    try:
+                        history_check = reliability.check_history(case, history, lag, method)
+                    except (ValueError, KeyError) as error:
+                        st.error(reliability.explain_error(error))
+                        can_run = False
+                    else:
+                        can_run = history_check.can_forecast
+                        if history_check.level == reliability.LEVEL_NONE:
+                            st.error(history_check.message)
+                        elif history_check.level == reliability.LEVEL_PARTIAL:
+                            st.warning(history_check.message)
+                        else:
+                            st.caption(history_check.message)
+                if st.button(action, type="primary", width="stretch", disabled=not can_run):
                     st.session_state.pop("forecast-result", None)
                     st.session_state["study-tab"] = "Prévision"
                     try:
@@ -830,7 +841,7 @@ def main() -> None:
                                 case, method, archive, history, catalog, lag
                             )
                     except (OSError, ValueError, KeyError, RuntimeError) as error:
-                        st.error(f"Prévision indisponible · {error}")
+                        st.error(reliability.explain_error(error))
                     else:
                         evaluations = None
                         try:

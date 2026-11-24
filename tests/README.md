@@ -18,3 +18,15 @@ L'environnement fournit pytest et Ruff : lancer `./run.sh setup`, puis `./run.sh
 | Cache, copie neuve et recalcul d'un autre cas | E5 / autre équipe | Versions cohérentes, ressources complètes et procédure reproductible |
 
 Commencer par de petits exemples créés par les étudiants, puis un cas réel partagé. Les données synthétiques servent à vérifier le code, pas à annoncer des performances sur Paris. Ajouter les tests automatisés utiles au fur et à mesure de l'implémentation.
+
+## Fiabilité, export et parcours complet - E5
+
+Lancer : `uv run --locked --group dl pytest tests/test_reliability.py tests/test_parcours_complet.py tests/test_export.py`. Données synthétiques uniquement.
+
+| Fichier | Ce qui est vérifié |
+| --- | --- |
+| `test_reliability.py` | Historique requis selon la méthode (168 h, 4 semaines, budget local E3) ; historique complet, partiel ou absent ; zéro observé compté comme mesure ; heures cibles et non publiées jamais comptées ; horizons absents ou en double, valeurs vides ou négatives ; traduction des codes `status_reason` et des exceptions en messages lisibles |
+| `test_parcours_complet.py` | Parcours de l'interface (contrôle → prévision → export masqué → révélation → export) sur un **cas normal**, un **cas difficile** (panne de 6 h avant l'origine et heure cible manquante : 6 replis, 23 heures comparées), un compteur sans historique (24 heures `unavailable`, expliquées) et un **nouveau site** (support local de 168 h puis de 24 h) ; aucune cible dans le zip avant révélation ; prévision inchangée après révélation |
+| `test_export.py` | `export_study` : colonnes du contrat, format `true`/`false`/vide/JSON, observations et scores absents avant révélation et supprimés d'un export révélé précédent, identifiant de dossier sûr, manifeste non falsifiable |
+
+Module testé : `src/app/reliability.py`, appelé par `streamlit_app.py` avant le calcul (historique, bouton désactivé si aucune mesure) et après (détail des heures sans prévision).
