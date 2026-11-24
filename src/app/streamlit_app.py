@@ -1,14 +1,6 @@
-"""GABARIT À COMPLÉTER - E5
+"""Point d'entrée officiel de ParisPulse."""
 
-Construire la carte et le parcours de l’analyste.
+from src.app.v1_app import main
 
-Entrées et sorties : voir doc/CONTRATS.md et doc/templates/.
-
-À faire :
-1. Afficher réseau, compteur, date admissible, historique, zéros, manques et qualité.
-2. Proposer sites connus et nouveaux sites ; montrer 24 valeurs et la méthode effective.
-3. Révéler les observations à la demande et masquer à nouveau après changement de sélection.
-4. Afficher erreurs, couverture, coût, contexte et cas impossibles ; utiliser src/app/service.py.
-
-Aucune implémentation fournie ; ce fichier contient uniquement des consignes.
-"""
+if __name__ == "__main__":
+    main()
