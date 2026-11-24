@@ -74,3 +74,37 @@
   - récupérer les bruts (`data/history/flux-20261115/`), absents du zip, relancer `prepare --tout` et vérifier qu'il reste 229 alertes ;
   - décider avec l'équipe du traitement du premier jour de la fenêtre ;
   - ouvrir une PR de `Team1-tasnim` vers `Team1`.
+
+## 24/11/2026 - Vérification de la livraison `hist-20261117`, rapport d'équipe
+
+- **Question ou objectif personnel :** vérifier, en consommatrice, que chaque affirmation du message de livraison se retrouve sur les données du zip. Puis rassembler le travail d'E1 dans un rapport d'équipe, pour le rapport final et pour E5.
+- **Travail réalisé et outils utilisés :**
+  - branche `Team1-tasnim` avancée sur `Team1` (`61ff322`), en fast-forward ;
+  - `git-lfs` installé (absent de ma machine : le premier `merge` s'est arrêté au fichier LFS ; j'ai nettoyé la copie partielle et relancé) ;
+  - zip récupéré et décompressé ;
+  - script indépendant `src/data/verify_delivery.py` (pandas), qui recalcule J-7 et l'année d'avant sans réutiliser le code de remplissage ;
+  - pytest (140 tests verts) et ruff.
+- **Expérience ou contrôle effectué :** 52 contrôles, détaillés dans [EXP-E1-05](../experiments/E1-verification-livraison.md) :
+  - grille, UTC, valeurs remplacées, masque `is_scoreable`, `network_gap` ;
+  - statuts, sites réservés, contexte et `available_at` ;
+  - empreintes, continuité avec le flux.
+- **Versions et liens :** `hist-20261117` (`e1-new-sites/0.4.0`, `e1-fill-j7/0.3.0`, `e1-fill-zeros-year/0.3.0`, `e1-context/0.3.0`) ; [EXP-E1-05](../experiments/E1-verification-livraison.md) ; [rapport d'équipe](../teams/E1.md).
+- **Résultat et analyse critique :**
+  - 47 contrôles conformes : tous les chiffres du message sont exacts ;
+  - 5 écarts, dont 3 sans conséquence (un jour de calendrier en plus, une erreur de mon premier contrôle J-7, ma copie locale du flux en ancienne version) ;
+  - 1 écart mineur : les empreintes du manifeste pour les fichiers de grèves ont été calculées avec des fins de ligne Windows ;
+  - **1 écart à traiter :** les sites de test d'E3 n'ont que 6 jours de mesures à leur première origine. Leur jour d'installation fictive (23/09/2026) est un trou de 24 h sur tout le réseau ;
+  - à faire connaître aussi : le remplacement par l'année d'avant repose sur un drapeau rétrospectif (186 h touchées en diagnostic et test) ; 4 journées entières sans cible sur les blocs évalués ; `count` encore vide dans 7 115 h actives.
+- **Décision ou adaptation :**
+  - proposer à E3 et E4 d'installer les sites de test le 22/09/2026 (7 jours mesurés), à décider avec elles ;
+  - script de vérification laissé dans le dépôt pour que les autres équipes le relancent ;
+  - rapport d'équipe créé (`reports/teams/E1.md`) ; fiche historique mise à jour (instantané livré).
+- **Partenaire, retour reçu et usage vérifié :**
+  - lu dans le suivi d'E2 : E2 utilise `hist-20261117` depuis le 19/11 et ne lit que les vraies mesures (D-11, à valider par E1) ;
+  - E2 signale 29 heures au-dessus de 1 500 vélos/h. Je l'ai vérifié : 29 h sur 5 compteurs, dont 8 190 à 5 h le 22/10/2023 rue Lecourbe NE-SO, nettement aberrant ;
+  - journaux de Nihed (créé), de Zeineb et de Sabrina mis à jour à partir des traces, à relire par chacune ;
+  - message à envoyer à Sabrina (écarts 1 et 2), puis à E3 et E4 (écart 1).
+- **Prochaine étape :**
+  - faire trancher l'écart 1 ;
+  - demander à une autre équipe de relancer `verify_delivery` sur sa copie ;
+  - ouvrir la PR de `Team1-tasnim` vers `Team1`.
