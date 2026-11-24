@@ -18,7 +18,7 @@ cgf = load_config()
 PROTOCOLE_ID = cgf["protocol"]["id"]
 SNAPSHOT_ID = cgf["snapshot_id"]
 HORIZON_HR = cgf["protocol"]["horizon_hours"]
-EXP_ID = ["EXP-001","EXP-E3"]
+EXP_ID = ["EXP-E3"]
 BUDGET = cgf["protocol"]["local_budget_hours"]
 
 EVAL = ROOT / cgf["paths"]["evaluation"]
@@ -68,7 +68,7 @@ def make_error(cases, forecast, observations, path):
     error = error[COLUMNS_ERROR]
 
     # create csv
-    # error.to_csv(path)
+    error.to_csv(path, index=False)
 
     return error
 
@@ -91,13 +91,17 @@ def make_scores(cases, forecast, observations, exp_id, path):
     # observations appearing in the forecast given 
     obs_fc = observations.loc[observations['counter_id'].isin(forecast['counter_id']) & observations['timestamp'].isin(forecast['target_timestamp']), :]
     obs_fc['timestamp'] = pd.to_datetime(obs_fc['timestamp'], utc=True)
-    obs_fc = obs_fc.rename(columns={"count" : "y_true"})
+    obs_fc = obs_fc.rename(columns={"count" : "y_true", 'timestamp' : 'target_timestamp'})
+
+    forecast['target_timestamp'] = pd.to_datetime(forecast['target_timestamp'], utc=True)
+    
+    fc = forecast.merge(obs_fc[["counter_id", "target_timestamp", "y_true"]], on=["counter_id", "target_timestamp"], how="left")
 
     # scenario used for the prediction
     scenario = forecast["scenario"].unique()[0]
     # prediction values
-    y_pred = forecast["y_pred"]
-    y_true = obs_fc["y_true"].repeat(1 + budget*2)
+    y_pred = fc["y_pred"]
+    y_true = fc["y_true"]
     # method
     method = forecast["method_run_id"].unique()[0]
     # cases that fit the temporary split 
@@ -108,9 +112,12 @@ def make_scores(cases, forecast, observations, exp_id, path):
 
     # expected cases
     exp_c = len(c_fc[(c_fc["scenario"] == scenario)&(c_fc["temporal_split"] == temp_split)].index)
-
+    
     # completed cases
     complete_c = check_horizon(forecast).sum()
+
+     # coverage 24h
+    cov_24 = complete_c / exp_c
 
     # compared cases
     fc_count = forecast.groupby(['case_id'])["y_pred"].count()
@@ -137,7 +144,7 @@ def make_scores(cases, forecast, observations, exp_id, path):
               "rmse" : metrics["RMSE"], 
               "r2" : metrics["R2"],
               "bias" : metrics["bias"],
-              "coverage_24h" : np.nan,
+              "coverage_24h" : cov_24,
               "n_fallback_cases" : n_fallbacks,
               "protocol_id" : PROTOCOLE_ID,
               "snapshot_id" : SNAPSHOT_ID}]
@@ -170,7 +177,7 @@ def make_coverage(cases, forecast, observations, path):
 
     coverage = coverage[COLUMNS_COVERAGE]
 
-    coverage.to_csv(path)
+    coverage.to_csv(path, index=False)
 
     return coverage
    ##############################################################################################################################
