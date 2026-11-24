@@ -2,6 +2,8 @@
 
 import io
 import json
+from csv import DictReader
+from dataclasses import replace
 from zipfile import ZipFile
 
 import pandas as pd
@@ -10,7 +12,8 @@ import pytest
 from src.app import service
 from src.app.dashboard.forecast_case import model_forecast_plot
 from src.app.export import study_zip
-from src.models.schemas import FORECAST_COLUMNS, HORIZON_HOURS, target_timestamps
+from src.eval.cases import CASE_COLUMNS, case_csv, forecasting_team
+from src.models.schemas import FORECAST_COLUMNS, HORIZON_HOURS, Case, target_timestamps
 
 
 def test_reference_and_export_keep_targets_hidden_until_reveal():
@@ -37,7 +40,7 @@ def test_reference_and_export_keep_targets_hidden_until_reveal():
     history.loc[target, "count_raw"] = 25
     history.loc[history["timestamp"].eq(case.origin), "is_scoreable"] = False
 
-    study = service.calculate_reference(case, history, "reference", publication_lag_hours=24)
+    (study,) = service.run_studies(case, "reference", None, history, None, 24)
     assert study.forecast["y_pred"].tolist() == [10] * HORIZON_HOURS
     assert study.forecast["target_timestamp"].tolist() == list(hours[-HORIZON_HOURS:])
     predicted = model_forecast_plot((study,))
@@ -46,7 +49,13 @@ def test_reference_and_export_keep_targets_hidden_until_reveal():
     assert pd.to_datetime(predicted.data[0].x, utc=True).equals(hours[-HORIZON_HOURS:])
     assert predicted.layout.xaxis.range == (case.origin, case.origin + pd.Timedelta(hours=24))
     with ZipFile(io.BytesIO(study_zip(study))) as archive:
-        assert set(archive.namelist()) == {"forecasts.csv", "case_runs.csv", "manifest.json"}
+        assert set(archive.namelist()) == {
+            "cases.csv",
+            "forecasts.csv",
+            "case_runs.csv",
+            "manifest.json",
+        }
+        assert forecast_case(archive.read("cases.csv").decode()) == case
         assert not json.loads(archive.read("manifest.json"))["targets_revealed"]
 
     evaluation = service.reveal(study, history)
@@ -110,7 +119,7 @@ def test_local_calculation_and_comparison_respect_bounded_support():
             "is_scoreable": True,
         }
     )
-    study = service.calculate_local_reference(case, history, 24)
+    (study,) = service.run_studies(case, service.LOCAL_REFERENCE, None, history, None, 24)
     assert study.forecast["y_pred"].tolist() == [9.0] * HORIZON_HOURS
     assert study.forecast["prediction_status"].eq("fallback").all()
     service.verify_same_support(study, study)
@@ -122,3 +131,34 @@ def test_local_calculation_and_comparison_respect_bounded_support():
     with ZipFile(io.BytesIO(study_zip(study, alternatives=((study, None),)))) as archive:
         assert "observations.csv" not in archive.namelist()
         assert len(pd.read_csv(archive.open("forecasts.csv"))) == 48
+
+
+def forecast_case(contents: str) -> Case:
+    reader = DictReader(io.StringIO(contents))
+    assert tuple(reader.fieldnames) == CASE_COLUMNS
+    (row,) = list(reader)
+    return Case.from_row(row)
+
+
+def test_case_routing_and_csv_are_independent_of_prediction_files():
+    known_counter = pd.Series({"counter_id": "001", "selection_status": "retained"})
+    new_counter = pd.Series({"counter_id": "002", "site_role": "S_test_new"})
+    day = pd.Timestamp("2026-10-25").date()
+    known = service.technical_case(known_counter, day, "test")
+    new = service.technical_new_case(new_counter, day, "test", 72, 24)
+    assert forecasting_team(forecast_case(case_csv(known))) == "E2"
+    assert forecasting_team(forecast_case(case_csv(new))) == "E3"
+    assert forecast_case(case_csv(new)) == new
+    assert new.support_end == new.origin - pd.Timedelta(hours=24)
+    assert new.support_end - new.support_start == pd.Timedelta(hours=72)
+    assert (
+        service.counter_role(pd.Series({"site_role": "S_train", "selection_status": "excluded"}))
+        is None
+    )
+
+    with pytest.raises(ValueError, match="incompatible avec un cas E2"):
+        service.run_studies(known, service.CHRONOS_LIVE, None, pd.DataFrame(), None, 24)
+    with pytest.raises(ValueError, match="incompatible avec un cas E3"):
+        service.run_studies(new, "reference", None, pd.DataFrame(), None, 24)
+    with pytest.raises(ValueError, match="rôle spatial"):
+        forecasting_team(replace(new, spatial_role="S_train"))
