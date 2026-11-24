@@ -38,6 +38,9 @@ REASON_MESSAGES = {
 }
 
 ERROR_HINTS = {
+    (AttributeError, ImportError, NameError): (
+        "la méthode n’est pas utilisable dans cette version du code (à signaler à son équipe)"
+    ),
     OSError: "un fichier ou une ressource est introuvable",
     KeyError: "une colonne ou une donnée attendue est absente",
     RuntimeError: "le calcul a été interrompu",
@@ -126,8 +129,8 @@ def check_history(
         level = LEVEL_PARTIAL
         message = (
             f"Historique incomplet : {observed} heures mesurées sur {required} nécessaires "
-            f"({observed / required:.0%}). Certaines heures utiliseront un repli ou resteront "
-            "sans prévision."
+            f"({observed / required:.0%}). Les heures estimées ou absentes ne comptent pas ; "
+            "certaines heures peuvent utiliser un repli ou rester sans prévision."
         )
     else:
         level = LEVEL_OK
@@ -149,7 +152,9 @@ def explain_reason(reason: object) -> str:
 
 def explain_error(error: BaseException) -> str:
     """Message affiché quand le calcul d'une prévision lève une exception."""
-    detail = str(error).strip("'\"") or type(error).__name__
+    # KeyError entoure son message de guillemets : les retirer pour la lisibilité.
+    detail = str(error.args[0]) if isinstance(error, KeyError) and error.args else str(error)
+    detail = detail or type(error).__name__
     for kind, hint in ERROR_HINTS.items():
         if isinstance(error, kind):
             return f"Prévision indisponible : {hint} ({detail})."

@@ -840,7 +840,7 @@ def main() -> None:
                             studies = service.run_studies(
                                 case, method, archive, history, catalog, lag
                             )
-                    except (OSError, ValueError, KeyError, RuntimeError) as error:
+                    except Exception as error:  # noqa: BLE001 - jamais de page d'erreur brute
                         st.error(reliability.explain_error(error))
                     else:
                         evaluations = None

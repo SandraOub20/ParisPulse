@@ -239,6 +239,8 @@ def test_explain_reason(reason, expected):
         (FileNotFoundError("weights.pt"), "fichier ou une ressource est introuvable"),
         (KeyError("count_raw"), "colonne ou une donnée attendue est absente (count_raw)"),
         (RuntimeError("timeout"), "le calcul a été interrompu"),
+        (AttributeError("no attribute 'METHOD_RUN_ID'"), "pas utilisable dans cette version"),
+        (ImportError("torch"), "pas utilisable dans cette version"),
         (ValueError("Le cas E3 doit préciser un budget"), "Le cas E3 doit préciser un budget"),
     ],
 )
