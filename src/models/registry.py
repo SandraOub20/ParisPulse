@@ -1,10 +1,10 @@
 """Registre des méthodes E2/E3 - interface commune appelée par E5.
 
 Chaque méthode déclare nom, version, scénarios, coupure, historique minimal, ressources et
-repli. E5 orchestre via ``get_method`` / ``select_method`` sans réécrire les modèles.
+repli. E5 orchestre via get_method / select_method sans réécrire les modèles.
 
 À faire :
-1. Aligner ``ForecastMethod`` sur src/common/contracts.py une fois adopté.
+1. Aligner ForecastMethod sur src/common/contracts.py une fois adopté.
 2. Enregistrer la référence E2 dès la première matinée, puis les autres méthodes.
 3. Référencer les métadonnées dans artifacts/models/<model_run_id>/metadata.json.
 4. Faire valider avec E4/E5 la règle de routage et ses messages.
@@ -63,10 +63,12 @@ def list_methods(scenario: Scenario | None = None) -> list[MethodSpec]:
     raise NotImplementedError("E2/E3 : filtrage du registre")
 
 
-def check_eligibility(spec: MethodSpec, case: Case, inputs: ForecastInputs) -> tuple[bool, str | None]:
+def check_eligibility(
+    spec: MethodSpec, case: Case, inputs: ForecastInputs
+) -> tuple[bool, str | None]:
     """Dire si la méthode peut servir ce cas et pourquoi sinon.
 
-    Contrôles : scénario, ``fit_cutoff < origin``, historique minimal mesuré disponible,
+    Contrôles : scénario, fit_cutoff < origin, historique minimal mesuré disponible,
     dépendances installées, site réservé absent des sites donneurs (E3).
     """
     raise NotImplementedError("E2/E3 avec E5 : conditions d'utilisation")
@@ -81,7 +83,7 @@ def select_method(
 ) -> tuple[MethodSpec, str | None]:
     """Choisir la méthode effective et, si besoin, descendre la chaîne de replis.
 
-    Retourne la fiche retenue et la raison du repli (``None`` si méthode préférée).
+    Retourne la fiche retenue et la raison du repli (None si méthode préférée).
     Le repli est toujours déclaré ; aucun cas ne disparaît silencieusement.
     """
     raise NotImplementedError("E2/E3 avec E5 : règle de routage validée par E4")
