@@ -64,6 +64,16 @@
     - MAE de chaque compteur, sur les heures `is_scoreable` (vraies mesures), avec **le même masque** pour toutes les méthodes ;
     - puis **moyenne non pondérée entre compteurs** (MAE macro) ;
     - un compteur sans heure évaluable reçoit `null`, jamais 0.
+  - **Calcul du score** : par E4, avec `evaluate_all(cases, forecasts, observations)` de `src/eval/Metric.py` (branche `Team4`, commit `7a5c3e0`). Les règles ci-dessus y sont déjà, vérifié à la lecture du code :
+    - une heure n'est évaluable que si la prévision est valide (`ok` ou `fallback`, finie, ≥ 0), et l'heure observée et `is_scoreable` ;
+    - `filter_common_complete_cases` garde les cas complets pour toutes les méthodes, puis les heures évaluables pour toutes ;
+    - MAE par compteur, puis moyenne non pondérée (`global_comparable`).
+
+    Comment on l'appelle :
+    - `cases` = les 6 014 cas attendus, et non les seuls cas présents dans les prévisions (`evaluation_cases_from_cases` ou `evaluate_all`) ;
+    - `forecasts` = les `.pred.csv` des méthodes, concaténés ;
+    - `observations` = `counts.csv` de `hist-20261117`. La vérité lue est `count`, identique à `count_raw` sur toutes les heures scorables (vérifié le 2026-11-24 ; les 17 965 heures où elles diffèrent sont des `long_zero_run` remplies par E1, toutes non scorables).
+  - **Modèles bruts contre système** : E4 compte une heure `fallback` comme une prévision valide. Son calcul donne donc l'évaluation **système**. Pour les **modèles bruts**, on lui passe une copie des mêmes prévisions où les heures `fallback` sont marquées non servies (`prediction_status = unavailable`, `y_pred` vide). Rien d'autre ne change.
   - **Indicateurs secondaires**, sur la même population :
     - couverture 24 h (cas complets / 6 014) ;
     - taux de repli et causes (`mlp_*`, `hgb_*`) ;
@@ -135,5 +145,5 @@
 1. Accord de l'équipe sur la règle de choix : le seuil de 5 % et la règle des graines.
 2. Réglages du HGB : `categorical`, `refit_on_holdout`, et la loss, à confirmer avec E4.
 3. Entraîner les graines 1 et 2 du MLP (environ 1 min 30 chacune).
-4. E4 : son code de score sait-il faire l'intersection commune entre plusieurs méthodes et appliquer le même masque ? Sinon, qui la calcule ?
+4. E4 : `Metric.py` sait faire l'intersection commune et le même masque (voir « Calcul du score »). Reste à obtenir d'E4 : (a) la confirmation que c'est leur version de référence, et son arrivée sur `dev` ; (b) le biais dans la moyenne globale (aujourd'hui calculé par compteur seulement) ; (c) leur accord sur la version « brute » des prévisions.
 5. Faut-il réapprendre au 01/08 pour la seconde moitié de la validation (exemple du PROTOCOLE §3) ? Proposition : non, pour garder une seule version par méthode, à noter comme limite.
