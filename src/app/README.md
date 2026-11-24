@@ -5,16 +5,17 @@ Pour les lancements suivants, utiliser `./run.sh app`. Sous Windows, après avoi
 `livraison/hist-20261117.zip` à la racine, utiliser
 `uv run --locked python -m streamlit run src/app/streamlit_app.py`.
 
-1. Choisir **Sites connus**, **Nouveaux sites** ou **Tout le réseau**. Le menu **Compteur et sens**
-   permet aussi de sélectionner les compteurs sans coordonnées et de distinguer les sens
-   superposés sur la carte.
+1. Choisir un point sur la carte ou utiliser **Compteur et sens**. **Tout le réseau** est affiché
+   au départ. Les filtres **Sites connus** et **Nouveaux sites** réduisent la liste. Le menu permet
+   aussi de sélectionner les compteurs sans coordonnées et de distinguer les sens superposés.
 2. Choisir la date et la méthode. Pour un nouveau site, choisir aussi le budget d’historique
    local. Le passé publié et les dates de la fenêtre cible sont disponibles avant le calcul.
    **Télécharger cases.csv** fournit une ligne avec le compteur, la date, le scénario, le
    protocole et, pour E3, le budget et les bornes d’historique.
    **Calculer la prévision** transmet ce même cas au moteur et affiche son graphique et les
    24 lignes horaires.
-   Pour consulter une archive Chronos-2, choisir explicitement l’archive et **Ouvrir la prévision**.
+   Pour consulter une archive Chronos-2, activer **Proposer les prévisions archivées**, choisir
+   l’archive et cliquer sur **Ouvrir la prévision**.
 3. Consulter les 24 horizons, les replis et les raisons d’indisponibilité. L’option
    **Comparer les deux références** calcule les deux références E2 pour la même date et affiche
    leur couverture, leurs replis et leur durée de calcul. Les onglets donnent

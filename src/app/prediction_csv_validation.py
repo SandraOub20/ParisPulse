@@ -8,7 +8,6 @@ from src.app.prediction_validation import (
     verifier_predictions_avec_statut,
 )
 
-
 COLONNES_ATTENDUES = [
     "case_id",
     "method_run_id",
@@ -61,7 +60,7 @@ def verifier_statut_ligne(ligne):
     raison = ligne["status_reason"].strip()
     methode = ligne["method_used"].strip()
 
-    if statut not in ("ok", "fallback", "unavailable"):
+    if statut not in ("ok", "fallback", "unavailable", "error"):
         raise ValueError(f"Statut inconnu : {statut}")
 
     if statut in ("ok", "fallback") and not valeur:
@@ -69,15 +68,15 @@ def verifier_statut_ligne(ligne):
             "Une prévision ok/fallback doit avoir une valeur."
         )
 
-    if statut == "unavailable":
+    if statut in ("unavailable", "error"):
         if valeur:
             raise ValueError(
-                "Une prévision unavailable doit être vide."
+                f"Une prévision {statut} doit être vide."
             )
 
         if not raison:
             raise ValueError(
-                "Une prévision unavailable doit avoir une raison."
+                f"Une prévision {statut} doit avoir une raison."
             )
 
     if statut == "fallback":
@@ -219,7 +218,7 @@ def verifier_fichier_predictions_csv(chemin_fichier):
             for ligne in lignes_tries
         ]
 
-        if "unavailable" in statuts:
+        if "unavailable" in statuts or "error" in statuts:
             statut_cas = "unavailable"
         elif "fallback" in statuts:
             statut_cas = "fallback"

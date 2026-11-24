@@ -25,6 +25,11 @@ TEAL = "#087f73"
 BLUE = "#245dbb"
 AMBER = "#a45609"
 SCENARIOS = ("Sites connus", "Nouveaux sites", "Tout le réseau")
+MAP_ROUTES = {
+    "known": ("E2 · Site connu", TEAL),
+    "new": ("E3 · Nouveau site réservé", BLUE),
+    "inventory": ("Inventaire", "#64748b"),
+}
 STATUS_LABELS = {
     "retained": "Retenu",
     "robustness": "Robustesse",
@@ -114,12 +119,13 @@ def render_map(counters: pd.DataFrame, map_key: str, selection_key: str) -> None
     groups = {}
     # Superposer les directions empêche de sélectionner un marqueur. Le menu garde chaque sens.
     for coords, rows in points.groupby(["latitude", "longitude"], sort=False):
-        row = rows.iloc[0]
+        eligible = rows.loc[rows["capability"].ne("inventory")]
+        row = (eligible if not eligible.empty else rows).iloc[0]
+        route, color = MAP_ROUTES[row["capability"]]
         label = service.optional_text(row["site_name"]) or str(row["counter_id"])
-        label = f"{label} · {row['counter_id']}"
+        label = f"{label} · {row['counter_id']} · {route}"
         tooltip = escape(label).replace("`", "&#96;").replace("$", "&#36;").replace("\\", "&#92;")
-        groups[label] = rows["counter_id"].tolist()
-        color = TEAL if rows["capability"].ne("inventory").any() else "#64748b"
+        groups[label] = (row["counter_id"], rows["counter_id"].tolist())
         folium.CircleMarker(
             coords,
             radius=5.5,
@@ -133,9 +139,11 @@ def render_map(counters: pd.DataFrame, map_key: str, selection_key: str) -> None
     def choose_from_map() -> None:
         event = st.session_state.get(map_key, {})
         tooltip = event.get("last_object_clicked_tooltip")
-        ids = groups.get(tooltip)
-        if ids and st.session_state.get(selection_key) not in ids:
-            st.session_state[selection_key] = ids[0]
+        selected = groups.get(tooltip)
+        if selected is not None:
+            preferred, ids = selected
+            if st.session_state.get(selection_key) not in ids:
+                st.session_state[selection_key] = preferred
 
     st_folium(
         view,
@@ -516,7 +524,6 @@ def configure_new(
 
     use_free_date = not by_id or st.toggle(
         "Choisir une date libre",
-        value=evaluation.empty,
         key=f"free-date-{widget_key}",
     )
     if not use_free_date:
@@ -669,7 +676,7 @@ def main() -> None:
     snapshots = {directory.name: directory for directory in directories}
     snapshot_id = st.sidebar.selectbox("Instantané des données", list(snapshots))
     snapshot = snapshots[snapshot_id]
-    scenario = st.sidebar.radio("Périmètre", SCENARIOS)
+    scenario = st.sidebar.radio("Périmètre", SCENARIOS, index=2)
     inventory_version = tuple(
         signature(snapshot / name) for name in ("counters.csv", "inventory_quality.csv")
     )
@@ -728,6 +735,7 @@ def main() -> None:
             st.subheader("Carte des compteurs")
             render_map(visible, f"map-{snapshot_id}-{scenario}", selection_key)
             st.caption("Cliquez sur un point, puis choisissez le sens dans le menu.")
+            st.caption("Turquoise · E2   |   Bleu · E3   |   Gris · inventaire")
     counts_version = signature(snapshot / "counts.csv")
     with settings:
         with st.container(border=True):
@@ -764,7 +772,16 @@ def main() -> None:
             elif counter["capability"] == "known":
                 case, method, archive = configure_known(counter, history, snapshot, widget_key, lag)
             else:
-                catalog = e3_archives(snapshot_id)
+                include_archives = st.toggle(
+                    "Proposer les prévisions archivées",
+                    key=f"include-archives-{widget_key}",
+                    help="Ajoute la lecture et la comparaison de résultats déjà calculés.",
+                )
+                catalog = (
+                    e3_archives(snapshot_id)
+                    if include_archives
+                    else service.archived_forecasts((), snapshot_id)
+                )
                 case, method, archive = configure_new(
                     counter, history, snapshot, catalog, widget_key, lag
                 )
@@ -785,9 +802,14 @@ def main() -> None:
                 opens_only = archive is not None and not method.startswith(
                     service.COMPARE_ARCHIVE_PREFIX
                 )
-                role_label = "site connu" if engine == "E2" else "nouveau site réservé"
-                mode = "archive" if opens_only else "calcul à la demande"
-                st.caption(f"Cas {case.protocol_id} · E4 → {engine} ({role_label}) · {mode}")
+                mode = (
+                    "lecture d’une archive"
+                    if opens_only
+                    else "calcul et comparaison à une archive"
+                    if archive is not None
+                    else "calcul à la demande"
+                )
+                st.caption(f"Cas {case.protocol_id} · E4 → {engine} · {mode}")
                 st.download_button(
                     "Télécharger cases.csv",
                     case_csv(case),
