@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from time import perf_counter
@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from src.app import v1_service
+from src.eval.cases import E3_ROLES, forecasting_team, interactive_case
 from src.models.known.baseline import weekly_reference
 from src.models.known.predict import predict_24h
 from src.models.new import predict as new_predict
@@ -142,33 +143,45 @@ def optional_text(value: object) -> str:
     return "" if pd.isna(value) else str(value)
 
 
+def counter_role(counter: pd.Series) -> str | None:
+    """Identifier le rôle du compteur à partir de l'inventaire E1."""
+    status = optional_text(counter.get("selection_status"))
+    if status.startswith("excluded"):
+        return None
+    role_from_status = {
+        "retained": "S_train",
+        "robustness": "S_train",
+        "reserved_dev_new": "S_dev_new",
+        "reserved_test_new": "S_test_new",
+    }.get(status)
+    declared = optional_text(counter.get("site_role"))
+    if declared and role_from_status and declared != role_from_status:
+        return None
+    role = declared or role_from_status
+    return role if role == "S_train" or role in E3_ROLES else None
+
+
 def technical_case(counter: pd.Series, day: date, snapshot_id: str) -> Case:
-    origin = pd.Timestamp(day).tz_localize(LOCAL_TZ).tz_convert("UTC")
-    return Case(
-        case_id=f"tech-{snapshot_id}-{counter['counter_id']}-{origin:%Y%m%dT%H%MZ}",
-        counter_id=str(counter["counter_id"]),
-        site_group_id=optional_text(counter["site_group_id"]) or None,
-        origin=origin,
-        scenario="known_site",
-        protocol_id="technique-e5",
-        snapshot_id=snapshot_id,
-        temporal_split="technical",
-        spatial_role=optional_text(counter["site_role"]) or None,
+    return interactive_case(
+        str(counter["counter_id"]),
+        optional_text(counter.get("site_group_id")) or None,
+        counter_role(counter) or "",
+        day,
+        snapshot_id,
     )
 
 
 def technical_new_case(
     counter: pd.Series, day: date, snapshot_id: str, budget: int, lag: int
 ) -> Case:
-    known = technical_case(counter, day, snapshot_id)
-    support_end = known.origin - pd.Timedelta(hours=lag)
-    return replace(
-        known,
-        case_id=f"{known.case_id}-new-b{budget}",
-        scenario="new_site",
+    return interactive_case(
+        str(counter["counter_id"]),
+        optional_text(counter.get("site_group_id")) or None,
+        counter_role(counter) or "",
+        day,
+        snapshot_id,
         local_budget_hours=budget,
-        support_start=support_end - pd.Timedelta(hours=budget),
-        support_end=support_end,
+        publication_lag_hours=lag,
     )
 
 
@@ -185,8 +198,7 @@ def study_from_result(result: ForecastResult, source: str, lag: int) -> Study:
 def calculate_reference(
     case: Case, history: pd.DataFrame, variant: str, publication_lag_hours: int
 ) -> Study:
-    cutoff = case.origin - pd.Timedelta(hours=publication_lag_hours)
-    past = history.loc[history["interval_end"].le(cutoff)].copy()
+    past = published_history(case, history, publication_lag_hours).copy()
     past["count"] = past["count_raw"].where(past["is_observed"])
     result = predict_24h(case, past, variant=variant, publication_lag_hours=publication_lag_hours)
     return study_from_result(result, "Référence E2 calculée à la demande", publication_lag_hours)
@@ -194,21 +206,42 @@ def calculate_reference(
 
 def calculate_local_reference(case: Case, history: pd.DataFrame, lag: int) -> Study:
     """Appliquer la référence E2 avec exactement le support autorisé pour E3."""
-    if case.scenario != "new_site" or case.spatial_role not in {"S_dev_new", "S_test_new"}:
+    if forecasting_team(case) != "E3":
         raise ValueError("La référence locale est réservée aux sites E3.")
     started = perf_counter()
-    inputs, _, _ = new_predict.prepare_inputs(case, history, lag)
+    inputs, _, _ = new_predict.prepare_inputs(case, published_history(case, history, lag), lag)
     preparation = perf_counter() - started
     result = weekly_reference(inputs, LOCAL_REFERENCE, method_run_id="local-weekly-reference")
     result.cost.preparation_seconds = preparation
-    return study_from_result(result, "Référence locale calculée à la demande", lag)
+    return study_from_result(result, "Référence locale E3 calculée à la demande", lag)
 
 
 def calculate_chronos(case: Case, history: pd.DataFrame, lag: int) -> Study:
     result = new_predict.predict_24h(
-        case, history, publication_lag_hours=lag, method_run_id=f"{new_predict.METHOD_RUN_ID}-live"
+        case,
+        published_history(case, history, lag),
+        publication_lag_hours=lag,
+        method_run_id=f"{new_predict.METHOD_RUN_ID}-live",
     )
-    return study_from_result(result, "Chronos-2 gelé calculé à la demande", lag)
+    return study_from_result(result, "Chronos-2 E3 gelé calculé à la demande", lag)
+
+
+def published_history(case: Case, history: pd.DataFrame, lag: int) -> pd.DataFrame:
+    """Limiter les entrées transmises au moteur à la fenêtre autorisée du compteur."""
+    if lag < 0:
+        raise ValueError("Le délai de publication doit être positif ou nul.")
+    cutoff = case.origin - pd.Timedelta(hours=lag)
+    mask = history["counter_id"].eq(case.counter_id) & history["interval_end"].le(cutoff)
+    if case.scenario == "new_site":
+        if not case.local_budget_hours or case.local_budget_hours < 0:
+            raise ValueError("Le cas E3 doit préciser un budget local positif.")
+        earliest = cutoff - pd.Timedelta(hours=case.local_budget_hours)
+        start = case.support_start if case.support_start is not None else earliest
+        end = case.support_end if case.support_end is not None else cutoff
+        if not earliest <= start < end <= cutoff:
+            raise ValueError("Les bornes du support E3 dépassent le budget local autorisé.")
+        mask &= history["timestamp"].ge(start) & history["interval_end"].le(end)
+    return history.loc[mask]
 
 
 def open_archive(case: Case, catalog: pd.DataFrame, file: Path, method_run_id: str) -> Study:
@@ -233,6 +266,43 @@ def open_archive(case: Case, catalog: pd.DataFrame, file: Path, method_run_id: s
         if len(runs) > 1:
             raise ValueError(f"Exécutions archivées en double pour le cas {case.case_id}.")
     return Study(case, forecast, runs, f"{file.parent.name}/{file.name}", None)
+
+
+def run_studies(
+    case: Case,
+    method: str,
+    archive: Path | None,
+    history: pd.DataFrame,
+    catalog: pd.DataFrame | None,
+    lag: int,
+) -> tuple[Study, ...]:
+    """Exécuter le moteur désigné par le cas E4, ou ouvrir une archive explicite."""
+    if forecasting_team(case) == "E2":
+        variants = tuple(REFERENCE_LABELS) if method == COMPARE_REFERENCES else (method,)
+        if archive is not None or any(variant not in REFERENCE_LABELS for variant in variants):
+            raise ValueError("La méthode sélectionnée est incompatible avec un cas E2.")
+        return tuple(calculate_reference(case, history, variant, lag) for variant in variants)
+
+    if archive is not None:
+        if catalog is None:
+            raise ValueError("Le catalogue des prévisions archivées est indisponible.")
+        archived_id = method.removeprefix(COMPARE_ARCHIVE_PREFIX)
+        stored = open_archive(case, catalog, archive, archived_id)
+        if method == archived_id:
+            return (stored,)
+        reference = calculate_local_reference(case, history, lag)
+        verify_same_support(reference, stored)
+        return reference, stored
+    if method == LOCAL_REFERENCE:
+        return (calculate_local_reference(case, history, lag),)
+    if method == CHRONOS_LIVE:
+        return (calculate_chronos(case, history, lag),)
+    if method == COMPARE_CHRONOS:
+        reference = calculate_local_reference(case, history, lag)
+        chronos = calculate_chronos(case, history, lag)
+        verify_same_support(reference, chronos)
+        return reference, chronos
+    raise ValueError("La méthode sélectionnée est incompatible avec un cas E3.")
 
 
 def validate_forecast(rows: pd.DataFrame, case: Case) -> pd.DataFrame:

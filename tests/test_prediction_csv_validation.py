@@ -145,6 +145,25 @@ class TestPredictionCSVValidation(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.executer_validation(modifier)
 
+    def test_csv_error_conserve_dans_le_cas(self):
+        def modifier(lignes):
+            lignes[5].update(
+                prediction_status="error",
+                y_pred="",
+                status_reason="Historique local indisponible",
+            )
+
+        self.assertEqual(self.executer_validation(modifier), 1)
+
+    def test_csv_error_avec_valeur_ou_sans_raison(self):
+        for valeur, raison in (("25.0", "Erreur"), ("", "")):
+            with self.subTest(valeur=valeur, raison=raison):
+                def modifier(lignes):
+                    lignes[5].update(prediction_status="error", y_pred=valeur, status_reason=raison)
+
+                with self.assertRaises(ValueError):
+                    self.executer_validation(modifier)
+
     # TEST 10 : compteur incohérent
     def test_csv_compteur_incoherent(self):
         def modifier(lignes):
