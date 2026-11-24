@@ -8,13 +8,13 @@ from src.models.known.predict import (
     write_predictions,
     write_runs,
 )
-from src.models.new.predict import METHOD_RUN_ID, predict_24h
+from src.models.new.predict import predict_24h
 from src.models.schemas import Case
 
 snapshot_id = "hist-20261117"
 cases_path = Path("data/evaluation/proto-v1/cases.csv")
 cases = pd.read_csv(cases_path, dtype=str, keep_default_na=False)
-
+METHOD_RUN_ID = "e3-chronos-2-adapted-v1"
 # Tous les cas de validation des nouveaux sites réservés à E3, tous budgets confondus.
 selection = cases[
     (cases["scenario"] == "new_site")
