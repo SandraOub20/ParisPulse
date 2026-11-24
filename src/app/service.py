@@ -13,7 +13,7 @@ import pandas as pd
 from src.app import v1_service
 from src.eval.cases import E3_ROLES, forecasting_team, interactive_case
 from src.models.known.baseline import weekly_reference
-from src.models.known.predict import predict_24h
+from src.models.known.predict import MLP_VARIANT, SUPPORTED_VARIANTS, predict_24h
 from src.models.new import predict as new_predict
 from src.models.schemas import (
     CASE_RUNS_COLUMNS,
@@ -31,9 +31,14 @@ REFERENCE_LABELS = {
     "reference_profile": "Médiane des quatre semaines précédentes",
 }
 LOCAL_REFERENCE = "local_reference"
-CHRONOS_LIVE = "chronos_live"
+CHRONOS_LIVE = f"{new_predict.CHRONOS_MODEL_NAME}:frozen"
 COMPARE_REFERENCES = "compare_references"
-COMPARE_CHRONOS = "compare_chronos"
+COMPARE_MLP = "compare_mlp"
+E3_MODELS = {
+    new_predict.CHRONOS_MODEL_NAME: ("Chronos-2", "chronos"),
+    new_predict.GOOGLE_MODEL_NAME: ("TimesFM 2.5", "timesfm"),
+    new_predict.TEAM2_MODEL_NAME: ("MLP E2 transféré", "torch"),
+}
 COMPARE_ARCHIVE_PREFIX = "compare_archive:"
 CONTEXT_LABELS = {
     "is_holiday": "Jour férié",
@@ -52,6 +57,7 @@ class Study:
     runs: pd.DataFrame
     source: str
     publication_lag_hours: int | None
+    adaptation: dict | None = None
 
 
 def method_label(study: Study) -> str:
@@ -59,8 +65,13 @@ def method_label(study: Study) -> str:
     run_id = str(study.forecast["method_run_id"].iloc[0])
     if variant == LOCAL_REFERENCE:
         return "Référence locale"
-    if variant == "frozen" and "chronos" in run_id:
-        return "Chronos-2 gelé"
+    if variant == MLP_VARIANT:
+        return "MLP E2"
+    if variant in ("frozen", "adapted"):
+        tags = {"chronos": "Chronos-2", "timesfm": "TimesFM 2.5", "mlp": "MLP E2 transféré"}
+        for tag, label in tags.items():
+            if tag in run_id.lower():
+                return f"{label} {'adapté' if variant == 'adapted' else 'gelé'}"
     return REFERENCE_LABELS.get(variant, run_id)
 
 
@@ -192,16 +203,25 @@ def study_from_result(result: ForecastResult, source: str, lag: int) -> Study:
         pd.DataFrame([result.to_run_row()], columns=CASE_RUNS_COLUMNS),
         source,
         lag,
+        result.adaptation,
     )
 
 
-def calculate_reference(
-    case: Case, history: pd.DataFrame, variant: str, publication_lag_hours: int
+def calculate_known(
+    case: Case,
+    history: pd.DataFrame,
+    variant: str,
+    publication_lag_hours: int,
+    *,
+    context: pd.DataFrame | None = None,
 ) -> Study:
     past = published_history(case, history, publication_lag_hours).copy()
     past["count"] = past["count_raw"].where(past["is_observed"])
-    result = predict_24h(case, past, variant=variant, publication_lag_hours=publication_lag_hours)
-    return study_from_result(result, "Référence E2 calculée à la demande", publication_lag_hours)
+    result = predict_24h(
+        case, past, variant=variant, context=context, publication_lag_hours=publication_lag_hours
+    )
+    source = "MLP E2" if variant == MLP_VARIANT else "Référence E2"
+    return study_from_result(result, f"{source} · calcul à la demande", publication_lag_hours)
 
 
 def calculate_local_reference(case: Case, history: pd.DataFrame, lag: int) -> Study:
@@ -216,14 +236,30 @@ def calculate_local_reference(case: Case, history: pd.DataFrame, lag: int) -> St
     return study_from_result(result, "Référence locale E3 calculée à la demande", lag)
 
 
-def calculate_chronos(case: Case, history: pd.DataFrame, lag: int) -> Study:
+def calculate_e3_model(
+    case: Case,
+    history: pd.DataFrame,
+    lag: int,
+    model_name: str,
+    variant: str,
+    *,
+    context: pd.DataFrame | None = None,
+) -> Study:
     result = new_predict.predict_24h(
         case,
         published_history(case, history, lag),
+        variant=variant,
+        model_name=model_name,
         publication_lag_hours=lag,
-        method_run_id=f"{new_predict.METHOD_RUN_ID}-live",
+        context=context,
     )
-    return study_from_result(result, "Chronos-2 E3 gelé calculé à la demande", lag)
+    return study_from_result(result, "Modèle E3 calculé à la demande", lag)
+
+
+def uses_model_context(method: str) -> bool:
+    return method in (MLP_VARIANT, COMPARE_MLP) or method.startswith(
+        f"{new_predict.TEAM2_MODEL_NAME}:"
+    )
 
 
 def published_history(case: Case, history: pd.DataFrame, lag: int) -> pd.DataFrame:
@@ -275,13 +311,22 @@ def run_studies(
     history: pd.DataFrame,
     catalog: pd.DataFrame | None,
     lag: int,
+    *,
+    context: pd.DataFrame | None = None,
 ) -> tuple[Study, ...]:
     """Exécuter le moteur désigné par le cas E4, ou ouvrir une archive explicite."""
     if forecasting_team(case) == "E2":
-        variants = tuple(REFERENCE_LABELS) if method == COMPARE_REFERENCES else (method,)
-        if archive is not None or any(variant not in REFERENCE_LABELS for variant in variants):
+        if method == COMPARE_REFERENCES:
+            variants = tuple(REFERENCE_LABELS)
+        elif method == COMPARE_MLP:
+            variants = (MLP_VARIANT, *REFERENCE_LABELS)
+        else:
+            variants = (method,)
+        if archive is not None or any(variant not in SUPPORTED_VARIANTS for variant in variants):
             raise ValueError("La méthode sélectionnée est incompatible avec un cas E2.")
-        return tuple(calculate_reference(case, history, variant, lag) for variant in variants)
+        return tuple(
+            calculate_known(case, history, variant, lag, context=context) for variant in variants
+        )
 
     if archive is not None:
         if catalog is None:
@@ -295,14 +340,17 @@ def run_studies(
         return reference, stored
     if method == LOCAL_REFERENCE:
         return (calculate_local_reference(case, history, lag),)
-    if method == CHRONOS_LIVE:
-        return (calculate_chronos(case, history, lag),)
-    if method == COMPARE_CHRONOS:
-        reference = calculate_local_reference(case, history, lag)
-        chronos = calculate_chronos(case, history, lag)
-        verify_same_support(reference, chronos)
-        return reference, chronos
-    raise ValueError("La méthode sélectionnée est incompatible avec un cas E3.")
+    model, _, variant = method.partition(":")
+    if model not in E3_MODELS or variant not in (*new_predict.SUPPORTED_VARIANTS, "compare"):
+        raise ValueError("La méthode sélectionnée est incompatible avec un cas E3.")
+    if variant != "compare":
+        return (calculate_e3_model(case, history, lag, model, variant, context=context),)
+    frozen = calculate_e3_model(case, history, lag, model, "frozen", context=context)
+    adapted = calculate_e3_model(case, history, lag, model, "adapted", context=context)
+    reference = calculate_local_reference(case, history, lag)
+    verify_same_support(frozen, adapted)
+    verify_same_support(frozen, reference)
+    return frozen, adapted, reference
 
 
 def validate_forecast(rows: pd.DataFrame, case: Case) -> pd.DataFrame:

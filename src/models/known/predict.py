@@ -29,6 +29,7 @@ import pandas as pd
 
 from src.common.config import data_path, load_config
 from src.models.known import baseline
+from src.models.known.mlp_forecast import MLP_MODEL_RUN_ID, load_mlp_artifact, predict_trained_mlp
 from src.models.schemas import (
     CASE_RUNS_COLUMNS,
     FORECAST_COLUMNS,
@@ -42,11 +43,12 @@ from src.models.schemas import (
     target_timestamps,
 )
 
-# Variantes servies par predict_24h ; les modèles entraînés s'ajouteront ici.
 REFERENCE_VARIANTS: dict[str, Callable[..., ForecastResult]] = {
     "reference": baseline.weekly_reference,
     baseline.PROFILE_VARIANT: baseline.weekly_profile_reference,
 }
+MLP_VARIANT = "mlp"
+SUPPORTED_VARIANTS = (*REFERENCE_VARIANTS, MLP_VARIANT)
 VALUE_POLICIES = ("measured", "e1_filled")
 COUNT_COLUMNS = [
     "counter_id",
@@ -148,17 +150,24 @@ def predict_24h(
 
     - reference -> baseline.weekly_reference (weekly_naive) ;
     - reference_profile -> baseline.weekly_profile_reference (médiane sur 4 semaines) ;
-    - autre variante -> modèle entraîné (train.load_model), à venir : refus explicite.
+    - mlp -> modèle entraîné et repli hebdomadaire si le cas est refusé.
     Le temps de préparation (filtrage causal) est compté dans preparation_seconds.
     """
-    if variant not in REFERENCE_VARIANTS:
+    if variant not in SUPPORTED_VARIANTS:
         raise ValueError(
-            f"variante {variant!r} indisponible ; disponibles : {sorted(REFERENCE_VARIANTS)}"
+            f"variante {variant!r} indisponible ; disponibles : {sorted(SUPPORTED_VARIANTS)}"
         )
     started = time.perf_counter()
     inputs = build_inputs(case, history, context, publication_lag_hours)
-    preparation = time.perf_counter() - started
-    result = REFERENCE_VARIANTS[variant](inputs, variant, method_run_id=method_run_id)
+    if variant == MLP_VARIANT:
+        model = load_mlp_artifact(model_run_id or MLP_MODEL_RUN_ID)
+        preparation = time.perf_counter() - started
+        result = predict_trained_mlp(
+            inputs, model, variant, method_run_id or f"{model.model_run_id}-inference"
+        )
+    else:
+        preparation = time.perf_counter() - started
+        result = REFERENCE_VARIANTS[variant](inputs, variant, method_run_id=method_run_id)
     result.cost.preparation_seconds = preparation
     return result
 
@@ -171,6 +180,7 @@ def run_experiment(
     method_run_id: str,
     *,
     context: pd.DataFrame | None = None,
+    model_run_id: str | None = None,
     root: Path | None = None,
     publication_lag_hours: int | None = None,
 ) -> tuple[Path, Path]:
@@ -188,6 +198,7 @@ def run_experiment(
                 history_loader(case.counter_id),
                 variant,
                 context=context,
+                model_run_id=model_run_id,
                 method_run_id=method_run_id,
                 publication_lag_hours=publication_lag_hours,
             )
@@ -318,7 +329,7 @@ def select_cases(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Calculer une référence E2 sur un cases.csv et écrire .pred.csv / .runs.csv.
+    """Calculer une prévision E2 sur un cases.csv et écrire .pred.csv / .runs.csv.
 
     Exemple : python -m src.models.known.predict --cases data/evaluation/proto-v0/cases.csv
     --snapshot hist-20261117 --experiment E2-TECH-001 --variant reference
@@ -331,7 +342,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cases", required=True, type=Path)
     parser.add_argument("--snapshot", required=True)
     parser.add_argument("--experiment", required=True)
-    parser.add_argument("--variant", default="reference", choices=sorted(REFERENCE_VARIANTS))
+    parser.add_argument("--variant", default="reference", choices=sorted(SUPPORTED_VARIANTS))
+    parser.add_argument("--model-run-id")
+    parser.add_argument(
+        "--context", type=Path, help="défaut pour le MLP : context.csv de l’instantané"
+    )
     parser.add_argument("--method-run-id")
     parser.add_argument("--values", default="measured", choices=VALUE_POLICIES)
     parser.add_argument("--split", action="append", default=None, help="défaut : validation")
@@ -348,8 +363,21 @@ def main(argv: list[str] | None = None) -> int:
     method_run_id = args.method_run_id or f"e2-{args.variant}-{args.values}"
     started = time.perf_counter()
     loader = counts_history_loader(args.snapshot, values=args.values)
+    context = None
+    if args.variant == MLP_VARIANT:
+        path = args.context or data_path("processed") / args.snapshot / "context.csv"
+        if path.is_file():
+            context = pd.read_csv(path, dtype="string")
     loading = time.perf_counter() - started
-    pred, runs = run_experiment(selected, loader, args.variant, args.experiment, method_run_id)
+    pred, runs = run_experiment(
+        selected,
+        loader,
+        args.variant,
+        args.experiment,
+        method_run_id,
+        context=context,
+        model_run_id=args.model_run_id,
+    )
     selected.to_csv(pred.parent / f"{method_run_id}.cases_used.csv", index=False)
     report.update(
         {
