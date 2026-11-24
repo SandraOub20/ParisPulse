@@ -1,6 +1,8 @@
 """A COMPLETER : Initialisation, chargement et gestion de tous les modèles (E2, Chronos-2, Google etc.)"""
 
+from src.models.known import train
 
+TEAM2_MODEL_RUN_ID = "e2-mlp-ctx-20260701-s0-9ce9"
 class ModelManager:
 
     def __init__(self):
@@ -59,8 +61,7 @@ class ModelManager:
                 )
                 model = timesfm.TimesFm(hparams=hparams, checkpoint=checkpoint)
         elif model_name == "team2":
-            # TODO : initialisation du modèle E2
-            model = None
+            model = train.load_model(TEAM2_MODEL_RUN_ID) 
 
         else:
             raise ValueError(
