@@ -45,6 +45,13 @@ $env:PYTHONPATH = (Get-Location).Path
 py -m uv run --locked --group dl python .\src\models\new\validation.example.chronos.py
 ```
 
+Pour lancer la variante gelée Google TimesFM 2.5 :
+
+```
+$env:PYTHONPATH = (Get-Location).Path
+py -m uv run --locked --group dl python .\src\models\new\validation.example.google.py
+```
+
 Le script traite tous les cas de validation `S_dev_new` (budgets de 24, 72 et 168 heures)
 et écrit les prévisions ainsi que les résultats d'exécution dans
 `data/prediction_results/EXP-E3/`, avec le suffixe `validation-all`.
