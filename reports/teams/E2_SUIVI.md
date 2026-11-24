@@ -122,7 +122,7 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
 ### MOD-011 - 2026-11-24 - Branchement des variantes `mlp` et `hgb` dans `predict.py`, avec repli sur la référence
 
 - **Auteur** : Idir.
-- **Branche / commit** : `Team2-idir` / hash ajouté au commit suivant.
+- **Branche / commit** : `Team2-idir` / `d07d759`.
 - **Quoi** :
   - [predict.py](../../src/models/known/predict.py) :
     - `load_trained(model_run_id, variant)` charge une seule fois un modèle par `train.load_model`. La méthode est lue dans `metadata.json` avant tout import : un identifiant de MLP demandé en `hgb` est refusé sans charger torch.
