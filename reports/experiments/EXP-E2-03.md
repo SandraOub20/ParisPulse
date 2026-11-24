@@ -1,10 +1,10 @@
 # EXP-E2-03 - Quelle méthode pour les sites connus : MLP, HGB ou référence ?
 
-> **Statut : brouillon, à figer avant tout score.** Les points marqués « à valider » sont des propositions. Une fois la fiche figée, la date et le commit sont reportés ici, et plus rien n'est modifié avant la lecture des scores. Les résultats restent vides jusque-là.
+> **Statut : figée le 2026-11-24, validée par l'équipe E2** (Idir, Esther, Ania ; commit indiqué dans l'historique de cette fiche). Plus rien n'est modifié avant la lecture des scores. Les résultats restent vides jusqu'aux scores d'E4.
 
 - **Date, équipe, responsables et partenaires** :
   - Brouillon le 2026-11-24, E2 : Idir, Esther, Ania, Emmanuelle.
-  - Rôles proposés (à valider) : chaque modèle est porté par son auteur, Esther pour le MLP et Ania pour le HGB. Idir porte le calcul des prévisions (`predict.py`, MOD-011) et le contrôle des populations comparées.
+  - Rôles : chaque modèle est porté par son auteur, Esther pour le MLP et Ania pour le HGB. Idir porte le calcul des prévisions (`predict.py`, MOD-011) et le contrôle des populations comparées.
   - Partenaires : E4 calcule les scores (`scores.csv`, `errors.csv`) ; E5 reçoit le `model_run_id` retenu pour l'application.
 
 - **Question et hypothèse** :
@@ -30,7 +30,7 @@
     | `reference_profile` (`weekly_profile_median`) | sans objet | médiane de 4 semaines, même repli |
     | `mlp` | `e2-mlp-ctx-20260701-s0-9ce9` (graine 0) | `mlp_hyperparameters()` par défaut ; L1 pondérée par le niveau (D-19) ; arrêt anticipé sur 4 semaines, sans réapprentissage (D-20) ; seuil 84 h (D-18) |
     | `mlp`, graines 1 et 2 | `e2-mlp-ctx-20260701-s1-9318`, `e2-mlp-ctx-20260701-s2-6278` (appris le 2026-11-24, même code que MOD-008) | seulement pour mesurer la variabilité, jamais pour choisir |
-    | `hgb` | `e2-hgb-ctx-20260701-s0-b357` | `hgb_hyperparameters()` par défaut ; `loss="absolute_error"` ; `refit_on_holdout=False` ; `categorical=False` (**à valider**, E2-TECH-004) |
+    | `hgb` | `e2-hgb-ctx-20260701-s0-b357` | `hgb_hyperparameters()` par défaut ; `loss="absolute_error"` (optimise directement la MAE, proposée à E4) ; `refit_on_holdout=False` (comme D-20 pour le MLP) ; `categorical=False` ; **`max_iter=2000`** pour tous les HGB : l'arrêt anticipé choisit seul le nombre d'arbres. Avec contexte, le modèle réappris à 2 000 (`8b7a`) garde 342 arbres et donne des prévisions identiques à `b357` (0,0 vélo/h sur 15 cas), d'où `b357` conservé |
 
   - Communs à toutes les méthodes :
     - `fit_cutoff` au 2026-06-30T22:00Z, apprentissage depuis le début des données (D-17) ;
@@ -92,8 +92,12 @@
     - gain sur la meilleure référence ;
     - nombre de compteurs où la méthode bat la meilleure référence ;
     - coût : apprentissage, inférence par cas, mémoire et matériel.
-  - **Règle de choix pour l'application**, figée maintenant (**à valider**) :
-    1. Un modèle n'est retenu que si sa MAE macro « système » est **inférieure d'au moins 5 %** à celle de la meilleure référence, sur les mêmes cas. Sinon, l'application garde la meilleure référence.
+  - **Règle de choix pour l'application**, figée :
+    1. Un modèle n'est retenu que si, sur les mêmes cas, **les deux conditions** sont vraies :
+       - sa MAE macro « système » est **inférieure d'au moins 5 %** à celle de la meilleure référence, soit environ 1 vélo/h, bien au-delà de la variabilité entre graines (environ 1,7 % sur juin) ;
+       - il fait mieux que la meilleure référence sur **plus de la moitié des compteurs**, pour ne pas gagner seulement grâce à quelques gros compteurs.
+
+       Sinon, l'application garde la meilleure référence.
     2. Entre MLP et HGB, l'écart doit dépasser **l'étendue entre les 3 graines du MLP**. Sinon, l'écart n'est pas jugé significatif, et on retient le plus simple et le mieux couvert : le HGB, qui n'a pas besoin de torch.
     3. La graine retenue pour le MLP est la graine 0, déclarée à l'avance.
   - Ces règles sont appliquées telles quelles. Les seuils ne seront pas ajustés après avoir vu les scores.
@@ -150,10 +154,10 @@
   - E4 : accord sur la population, le masque et l'intersection, puis scores.
   - E5 : `model_run_id` servi par l'application, selon la règle de choix.
 
-## Points à trancher avant le gel
+## Décisions du gel (2026-11-24, validées par l'équipe)
 
-1. Accord de l'équipe sur la règle de choix : le seuil de 5 % et la règle des graines.
-2. Réglages du HGB : `categorical`, `refit_on_holdout`, et la loss, à confirmer avec E4.
-3. ~~Entraîner les graines 1 et 2 du MLP~~ : fait le 2026-11-24 (`s1-9318`, `s2-6278`), voir le contrôle de reproductibilité.
-4. E4 : `Metric.py` sait faire l'intersection commune et le même masque (voir « Calcul du score »). Reste à obtenir d'E4 : (a) la confirmation que c'est leur version de référence, et son arrivée sur `dev` ; (b) le biais dans la moyenne globale (aujourd'hui calculé par compteur seulement) ; (c) leur accord sur la version « brute » des prévisions.
-5. Faut-il réapprendre au 01/08 pour la seconde moitié de la validation (exemple du PROTOCOLE §3) ? Proposition : non, pour garder une seule version par méthode, à noter comme limite.
+1. Règle de choix : 5 % de mieux que la meilleure référence **et** meilleur sur plus de la moitié des compteurs ; entre MLP et HGB, écart plus grand que l'étendue entre les 3 graines, sinon le HGB ; MLP en graine 0.
+2. HGB : `loss="absolute_error"`, `categorical=False`, `refit_on_holdout=False`, `max_iter=2000` (`b357` conservé, prévisions identiques à la version à 2 000). La loss est présentée à E4 comme proposition, sans changer cette fiche.
+3. Graines 1 et 2 du MLP : apprises (`s1-9318`, `s2-6278`), voir le contrôle de reproductibilité.
+4. Score : par E4 avec `evaluate_all` de `Metric.py`, sur les 6 014 cas, avec la version « brute » des prévisions pour les modèles seuls. Questions ouvertes à E4 (version de référence, biais global) : elles ne changent pas la règle.
+5. Pas de réapprentissage au 01/08 : une seule version par méthode, figée au 01/07, notée dans les limites.
