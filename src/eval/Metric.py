@@ -778,3 +778,85 @@ def evaluation_cases_from_cases(cases_csv, forecasts_csv, observations_csv):
     return evaluate_all(
         cases, forecasts, observations
     )
+
+
+def selection_cases_from_context(cases, context, context_searched):
+    """
+    Select the cases from the cases dataframe that match the context passed in parameter.
+    
+    Parameters
+    ----------
+    cases : str
+        csv containing all the cases
+    context : str
+        csv containing the context 
+    context_searched : str ("temp_prev_hot", "temp_prev_cold", "rain_prev", "wind_prev", "temp_obs_hot", "temp_obs_cold", "rain_obs", "wind_obs", "is_holiday", "is_school_holiday", "is_strike")
+        a context to evaluate the model on 
+    Returns
+    ----------
+    pandas.DataFrame
+        cases dataframe filtered by the context passed 
+    """
+
+    cases = pd.read_csv(cases)
+    context = pd.read_csv(context)
+
+    if context_searched not in ["is_holiday", "is_school_holiday", "temp_prev_hot", "temp_prev_cold",
+         "rain_prev", "wind_prev", "temp_obs_hot", "temp_obs_cold", "rain_obs", "wind_obs", "is_strike"]:
+        raise ValueError(f"Unknown context: {context_searched}")
+
+
+    #for is_holiday, is_school_holiday, is_strike, 
+    #filter the context dataframe to keep only the cases where the value is true
+    if context_searched in ["is_holiday", "is_school_holiday", "is_strike"]:
+        selected = context[
+            context["variable"] == context_searched
+        ].copy()
+        selected = selected[selected["value"] == "true"].copy()
+        
+        cases["origin"] = cases["origin"].apply(lambda x: x.split("T")[0])
+        selected_cases = cases[
+            cases["origin"].isin(selected["local_date"])
+        ].copy()
+
+    #for temp_prev, rain_prev, wind_prev, temp_obs, rain_obs, wind_obs, 
+    #select a threshold then filter the context dataframe to keep only the cases that match the threshold
+
+    if context_searched in ["temp_prev_hot", "temp_prev_cold", "rain_prev", "wind_prev", "temp_obs_hot", "temp_obs_cold", "rain_obs", "wind_obs"]:
+        threshold = {"rain_prev" : 2, 
+                "wind_prev" : 5, 
+                "temp_prev_hot" : 28, 
+                "temp_prev_cold" : 5, 
+                "rain_obs" : 2, 
+                "wind_obs" : 5, 
+                "temp_obs_hot" : 28, 
+                "temp_obs_cold" : 5, }
+
+
+        if context_searched in ["temp_prev_cold", "temp_obs_cold"]:
+            threshold=threshold[context_searched]
+            context_searched = context_searched.replace("_cold", "")
+            selected = context[
+                context["variable"] == context_searched
+            ].copy()
+            selected = selected[selected["value"].astype(float) <= threshold].copy()
+        elif context_searched in ["temp_prev_hot", "temp_obs_hot"]:
+            threshold=threshold[context_searched]
+            context_searched = context_searched.replace("_hot", "")
+            selected = context[
+                context["variable"] == context_searched
+            ].copy()
+            selected = selected[selected["value"].astype(float) >= threshold].copy()
+        else :
+            selected = context[
+                context["variable"] == context_searched
+            ].copy()
+            selected = selected[selected["value"].astype(float) >= threshold[context_searched]].copy()
+        
+        cases["origin"] = cases["origin"].apply(lambda x: x.split("T")[0])
+        selected["valid_time"] = selected["valid_time"].apply(lambda x: x.split("T")[0])
+        selected_cases = cases[
+            cases["origin"].isin(selected["valid_time"])
+        ].copy()
+
+    return selected_cases
