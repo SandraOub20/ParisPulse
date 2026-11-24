@@ -99,7 +99,7 @@ def predict_24h(
         )
 
     started = time.perf_counter()
-    inputs, context_df, forecast_offset = _prepare_inputs(case, history, publication_lag_hours)
+    inputs, context_df, forecast_offset = prepare_inputs(case, history, publication_lag_hours)
     preparation_seconds = time.perf_counter() - started
 
     forecast_length = forecast_offset + HORIZON_HOURS
@@ -162,11 +162,12 @@ def save_forecasts(
     )
 
 
-def _prepare_inputs(
+def prepare_inputs(
     case: Case,
     history: pd.DataFrame,
     publication_lag_hours: int | None,
 ) -> tuple[ForecastInputs, pd.DataFrame, int]:
+    """Construire le support causal partagé avec la référence locale."""
     lag = default_publication_lag() if publication_lag_hours is None else publication_lag_hours
     if lag < 0:
         raise ValueError("publication_lag_hours ne peut pas être négatif.")
