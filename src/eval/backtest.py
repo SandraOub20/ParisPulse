@@ -9,8 +9,9 @@ Entrées et sorties : voir doc/CONTRATS.md et doc/templates/.
 2. Enregistrer erreurs, scores et couverture sous data/evaluation/<protocol_id>/<experiment_id>/.
 3. Mesurer les coûts et une perturbation des entrées ou la couverture effective d’intervalles.
 4. Transmettre un diagnostic, vérifier la correction et garder le test final pour la version figée.
- 
+
 """
+
 from pathlib import Path
 
 import numpy as np
@@ -118,9 +119,7 @@ def _check_forecast_file(forecast):
     missing = set(required_columns) - set(forecast.columns)
 
     if missing:
-        raise ValueError(
-            f"Colonnes manquantes dans le fichier de prévisions : {sorted(missing)}"
-        )
+        raise ValueError(f"Colonnes manquantes dans le fichier de prévisions : {sorted(missing)}")
 
     if forecast.empty:
         raise ValueError("Le fichier de prévisions est vide.")
@@ -143,9 +142,7 @@ def _prepare_observations(cases, observations):
 
     counter_ids = cases["counter_id"].astype(str).unique()
 
-    obs = observations[
-        observations["counter_id"].astype(str).isin(counter_ids)
-    ].copy()
+    obs = observations[observations["counter_id"].astype(str).isin(counter_ids)].copy()
 
     return obs
 
@@ -162,9 +159,7 @@ def _get_case_groups(cases, forecast):
 
     case_info = cases[info_cols].drop_duplicates()
 
-    groups = forecast[
-        ["case_id", "method_run_id", "variant"]
-    ].drop_duplicates()
+    groups = forecast[["case_id", "method_run_id", "variant"]].drop_duplicates()
 
     groups = groups.merge(
         case_info,
@@ -213,10 +208,7 @@ def make_error(cases, forecast, observations, path):
     _check_forecast_file(forecast)
 
     # cases appearing in the forecast given
-    c_fc = cases.loc[
-        cases["case_id"].isin(forecast["case_id"]),
-        :
-    ].copy()
+    c_fc = cases.loc[cases["case_id"].isin(forecast["case_id"]), :].copy()
 
     # observations appearing in the forecast given
     obs_fc = _prepare_observations(c_fc, observations)
@@ -283,17 +275,11 @@ def make_error(cases, forecast, observations, path):
 
     valid = error["is_evaluable"].fillna(False).astype(bool)
 
-    error.loc[valid, "signed_error"] = (
-        error.loc[valid, "y_pred"] - error.loc[valid, "y_true"]
-    )
+    error.loc[valid, "signed_error"] = error.loc[valid, "y_pred"] - error.loc[valid, "y_true"]
 
-    error.loc[valid, "absolute_error"] = (
-        error.loc[valid, "signed_error"].abs()
-    )
+    error.loc[valid, "absolute_error"] = error.loc[valid, "signed_error"].abs()
 
-    error.loc[valid, "squared_error"] = (
-        error.loc[valid, "signed_error"] ** 2
-    )
+    error.loc[valid, "squared_error"] = error.loc[valid, "signed_error"] ** 2
 
     # Ajouter les identifiants du protocole et du snapshot
     error["protocol_id"] = PROTOCOLE_ID
@@ -344,7 +330,6 @@ def make_scores(cases, forecast, observations, exp_id, path):
     ]
 
     for keys, group in groups.groupby(group_columns, dropna=False):
-
         scenario, temp_split, method, variant, local_budget = keys
 
         # cases expected for the scenario, temporal split and budget
@@ -384,9 +369,7 @@ def make_scores(cases, forecast, observations, exp_id, path):
         evaluation = mt._build_evaluation(c, p, o)
 
         # general metrics
-        valid = evaluation[
-            evaluation["is_evaluable"].fillna(False).astype(bool)
-        ]
+        valid = evaluation[evaluation["is_evaluable"].fillna(False).astype(bool)]
 
         # MAE macro et métriques par compteur (incluant le biais)
         metrics_counter = mt.calculate_by_counter(evaluation)
@@ -426,22 +409,22 @@ def make_scores(cases, forecast, observations, exp_id, path):
         cov_24 = complete_c / exp_c if exp_c > 0 else np.nan
 
         # compared cases
-        comp_c = int(
-            valid["case_id"].nunique()
-        )
+        comp_c = int(valid["case_id"].nunique())
 
         # evaluated counters
-        eval_counters = int(
-            valid["counter_id"].nunique()
-        )
+        eval_counters = int(valid["counter_id"].nunique())
 
         # fallbacks
-        n_fallbacks = int(
-            coverage.loc[
-                coverage["n_fallback_hours"] > 0,
-                "case_id",
-            ].nunique()
-        ) if "n_fallback_hours" in coverage.columns else 0
+        n_fallbacks = (
+            int(
+                coverage.loc[
+                    coverage["n_fallback_hours"] > 0,
+                    "case_id",
+                ].nunique()
+            )
+            if "n_fallback_hours" in coverage.columns
+            else 0
+        )
 
         # assemble df
         score_results.append(
@@ -475,9 +458,7 @@ def make_scores(cases, forecast, observations, exp_id, path):
     )
 
     counter_df = (
-        pd.concat(counter_results, ignore_index=True)
-        if counter_results
-        else pd.DataFrame()
+        pd.concat(counter_results, ignore_index=True) if counter_results else pd.DataFrame()
     )
 
     # make csv
@@ -524,7 +505,9 @@ def make_common_scores(cases, forecasts_list, observations, exp_id):
         budget_tag = f"_b{int(local_budget)}" if pd.notna(local_budget) else ""
         comp_popID = f"{scenario}{budget_tag}_{time['start']}-{time['end']}_common_complete"
 
-        for (method, variant), grp in comparable.groupby(["method_run_id", "variant"], dropna=False):
+        for (method, variant), grp in comparable.groupby(
+            ["method_run_id", "variant"], dropna=False
+        ):
             by_cnt = mt.calculate_by_counter(grp)
             metrics = mt.calculate_metrics(grp["count"], grp["y_pred"])
             comp_c = int(grp["case_id"].nunique())
@@ -582,17 +565,21 @@ def make_coverage(cases, forecast, observations, path):
         "temporal_split",
         "method_run_id",
         "variant",
+        "local_budget_hours",
     ]
 
     for keys, group in groups.groupby(group_columns, dropna=False):
+        scenario, temp_split, method, variant, local_budget = keys
 
-        scenario, temp_split, method, variant = keys
-
-        # cases expected for the scenario and temporal split
-        c_expected = cases[
-            (cases["scenario"] == scenario)
-            & (cases["temporal_split"] == temp_split)
-        ].copy()
+        # cases expected for the scenario, temporal split and budget
+        mask = (cases["scenario"] == scenario) & (cases["temporal_split"] == temp_split)
+        if "local_budget_hours" in cases.columns:
+            mask = mask & (
+                cases["local_budget_hours"].isna()
+                if pd.isna(local_budget)
+                else (cases["local_budget_hours"] == local_budget)
+            )
+        c_expected = cases[mask].copy()
 
         # Prévisions correspondant au groupe
         case_ids = group["case_id"].unique()
@@ -668,7 +655,6 @@ def make_coverage(cases, forecast, observations, path):
 ##############################################################################################################################
 
 if __name__ == "__main__":
-
     # CHARGEMENT DES DONNEES
     cases_path = EVAL / PROTOCOLE_ID / "cases.csv"
     counts_path = DATA / SNAPSHOT_ID / "counts.csv"
@@ -685,7 +671,6 @@ if __name__ == "__main__":
 
     # EXECUTION DES EVALUATIONS
     for e in EXP_ID:
-
         folder = PRED
         out = EVAL / PROTOCOLE_ID
 
@@ -696,8 +681,7 @@ if __name__ == "__main__":
         out.mkdir(parents=True, exist_ok=True)
 
         prediction_files = sorted(
-            f for f in Path(folder).glob("*.pred.csv")
-            if not f.name.endswith("-one-case.pred.csv")
+            f for f in Path(folder).glob("*.pred.csv") if not f.name.endswith("-one-case.pred.csv")
         )
 
         if not prediction_files:
@@ -711,7 +695,6 @@ if __name__ == "__main__":
         all_counters = []
 
         for f in prediction_files:
-
             f_df = pd.read_csv(
                 f,
                 dtype={
