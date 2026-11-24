@@ -17,13 +17,20 @@ from src.app.dashboard.coverage import hourly_window, show_coverage
 from src.app.dashboard.forecast_case import model_forecast_plot
 from src.app.export import study_zip
 from src.common.config import data_path
-from src.models.known.predict import default_publication_lag
+from src.eval.cases import E3_ROLES, case_csv, forecasting_team
+from src.models.known.mlp_forecast import MLP_MODEL_RUN_ID
+from src.models.known.predict import MLP_VARIANT, default_publication_lag
 from src.models.schemas import HORIZON_HOURS, Case
 
 TEAL = "#087f73"
 BLUE = "#245dbb"
 AMBER = "#a45609"
 SCENARIOS = ("Sites connus", "Nouveaux sites", "Tout le réseau")
+MAP_ROUTES = {
+    "known": ("E2 · Site connu", TEAL),
+    "new": ("E3 · Nouveau site réservé", BLUE),
+    "inventory": ("Inventaire", "#64748b"),
+}
 STATUS_LABELS = {
     "retained": "Retenu",
     "robustness": "Robustesse",
@@ -65,6 +72,17 @@ def archive_cached(versions: tuple, snapshot_id: str) -> pd.DataFrame:
     return service.archived_forecasts(tuple(item[0] for item in versions), snapshot_id)
 
 
+def e3_archives(snapshot_id: str) -> pd.DataFrame:
+    try:
+        versions = tuple(
+            signature(file) for file in sorted(data_path("predictions").glob("*/*.pred.csv"))
+        )
+        return archive_cached(versions, snapshot_id)
+    except (OSError, ValueError, KeyError) as error:
+        st.warning(f"Archives E3 indisponibles · {error}")
+        return service.archived_forecasts((), snapshot_id)
+
+
 @st.cache_data(show_spinner=False, max_entries=8)
 def cases_cached(version: tuple, snapshot_id: str) -> pd.DataFrame:
     path, _, _ = version
@@ -102,12 +120,13 @@ def render_map(counters: pd.DataFrame, map_key: str, selection_key: str) -> None
     groups = {}
     # Superposer les directions empêche de sélectionner un marqueur. Le menu garde chaque sens.
     for coords, rows in points.groupby(["latitude", "longitude"], sort=False):
-        row = rows.iloc[0]
+        eligible = rows.loc[rows["capability"].ne("inventory")]
+        row = (eligible if not eligible.empty else rows).iloc[0]
+        route, color = MAP_ROUTES[row["capability"]]
         label = service.optional_text(row["site_name"]) or str(row["counter_id"])
-        label = f"{label} · {row['counter_id']}"
+        label = f"{label} · {row['counter_id']} · {route}"
         tooltip = escape(label).replace("`", "&#96;").replace("$", "&#36;").replace("\\", "&#92;")
-        groups[label] = rows["counter_id"].tolist()
-        color = TEAL if rows["capability"].ne("inventory").any() else "#64748b"
+        groups[label] = (row["counter_id"], rows["counter_id"].tolist())
         folium.CircleMarker(
             coords,
             radius=5.5,
@@ -121,9 +140,11 @@ def render_map(counters: pd.DataFrame, map_key: str, selection_key: str) -> None
     def choose_from_map() -> None:
         event = st.session_state.get(map_key, {})
         tooltip = event.get("last_object_clicked_tooltip")
-        ids = groups.get(tooltip)
-        if ids and st.session_state.get(selection_key) not in ids:
-            st.session_state[selection_key] = ids[0]
+        selected = groups.get(tooltip)
+        if selected is not None:
+            preferred, ids = selected
+            if st.session_state.get(selection_key) not in ids:
+                st.session_state[selection_key] = preferred
 
     st_folium(
         view,
@@ -336,11 +357,11 @@ def show_study(studies: tuple[service.Study, ...], evaluations: tuple[dict, ...]
                 "Raison": forecast["status_reason"].replace(STATUS_REASONS).fillna(""),
             }
         )
-        if len(studies) > 1:
-            alternative = service.method_label(studies[1])
-            details[f"Vélos prévus · {alternative}"] = studies[1].forecast["y_pred"].round(1)
-            details[f"Statut · {alternative}"] = (
-                studies[1].forecast["prediction_status"].map(PREDICTION_LABELS)
+        for other in studies[1:]:
+            alternative = service.method_label(other)
+            details[f"Vélos prévus · {alternative}"] = other.forecast["y_pred"].round(1)
+            details[f"Statut · {alternative}"] = other.forecast["prediction_status"].map(
+                PREDICTION_LABELS
             )
         if evaluation is not None:
             details["Vélos mesurés"] = evaluation["observations"]["y_true"]
@@ -348,6 +369,19 @@ def show_study(studies: tuple[service.Study, ...], evaluations: tuple[dict, ...]
         st.dataframe(details, hide_index=True, height=310)
         for item in studies:
             st.caption(f"{item.source} · {service.method_label(item)} · {item.case.protocol_id}")
+            if item.adaptation:
+                bias = item.adaptation.get("bias_bikes_per_hour")
+                if bias is not None:
+                    pairs = item.adaptation["paired_hours"]
+                    st.caption(
+                        f"Ajustement local de {bias:+.1f} vélos/h sur {pairs} heures du passé."
+                    )
+                elif item.adaptation["reason"] == "adaptation_insufficient_local_pairs":
+                    st.caption(
+                        "Historique local trop court ou incomplet pour ajuster le biais. Repli gelé."
+                    )
+                else:
+                    st.caption("Le modèle gelé a refusé ce cas. Son repli est conservé.")
     alternatives = tuple(
         (item, evaluations[index] if evaluations is not None else None)
         for index, item in enumerate(studies[1:], start=1)
@@ -393,7 +427,30 @@ def show_comparison(
     elif not complete:
         st.caption("La comparaison des scores exige 24 prévisions pour chaque méthode.")
     else:
-        st.caption("Les deux scores utilisent les mêmes heures réellement mesurées.")
+        st.caption("Les scores utilisent les mêmes heures réellement mesurées.")
+
+
+def protocol_cases(snapshot_id: str, counter: pd.Series, scenario: str) -> pd.DataFrame:
+    tables = []
+    try:
+        paths = sorted(data_path("evaluation").glob("*/cases.csv"))
+    except KeyError as error:
+        st.warning(f"Cas E4 indisponibles · {error}")
+        return pd.DataFrame()
+    for path in paths:
+        try:
+            table = cases_cached(signature(path), snapshot_id)
+            if table.empty:
+                continue
+            rows = table.loc[
+                table["counter_id"].eq(counter["counter_id"]) & table["scenario"].eq(scenario)
+            ]
+            if not rows["spatial_role"].eq(service.counter_role(counter)).all():
+                raise ValueError("Le rôle spatial des cas E4 diffère de l’inventaire.")
+            tables.append(rows)
+        except (OSError, ValueError, KeyError) as error:
+            st.warning(f"Cas du protocole {path.parent.name} indisponibles · {error}")
+    return pd.concat(tables, ignore_index=True) if tables else pd.DataFrame()
 
 
 def configure_known(
@@ -426,13 +483,39 @@ def configure_known(
         **service.REFERENCE_LABELS,
         service.COMPARE_REFERENCES: "Comparer les deux références",
     }
+    if (
+        find_spec("torch") is not None
+        and (data_path("models") / MLP_MODEL_RUN_ID / "metadata.json").is_file()
+    ):
+        methods[MLP_VARIANT] = "MLP entraîné avec contexte"
+        methods[service.COMPARE_MLP] = "Comparer le MLP aux deux références"
+    else:
+        st.caption("Le MLP E2 nécessite PyTorch et les poids du modèle.")
     method = st.selectbox(
         "Méthode",
         list(methods),
         format_func=methods.__getitem__,
         key=f"method-{widget_key}",
     )
-    return service.technical_case(counter, day, snapshot.name), method, None
+    case = service.technical_case(counter, day, snapshot.name)
+    evaluation = protocol_cases(snapshot.name, counter, "known_site")
+    if evaluation.empty:
+        return case, method, None
+    origins = pd.to_datetime(evaluation["origin"], format="ISO8601", utc=True, errors="coerce")
+    matches = evaluation.loc[origins.eq(case.origin)]
+    if len(matches) > 1:
+        protocols = matches["protocol_id"].unique().tolist()
+        if len(protocols) != len(matches):
+            st.warning("Plusieurs cas E4 correspondent à cette date. Un cas technique est utilisé.")
+            return case, method, None
+        protocol = st.selectbox("Protocole E4", protocols, key=f"protocol-{widget_key}")
+        matches = matches.loc[matches["protocol_id"].eq(protocol)]
+    if not matches.empty:
+        try:
+            case = Case.from_row(matches.iloc[0])
+        except ValueError as error:
+            st.warning(f"Cas E4 indisponible. Un cas technique est utilisé · {error}")
+    return case, method, None
 
 
 def configure_new(
@@ -445,25 +528,27 @@ def configure_new(
 ) -> tuple:
     counter_id = counter["counter_id"]
     rows = catalog.loc[catalog["counter_id"].eq(counter_id)]
-    evaluations = []
+    evaluation = protocol_cases(snapshot.name, counter, "new_site")
     try:
-        for path in sorted(data_path("evaluation").glob("*/cases.csv")):
-            table = cases_cached(signature(path), snapshot.name)
-            if not table.empty:
-                evaluations.append(
-                    table.loc[table["counter_id"].eq(counter_id) & table["scenario"].eq("new_site")]
-                )
-        evaluation = pd.concat(evaluations, ignore_index=True) if evaluations else pd.DataFrame()
         if not evaluation.empty and evaluation["case_id"].duplicated().any():
             raise ValueError("Un identifiant de cas est présent dans plusieurs protocoles.")
+        by_id = {row["case_id"]: Case.from_row(row) for row in evaluation.to_dict("records")}
+    except (ValueError, KeyError, TypeError) as error:
+        st.warning(f"Cas du protocole E4 indisponibles · {error}")
+        evaluation = pd.DataFrame()
+        by_id = {}
+    try:
         archived = service.archived_cases(catalog, counter, evaluation)
-        by_id = {case.case_id: case for case in archived}
-        by_id.update({row["case_id"]: Case.from_row(row) for row in evaluation.to_dict("records")})
+        for case in archived:
+            by_id.setdefault(case.case_id, case)
     except (OSError, ValueError, KeyError, TypeError) as error:
-        st.warning(f"Lecture des cas impossible · {error}")
-        return None, None, None
+        st.warning(f"Cas des archives E3 indisponibles · {error}")
 
-    if by_id:
+    use_free_date = not by_id or st.toggle(
+        "Choisir une date libre",
+        key=f"free-date-{widget_key}",
+    )
+    if not use_free_date:
         budgets = sorted({case.local_budget_hours or 0 for case in by_id.values()})
         budget = st.selectbox(
             "Budget d’historique local",
@@ -486,7 +571,7 @@ def configure_new(
         )
         case = choices[case_id]
     else:
-        if service.optional_text(counter["site_role"]) not in {"S_dev_new", "S_test_new"}:
+        if service.counter_role(counter) not in E3_ROLES:
             st.info("Le rôle réservé à E3 de ce compteur doit être renseigné dans l’inventaire.")
             return None, None, None
         case = configure_new_date(counter, history, snapshot, widget_key, lag)
@@ -495,24 +580,45 @@ def configure_new(
 
     sources = rows.loc[rows["case_id"].eq(case.case_id), ["archive", "method_run_id", "variant"]]
     labels = {}
-    can_run = case.spatial_role in {"S_dev_new", "S_test_new"} and bool(case.local_budget_hours)
+    can_run = case.spatial_role in E3_ROLES and bool(case.local_budget_hours)
     if can_run:
-        labels[(None, service.LOCAL_REFERENCE)] = "Référence locale · calcul à la demande"
-        if find_spec("chronos") is not None and find_spec("torch") is not None:
-            labels[(None, service.CHRONOS_LIVE)] = "Chronos-2 gelé · calcul à la demande"
-            labels[(None, service.COMPARE_CHRONOS)] = "Comparer la référence locale et Chronos-2"
-    for row in sources.dropna().drop_duplicates().itertuples(index=False):
+        labels[(None, service.LOCAL_REFERENCE)] = "Référence locale E3 · calcul à la demande"
+        if find_spec("torch") is not None:
+            for model, (label, dependency) in service.E3_MODELS.items():
+                if find_spec(dependency) is None:
+                    continue
+                if (
+                    dependency == "torch"
+                    and not (data_path("models") / MLP_MODEL_RUN_ID / "metadata.json").is_file()
+                ):
+                    continue
+                labels[(None, f"{model}:frozen")] = f"{label} gelé · calcul à la demande"
+                labels[(None, f"{model}:adapted")] = f"{label} adapté · calcul à la demande"
+                labels[(None, f"{model}:compare")] = (
+                    f"Comparer {label} gelé, adapté et référence locale"
+                )
+        if len(labels) == 1:
+            st.caption("Les modèles E3 à la demande nécessitent le groupe `dl`.")
+    sources = sources.dropna().drop_duplicates()
+    repeated = set(sources.loc[sources["method_run_id"].duplicated(keep=False), "method_run_id"])
+    for row in sources.itertuples(index=False):
         title = (
             "Chronos-2 gelé"
             if row.variant == "frozen" and "chronos" in row.method_run_id
             else row.method_run_id
         )
-        labels[(row.archive, row.method_run_id)] = (
-            f"{title} · archive {Path(row.archive).parent.name}"
+        archive = Path(row.archive)
+        archive_label = (
+            archive.name.removesuffix(".pred.csv")
+            if row.method_run_id in repeated
+            else archive.parent.name
         )
+        labels[(row.archive, row.method_run_id)] = f"{title} · archive {archive_label}"
         if can_run:
             comparison = f"{service.COMPARE_ARCHIVE_PREFIX}{row.method_run_id}"
-            labels[(row.archive, comparison)] = f"Comparer la référence locale à {title} (archive)"
+            labels[(row.archive, comparison)] = (
+                f"Comparer la référence locale à {title} · archive {archive_label}"
+            )
     if not labels:
         st.info("Ce cas n’a pas de méthode disponible avec le budget renseigné.")
         return None, None, None
@@ -567,37 +673,6 @@ def configure_new_date(
     return service.technical_new_case(counter, day, snapshot.name, budget, lag)
 
 
-def run_studies(
-    case: Case,
-    method: str,
-    archive: Path | None,
-    history: pd.DataFrame,
-    catalog: pd.DataFrame,
-    lag: int,
-) -> tuple[service.Study, ...]:
-    if archive is not None:
-        archived_id = method.removeprefix(service.COMPARE_ARCHIVE_PREFIX)
-        stored = service.open_archive(case, catalog, archive, archived_id)
-        if method == archived_id:
-            return (stored,)
-        reference = service.calculate_local_reference(case, history, lag)
-        service.verify_same_support(reference, stored)
-        return reference, stored
-    if method == service.LOCAL_REFERENCE:
-        return (service.calculate_local_reference(case, history, lag),)
-    if method == service.CHRONOS_LIVE:
-        return (service.calculate_chronos(case, history, lag),)
-    if method == service.COMPARE_CHRONOS:
-        reference = service.calculate_local_reference(case, history, lag)
-        chronos = service.calculate_chronos(case, history, lag)
-        service.verify_same_support(reference, chronos)
-        return reference, chronos
-    variants = (
-        tuple(service.REFERENCE_LABELS) if method == service.COMPARE_REFERENCES else (method,)
-    )
-    return tuple(service.calculate_reference(case, history, variant, lag) for variant in variants)
-
-
 def main() -> None:
     st.set_page_config(page_title="ParisPulse V2", page_icon="🚲", layout="wide")
     st.html("""
@@ -642,7 +717,7 @@ def main() -> None:
     snapshots = {directory.name: directory for directory in directories}
     snapshot_id = st.sidebar.selectbox("Instantané des données", list(snapshots))
     snapshot = snapshots[snapshot_id]
-    scenario = st.sidebar.radio("Périmètre", SCENARIOS)
+    scenario = st.sidebar.radio("Périmètre", SCENARIOS, index=2)
     inventory_version = tuple(
         signature(snapshot / name) for name in ("counters.csv", "inventory_quality.csv")
     )
@@ -652,26 +727,14 @@ def main() -> None:
         st.error(f"Impossible de lire l’inventaire · {error}")
         return
 
-    archive_versions = tuple(
-        signature(file) for file in sorted(data_path("predictions").glob("*/*.pred.csv"))
-    )
-    try:
-        catalog = archive_cached(archive_versions, snapshot_id)
-    except (OSError, ValueError, KeyError) as error:
-        st.warning(f"Archives E3 indisponibles · {error}")
-        catalog = service.archived_forecasts((), snapshot_id)
-    known = inventory["site_role"].fillna("").isin(("", "S_train"))
-    known &= ~inventory["selection_status"].fillna("").str.startswith(("reserved", "excluded"))
-    new = (
-        inventory["site_role"].fillna("").isin(("S_dev_new", "S_test_new"))
-        | inventory["selection_status"].fillna("").str.startswith("reserved")
-        | inventory["counter_id"].isin(catalog["counter_id"])
-    )
+    inventory["site_role"] = inventory.apply(service.counter_role, axis=1)
+    known = inventory["site_role"].eq("S_train")
+    new = inventory["site_role"].isin(E3_ROLES)
     inventory["capability"] = "inventory"
-    inventory.loc[known & ~new, "capability"] = "known"
+    inventory.loc[known, "capability"] = "known"
     inventory.loc[new, "capability"] = "new"
     if scenario == SCENARIOS[0]:
-        visible = inventory.loc[known & ~new]
+        visible = inventory.loc[known]
     elif scenario == SCENARIOS[1]:
         visible = inventory.loc[new]
     else:
@@ -699,25 +762,21 @@ def main() -> None:
         cid: (f"{label} · {cid}" if label and duplicates[cid] else label or cid)
         for cid, label in sites.items()
     }
-    order = (
-        visible.assign(archived=visible["counter_id"].isin(catalog["counter_id"]))
-        .sort_values(
-            ["archived", "selection_status", "label"],
-            ascending=[scenario != SCENARIOS[1], False, True],
-            kind="stable",
-        )["counter_id"]
-        .tolist()
-    )
+    order = visible.sort_values(["selection_status", "label"], ascending=[False, True])[
+        "counter_id"
+    ].tolist()
     retained = visible.loc[visible["selection_status"].eq("retained"), "counter_id"].tolist()
+    development = visible.loc[visible["site_role"].eq("S_dev_new"), "counter_id"].tolist()
     selection_key = f"counter-{snapshot_id}-{scenario}"
     if st.session_state.get(selection_key) not in labels:
-        st.session_state[selection_key] = (retained or order)[0]
+        st.session_state[selection_key] = (retained or development or order)[0]
     map_column, settings = st.columns([1.55, 1], gap="large")
     with map_column:
         with st.container(border=True):
             st.subheader("Carte des compteurs")
             render_map(visible, f"map-{snapshot_id}-{scenario}", selection_key)
             st.caption("Cliquez sur un point, puis choisissez le sens dans le menu.")
+            st.caption("Turquoise · E2   |   Bleu · E3   |   Gris · inventaire")
     counts_version = signature(snapshot / "counts.csv")
     with settings:
         with st.container(border=True):
@@ -748,15 +807,27 @@ def main() -> None:
                 return
             widget_key = f"{snapshot_id}-{selected}"
             case = None
+            catalog = None
             if counter["capability"] == "inventory":
                 st.info(reason or "Ce compteur figure dans l’inventaire sans méthode disponible.")
             elif counter["capability"] == "known":
                 case, method, archive = configure_known(counter, history, snapshot, widget_key, lag)
             else:
+                include_archives = st.toggle(
+                    "Proposer les prévisions archivées",
+                    key=f"include-archives-{widget_key}",
+                    help="Ajoute la lecture et la comparaison de résultats déjà calculés.",
+                )
+                catalog = (
+                    e3_archives(snapshot_id)
+                    if include_archives
+                    else service.archived_forecasts((), snapshot_id)
+                )
                 case, method, archive = configure_new(
                     counter, history, snapshot, catalog, widget_key, lag
                 )
             if case is not None:
+                engine = forecasting_team(case)
                 archive_version = ()
                 if archive:
                     archive_version = (
@@ -765,12 +836,41 @@ def main() -> None:
                             archive.with_name(archive.name.removesuffix(".pred.csv") + ".runs.csv")
                         ),
                     )
-                run_key = (case, method, archive_version, counts_version, inventory_version, lag)
+                context_version = (
+                    signature(snapshot / "context.csv")
+                    if service.uses_model_context(method)
+                    else None
+                )
+                run_key = (
+                    case,
+                    method,
+                    archive_version,
+                    counts_version,
+                    inventory_version,
+                    lag,
+                    context_version,
+                )
                 if st.session_state.get("scope") != run_key:
                     st.session_state["scope"] = run_key
                     st.session_state.pop("forecast-result", None)
                 opens_only = archive is not None and not method.startswith(
                     service.COMPARE_ARCHIVE_PREFIX
+                )
+                mode = (
+                    "lecture d’une archive"
+                    if opens_only
+                    else "calcul et comparaison à une archive"
+                    if archive is not None
+                    else "calcul à la demande"
+                )
+                st.caption(f"Cas {case.protocol_id} · E4 → {engine} · {mode}")
+                st.download_button(
+                    "Télécharger cases.csv",
+                    case_csv(case),
+                    file_name="cases.csv",
+                    mime="text/csv",
+                    on_click="ignore",
+                    help=f"Une ligne pour le cas {case.case_id}.",
                 )
                 action = "Ouvrir la prévision" if opens_only else "Calculer la prévision"
                 if st.button(action, type="primary", width="stretch"):
@@ -780,7 +880,17 @@ def main() -> None:
                         with st.spinner(
                             "Lecture de l’archive…" if opens_only else "Calcul des 24 heures…"
                         ):
-                            studies = run_studies(case, method, archive, history, catalog, lag)
+                            studies = service.run_studies(
+                                case,
+                                method,
+                                archive,
+                                history,
+                                catalog,
+                                lag,
+                                context=context_cached(context_version)
+                                if context_version
+                                else None,
+                            )
                     except (OSError, ValueError, KeyError, RuntimeError) as error:
                         st.error(f"Prévision indisponible · {error}")
                     else:

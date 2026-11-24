@@ -10,6 +10,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 import pandas as pd
 
 from src.app.service import VALID_STATUSES, Study
+from src.eval.cases import case_csv, forecasting_team
 
 
 def study_summary(study: Study, evaluation: dict | None) -> dict:
@@ -23,6 +24,8 @@ def study_summary(study: Study, evaluation: dict | None) -> dict:
         "expected_hours": len(forecast),
         "status_counts": coverage,
     }
+    if study.adaptation is not None:
+        manifest["adaptation"] = study.adaptation
     if evaluation is not None:
         manifest["evaluation"] = {
             "scope": "Contrôle local sur ce cas",
@@ -48,6 +51,7 @@ def study_zip(
     manifest = {
         "application": "ParisPulse V2",
         "case": asdict(study.case),
+        "forecasting_team": forecasting_team(study.case),
         "targets_revealed": evaluation is not None,
         **study_summary(study, evaluation),
     }
@@ -64,6 +68,7 @@ def study_zip(
             "manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2, default=str)
         )
         archive.writestr("forecasts.csv", csv_text([item.forecast for item in studies]))
+        archive.writestr("cases.csv", case_csv(study.case))
         if runs:
             archive.writestr("case_runs.csv", csv_text(runs))
         if evaluation is not None:

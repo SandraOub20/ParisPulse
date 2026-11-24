@@ -18,4 +18,23 @@
 
 Mesurer MAE moyenne entre compteurs, couverture en cas complets et coût avec E4. Ne pas régler sur le test final. Conserver les expériences et journaux dans `reports/`.
 
-Ces fichiers sont des gabarits de travail ; les algorithmes restent à écrire.
+## Calculer les prévisions pour E4
+
+`predict_24h` accepte `reference`, `reference_profile` et `mlp`. La variante MLP utilise
+les poids livrés, les mesures déjà publiées et la version de contexte de l’entraînement.
+Les origines antérieures à sa coupure, les sites hors apprentissage et les contextes
+incompatibles donnent lieu à un repli hebdomadaire motivé.
+
+Après `./run.sh setup --group dl`, générer les trois sorties sur le même bloc E4 :
+
+```sh
+for variant in reference reference_profile mlp; do
+  uv run --locked --group dl python -m src.models.known.predict \
+    --cases data/evaluation/proto-v1/cases.csv --snapshot hist-20261117 \
+    --experiment E2-comparaison --variant "$variant"
+done
+```
+
+Les sorties `.pred.csv` et `.runs.csv` sont écrites dans
+`data/prediction_results/E2-comparaison/`. Le bloc proposé par défaut est la validation.
+E4 compare les méthodes, y compris les replis, sur les mêmes cas et les mêmes mesures.

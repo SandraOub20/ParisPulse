@@ -20,7 +20,7 @@ def model_forecast_plot(
     for index, study in enumerate(studies):
         forecast = study.forecast
         name = method_label(study)
-        color = "#087f73" if index == 0 else "#93610f"
+        color = ("#087f73", "#93610f", "#245dbb")[index % 3]
         figure.add_scatter(
             x=forecast["target_timestamp"],
             y=forecast["y_pred"],

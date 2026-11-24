@@ -40,7 +40,7 @@ Documents de référence : [sujet](../../ParisPulse_Sujet_etudiants.pdf), [archi
 
 ## 2. État d'avancement
 
-_Dernière mise à jour : 2026-11-24 - MOD-013._
+_Dernière mise à jour : 2026-11-24 - MOD-014._
 
 | Étape (README E2) | État | Renvoi |
 | --- | --- | --- |
@@ -88,9 +88,12 @@ src/models/
                     nombre d'arbres), predict_hgb / predict_frame / refusal_reason (codes hgb_*),
                     save_hgb/load_hgb, commande python -m src.models.known.tabular (MOD-010)
     predict.py      build_inputs, load_context, predict_24h (signature imposée ; variantes
-                    reference, reference_profile, mlp, hgb), load_trained (un chargement par
-                    modèle), trained_forecast (modèle ou repli tracé), run_experiment,
-                    write_predictions, write_runs, commande (MOD-011)
+                    reference, reference_profile, mlp, hgb ; modèles par défaut D-24),
+                    load_trained (un chargement par modèle), eligibility_reason,
+                    trained_forecast (modèle ou repli tracé, seule implémentation),
+                    run_experiment, write_predictions, write_runs, commande (MOD-011, MOD-014)
+    mlp_forecast.py points d'entrée MLP de l'application (E5) et d'E3 : load_mlp_artifact,
+                    infer_mlp, predict_trained_mlp (délègue à trained_forecast) (MOD-014)
 ```
 
 Flux prévu d'un cas :
@@ -125,6 +128,23 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
 - **Vérifications effectuées** : commandes lancées, résultats observés (ou "aucune").
 - **Points ouverts** : ce qui reste incertain ou à valider.
 ```
+
+### MOD-014 - 2026-11-24 - Réconciliation avec le branchement MLP d'E5 sur `dev` (une seule implémentation pour `mlp` et `hgb`)
+
+- **Auteur** : Idir, avec l'accord de Sandra (E5).
+- **Branche / commit** : `Team2-idir`, fusion de `origin/dev` (`fdc06c1`).
+- **Quoi** :
+  - Sur `dev`, E5 avait branché le MLP dans `predict.py` en parallèle de MOD-011, avec `src/models/known/mlp_forecast.py` (utilisé par l'application et par E3). Conflit résolu avec **une seule implémentation**, `predict.trained_forecast`, pour le MLP et le HGB.
+  - Repris d'E5 dans `trained_forecast` : contrôles avant prévision (`eligibility_reason`) étendus au HGB : instantané, origine avant la coupure, site connu absent de l'apprentissage, nouveau site non confirmé réservé, version du contexte. Codes `mlp_*` / `hgb_*` : `_snapshot_incompatible`, `_origin_before_fit_cutoff`, `_site_not_in_training`, `_site_not_confirmed_reserved`, `_context_missing`, `_context_incompatible`, `_inputs_incompatible`. `status_reason` contient exactement le code de refus, pour le cas et pour chaque horizon.
+  - Conservé pour l'application et E3, sans changement d'appel : `MLP_VARIANT`, `SUPPORTED_VARIANTS` (avec `hgb`), `mlp_forecast.MLP_MODEL_RUN_ID`, `load_mlp_artifact`, `infer_mlp`, `predict_trained_mlp`. Cette dernière délègue maintenant à `trained_forecast`.
+  - `model_run_id` n'est plus obligatoire : modèles par défaut `DEFAULT_MODEL_RUN_IDS` (D-24). Option `--context` de la commande reprise d'E5.
+- **Pourquoi** : éviter deux implémentations de la même variante et donner le HGB à l'application et à E3.
+- **Fichiers** : [predict.py](../../src/models/known/predict.py), [mlp_forecast.py](../../src/models/known/mlp_forecast.py), [test_known_predict_trained.py](../../tests/test_known_predict_trained.py), [E2_PRISE_EN_MAIN.md](E2_PRISE_EN_MAIN.md), ce fichier.
+- **Impact partenaires / contrats** : E5 et E3 : rien à changer ; `hgb` est disponible dans `SUPPORTED_VARIANTS`. Les codes de refus d'éligibilité valent désormais aussi pour le HGB. Le `method_run_id` par défaut d'une variante entraînée est le `model_run_id` (E5 utilisait `<model_run_id>-inference`).
+- **Vérifications effectuées** :
+  - `pytest -q` : 388 passés, dont les tests d'E5 et d'E3 (`test_known_predict.py`, `test_new_predict.py`) inchangés. Tests E2 adaptés aux contrôles d'éligibilité, plus 9 cas d'éligibilité. `ruff check` sans problème sur les fichiers E2.
+  - Vrais cas de validation (cibles non lues) avec les modèles par défaut : site normal, MLP et HGB `ok` ; site `100047545`, MLP `fallback` (`mlp_window_too_sparse`), HGB `ok` ; sans contexte, `fallback` avec `mlp_context_missing`.
+- **Points ouverts** : D-24 à confirmer après EXP-E2-03 (le modèle de l'application suit sa règle de choix).
 
 ### MOD-013 - 2026-11-24 - Graines du MLP, modèles sans contexte, contrôle de reproductibilité ; mise à jour des documents E2
 
@@ -567,6 +587,7 @@ Prioriser dans l'ordre. Cocher avec le renvoi `MOD-NNN` uniquement une fois vér
 | D-21 | 2026-11-23 | Conditions d'utilisation du MLP | Décidé (Esther) | Origines à minuit (Paris) ; origine ≥ `fit_cutoff`, lue aussi dans le bilan du réseau ; latence du cas égale à celle de l'apprentissage (sinon `ValueError`) ; contexte complet si le modèle l'utilise. Tout autre cas reçoit un refus motivé (codes `mlp_*`), et le repli sur la référence revient à l'appelant (`predict.py`). MOD-008 | E2, E4, E5 |
 | D-22 | 2026-11-23 | Une seule latence pour toutes les méthodes | Décidé (Esther), à valider par Idir | `train.fit` refuse une `publication_lag_hours` différente de la configuration : `backend.fit` ne la reçoit pas, et `build_training_frame` comme `build_windows` prennent celle de la configuration. Pour une sensibilité à 48 h, changer `protocol.publication_lag_hours` dans `config/project.yaml`. MOD-008 | E2, E4 |
 | D-23 | 2026-11-24 | Reproductibilité des modèles | Proposé (Idir) | Un modèle ne se reproduit à l'identique que sur la même machine et le même nombre de threads (contrôle MOD-013 : écart de 0,06 vélo/h, plus petit que l'écart entre graines). Le modèle servi est toujours celui déclaré d'avance par son `model_run_id`, jamais un réapprentissage ; la machine est notée dans `metadata.json` (`hardware`). MOD-013 | E2, E4 |
+| D-24 | 2026-11-24 | Modèles servis par défaut | Décidé (Idir, avec Sandra/E5), provisoire | Sans `model_run_id`, `mlp` sert `e2-mlp-ctx-20260701-s0-9ce9` et `hgb` sert `e2-hgb-ctx-20260701-s0-b357` (`DEFAULT_MODEL_RUN_IDS`), les versions déclarées dans EXP-E2-03. À revoir selon la règle de choix d'EXP-E2-03. MOD-014 | E2, E5 |
 
 ---
 

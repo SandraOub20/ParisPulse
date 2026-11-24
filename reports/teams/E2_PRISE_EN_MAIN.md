@@ -185,7 +185,8 @@ result = predict.predict_24h(case, history, "hgb", context=ctx,
     --snapshot hist-20261117 --experiment <EXP> --variant hgb --model-run-id e2-hgb-ctx-20260701-s0-b357
   ```
 
-  Environ 0,5 s par cas. Refus d'un modèle sans `--model-run-id`, ou avec `--values e1_filled` (D-11).
+  Environ 0,5 s par cas. Sans `--model-run-id`, le modèle par défaut est servi (D-24, MOD-014). Refus d'un modèle avec `--values e1_filled` (D-11).
+- Avant de prévoir, `eligibility_reason` refuse : instantané différent, origine avant la coupure, site absent de l'apprentissage, nouveau site non réservé, version de contexte différente (contrôles repris d'E5, MOD-014). `mlp_forecast.py` reste le point d'entrée MLP de l'application et d'E3.
 
 ## Règles à garder
 

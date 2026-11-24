@@ -1,4 +1,4 @@
-"""Prévision sur un nouveau site, sans adaptation."""
+"""Prévision gelée et correction locale sur un nouveau site."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from src.models.known.baseline import admissible_history
+from src.models.known.mlp_forecast import predict_trained_mlp
 from src.models.known.predict import (
     default_publication_lag,
     write_predictions,
@@ -30,15 +31,19 @@ from src.models.schemas import (
 )
 
 from ._core import manager
+from .adapt import adapt
 
 CHRONOS_MODEL_NAME = "chronos-2"
+METHOD_RUN_ID = "e3-chronos-2-frozen-v1"
 GOOGLE_MODEL_NAME = "google_TimesFM_2.5"
 TEAM2_MODEL_NAME = "team2"
 SUPPORTED_MODELS = {CHRONOS_MODEL_NAME, GOOGLE_MODEL_NAME, TEAM2_MODEL_NAME}
 SUPPORTED_VARIANTS = {"frozen", "adapted"}
-MODEL_RUN_ID = "amazon-chronos-2"
-METHOD_RUN_ID = "e3-chronos-2-frozen-v1"
-METHOD_NAME = "chronos-2"
+RUN_IDS = {
+    CHRONOS_MODEL_NAME: METHOD_RUN_ID,
+    GOOGLE_MODEL_NAME: "e3-google-TimesFM_2.5-frozen-v1",
+    TEAM2_MODEL_NAME: "e3-team3-mlp-frozen-v1",
+}
 POINT_QUANTILE = 0.5
 MODEL_TARGET_LIMIT = 1024
 
@@ -50,94 +55,102 @@ def predict_24h(
     model_name: str = CHRONOS_MODEL_NAME,
     *,
     publication_lag_hours: int | None = None,
-    model_run_id: str = MODEL_RUN_ID,
-    method_run_id: str = METHOD_RUN_ID,
+    context: pd.DataFrame | None = None,
 ) -> ForecastResult:
-    """Prévoir 24 heures avec Chronos-2 sur le seul support local autorisé.
+    """Prévoir 24 heures avec un modèle sur le seul support local autorisé.
 
     L'entrée ``history`` peut contenir le comptage complet du compteur : elle est
     refiltrée par scénario, coupure, disponibilité, budget local et mesures publiées.
-    L'adaptation et les autres modèles sont hors périmètre.
+    Le contexte est filtré selon sa disponibilité à l'origine.
     """
     if variant not in SUPPORTED_VARIANTS:
         raise ValueError(f"variant doit être l'une de {sorted(SUPPORTED_VARIANTS)}.")
     if model_name not in SUPPORTED_MODELS:
         raise ValueError(f"Modèle inconnu : {model_name}")
 
-    if model_name == CHRONOS_MODEL_NAME and variant == "adapted":
-        try:
-            manager.load_model(model_name)
-        except ImportError as exc:
-            raise RuntimeError(
-                "Chronos-2 n'est pas installé. Installez le groupe DL du projet "
-                "(chronos-forecasting)."
-            ) from exc
-        pass
-        raise NotImplementedError("La variante Chronos-2 'adapted' n'est pas encore implémentée.")
-    if model_name == GOOGLE_MODEL_NAME:
-        manager.load_model(model_name)
-        if variant == "frozen":
-            pass
-        elif variant == "adapted":
-            pass
-        raise NotImplementedError(f"{model_name} n'est pas encore implémenté dans E3.")
-    if model_name == TEAM2_MODEL_NAME:
-        manager.load_model(model_name)
-        if variant == "frozen":
-            pass
-        elif variant == "adapted":
-            pass
-        raise NotImplementedError(f"{model_name} n'est pas encore implémenté dans E3.")
-
     case = case if isinstance(case, Case) else Case.from_row(case)
+
     if case.scenario != "new_site":
         raise ValueError(f"{case.case_id} : scénario {case.scenario} hors périmètre E3")
+
     if case.spatial_role not in {"S_dev_new", "S_test_new"}:
         raise ValueError(
             f"{case.case_id} : spatial_role doit désigner un site réservé à E3 "
             "('S_dev_new' ou 'S_test_new')."
         )
-
     started = time.perf_counter()
-    inputs, context_df, forecast_offset = prepare_inputs(case, history, publication_lag_hours)
+    inputs, context_df, forecast_offset = prepare_inputs(
+        case, history, publication_lag_hours, context
+    )
+    try:
+        model = manager.load_model(model_name)
+    except ImportError as error:
+        raise RuntimeError(f"{model_name} nécessite les dépendances du groupe dl.") from error
     preparation_seconds = time.perf_counter() - started
+    frozen = _forecast_frozen(inputs, context_df, forecast_offset, model_name, model)
+    frozen.cost.preparation_seconds = preparation_seconds
+    if variant == "frozen":
+        return frozen
+
+    def replay(past_case: Case) -> ForecastResult:
+        past, frame, offset = prepare_inputs(past_case, history, publication_lag_hours, context)
+        return _forecast_frozen(past, frame, offset, model_name, model)
+
+    return adapt(inputs, frozen, replay)
+
+
+def _forecast_frozen(
+    inputs: ForecastInputs,
+    context_df: pd.DataFrame,
+    forecast_offset: int,
+    model_name: str,
+    model: Any,
+) -> ForecastResult:
+    if model_name == TEAM2_MODEL_NAME:
+        return predict_trained_mlp(inputs, model, "frozen", RUN_IDS[model_name])
 
     forecast_length = forecast_offset + HORIZON_HOURS
-    if forecast_length > MODEL_TARGET_LIMIT:
-        raise ValueError(
-            f"l'intervalle à franchir ({forecast_offset} h) dépasse la limite Chronos-2"
+    limit = 256 if model_name == GOOGLE_MODEL_NAME else MODEL_TARGET_LIMIT
+    if forecast_length > limit:
+        raise ValueError(f"{model_name} accepte au plus {limit} heures de prévision.")
+    started = time.perf_counter()
+    if model_name == CHRONOS_MODEL_NAME:
+        output = model.predict_df(
+            context_df,
+            prediction_length=forecast_length,
+            quantile_levels=[POINT_QUANTILE],
+            id_column="item_id",
+            timestamp_column="timestamp",
+            target="target",
         )
-
-    try:
-        model = manager.load_model(CHRONOS_MODEL_NAME)
-    except ImportError as exc:
-        raise RuntimeError(
-            "Chronos-2 n'est pas installé. Installez le groupe DL du projet (chronos-forecasting)."
-        ) from exc
-
-    inference_started = time.perf_counter()
-    chronos_output = model.predict_df(
-        context_df,
-        prediction_length=forecast_length,
-        quantile_levels=[POINT_QUANTILE],
-        id_column="item_id",
-        timestamp_column="timestamp",
-        target="target",
-    )
-    inference_seconds = time.perf_counter() - inference_started
-    predictions = _extract_predictions(chronos_output, inputs.case.origin)
+        predictions = _extract_predictions(output, inputs.case.origin, "chronos-2")
+        model_run_id = "amazon-chronos-2"
+    else:
+        history = [context_df["target"].to_numpy(dtype=float)]
+        if hasattr(model, "compile"):
+            output = model.forecast(horizon=forecast_length, inputs=history)
+        else:
+            output = model.forecast(history, forecast_context_len=1024, normalize=True)
+        predictions = _extract_timesfm_predictions(
+            output,
+            inputs.case.origin,
+            inputs.case.support_end,
+            forecast_length,
+            "google-TimesFM-2.5",
+        )
+        model_run_id = "google-TimesFM_2.5"
 
     return ForecastResult(
         case=inputs.case,
-        method_run_id=method_run_id,
+        method_run_id=RUN_IDS[model_name],
         model_run_id=model_run_id,
-        variant=variant,
+        variant="frozen",
         predictions=predictions,
         status="ok",
         support_id=inputs.support_id,
+        context_version=inputs.context_version,
         cost=RunCost(
-            preparation_seconds=preparation_seconds,
-            inference_seconds=inference_seconds,
+            inference_seconds=time.perf_counter() - started,
             hardware=f"{platform.system()}-{platform.machine()}",
         ),
     )
@@ -166,6 +179,7 @@ def prepare_inputs(
     case: Case,
     history: pd.DataFrame,
     publication_lag_hours: int | None,
+    context: pd.DataFrame | None = None,
 ) -> tuple[ForecastInputs, pd.DataFrame, int]:
     """Construire le support causal partagé avec la référence locale."""
     lag = default_publication_lag() if publication_lag_hours is None else publication_lag_hours
@@ -247,10 +261,28 @@ def prepare_inputs(
             "count": context_values.to_numpy(),
         }
     )
+    filtered_context = context.copy() if context is not None else None
+    context_version = None
+    if filtered_context is not None:
+        if "available_at" in filtered_context:
+            available_at = pd.to_datetime(
+                filtered_context["available_at"], utc=True, format="ISO8601"
+            )
+            filtered_context = filtered_context.loc[
+                available_at.isna() | (available_at <= origin)
+            ].copy()
+        if (
+            "context_version" in filtered_context
+            and filtered_context["context_version"].notna().any()
+        ):
+            context_version = str(filtered_context["context_version"].dropna().iloc[0])
+
     inputs = ForecastInputs(
         case=case,
         history=filtered_history,
         information_cutoff=cutoff,
+        context=filtered_context,
+        context_version=context_version,
         support_id=support_id,
         support_manifest={
             "support_start": support_start.isoformat(),
@@ -276,7 +308,9 @@ def prepare_inputs(
     return inputs, context_df, forecast_offset
 
 
-def _extract_predictions(output: pd.DataFrame, origin: pd.Timestamp) -> pd.DataFrame:
+def _extract_predictions(
+    output: pd.DataFrame, origin: pd.Timestamp, method_name: str
+) -> pd.DataFrame:
     if not isinstance(output, pd.DataFrame):
         raise TypeError("Chronos-2 predict_df doit retourner un DataFrame.")
     if "timestamp" not in output:
@@ -306,11 +340,70 @@ def _extract_predictions(output: pd.DataFrame, origin: pd.Timestamp) -> pd.DataF
     clipped = array < 0
     predictions = targets.assign(
         y_pred=np.maximum(array, 0.0),
-        method_used=METHOD_NAME,
+        method_used=method_name,
         prediction_status="ok",
         status_reason=np.where(clipped, "negative_quantile_clipped_to_zero", None),
     )
     return predictions
+
+
+def _extract_timesfm_predictions(
+    output: Any,
+    origin: pd.Timestamp,
+    support_end: pd.Timestamp,
+    forecast_length: int,
+    method_name: str,
+) -> pd.DataFrame:
+    if not isinstance(output, (tuple, list)) or len(output) != 2:
+        raise TypeError("TimesFM 2.5 doit retourner (point_forecast, quantile_forecast).")
+
+    point_forecast, quantile_forecast = output
+    point = np.asarray(point_forecast)
+    quantiles = np.asarray(quantile_forecast)
+
+    if point.ndim == 2 and point.shape[0] == 1:
+        point = point[0]
+    point = np.asarray(point).reshape(-1)
+
+    values = point
+    if quantiles.size:
+        quantiles = np.asarray(quantiles)
+        if quantiles.ndim == 3 and quantiles.shape[0] == 1:
+            quantiles = quantiles[0]
+        if quantiles.ndim == 2:
+            if quantiles.shape[1] >= 6:
+                values = quantiles[:, 5]
+            else:
+                values = quantiles[:, 0]
+        elif quantiles.ndim == 1 and quantiles.size >= 6:
+            values = quantiles
+    values = np.asarray(values, dtype=float).reshape(-1)
+
+    if len(values) < forecast_length:
+        raise ValueError(
+            f"TimesFM 2.5 a retourné {len(values)} prévisions au lieu de {forecast_length}."
+        )
+    values = values[:forecast_length]
+
+    forecast_start = support_end
+    timestamps = pd.date_range(forecast_start, periods=forecast_length, freq="h")
+    forecasts = pd.Series(values, index=timestamps)
+
+    targets = target_timestamps(origin)
+    array = pd.to_numeric(forecasts.reindex(targets["target_timestamp"]), errors="coerce").to_numpy(
+        dtype=float
+    )
+    if len(array) != HORIZON_HOURS or not np.isfinite(array).all():
+        raise ValueError(
+            "TimesFM 2.5 n'a pas retourné 24 prévisions finies pour l'origine demandée."
+        )
+    clipped = array < 0
+    return targets.assign(
+        y_pred=np.maximum(array, 0.0),
+        method_used=method_name,
+        prediction_status="ok",
+        status_reason=np.where(clipped, "negative_quantile_clipped_to_zero", None),
+    )
 
 
 def _observed_mask(history: pd.DataFrame) -> pd.Series:

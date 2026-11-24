@@ -1,76 +1,50 @@
-# Nouveaux sites - équipe 3
+# Nouveaux sites — équipe 3
 
-## Prévision Chronos-2
+Depuis la racine du dépôt, installer les dépendances verrouillées avec
+`./run.sh setup --group dl`. Sous Windows, utiliser `py -m uv sync --locked --group dl`.
+Chronos-2 et TimesFM 2.5 téléchargent leurs poids publics au premier chargement. Le MLP
+utilise les poids livrés par E2 et le contexte E1 disponible à l’origine.
 
-`predict.py` fournit `predict_24h(case, history, variant="frozen")` et
-`save_forecasts(result, path)`. Seul Chronos-2 en variante `frozen` produit une prévision.
-Les chemins `adapted`, `google_TimesFM_2.5` et `team2` sont présents comme points d'extension
-et lèvent `NotImplementedError` jusqu'à leur implémentation.
+## Prévoir sur un site réservé
 
-Le cas doit être un `new_site` d'un site réservé (`S_dev_new` ou `S_test_new`) avec un
-budget local positif (1, 3 ou 7 jours). L'historique fourni est refiltré sur le compteur, le support du cas et
-la coupure `origin - publication_lag_hours`
-(24 h par défaut, comme E2). Seules les mesures publiées (`count_raw` avec
-`is_observed=true`, ou `count` si `count_raw` est absent) entrent dans le modèle; les
-estimations d'E1 ne sont pas utilisées. La médiane Chronos-2 est la prévision ponctuelle;
-les valeurs négatives sont ramenées à zéro et marquées dans `status_reason`. Le résultat
-suit `ForecastResult` et les colonnes CSV communes; `save_forecasts` réutilise les
-exporteurs E2 pour écrire les fichiers `.pred.csv` et `.runs.csv`.
+`predict_24h(case, history, variant="frozen", model_name="chronos-2", context=None)`
+renvoie 24 horizons pour un cas `new_site` réservé à E3 (`S_dev_new` ou `S_test_new`).
+Les noms des modèles sont `chronos-2`, `google_TimesFM_2.5` et `team2` (MLP E2 transféré).
 
-### Installer les dépendances DL
+L’entrée est filtrée sur le compteur, la coupure de publication et les bornes du support.
+Les modèles utilisent les comptages publiés. Le MLP a été entraîné avec une fenêtre de
+168 heures et exige au moins 84 mesures dans cette fenêtre. Quand il refuse un cas,
+la référence hebdomadaire utilise le même support et le motif du repli est tracé.
 
-Depuis la racine du dépôt, synchroniser l'environnement verrouillé avec le groupe
-deep-learning :
+## Comparaison gelé et adapté
 
-```powershell
-py -m uv sync --locked --group dl
+La variante `adapted` garde les poids du modèle gelé et ajuste un biais additif. Elle
+rejoue au plus deux origines à minuit (heure de Paris) dans le support local. À chaque
+rejeu, les mesures d’entrée et le contexte respectent la disponibilité simulée de cette
+origine. Les 24 heures cibles du rejeu se terminent au plus tard à la fin du support.
+La correction est la médiane des écarts « mesure − prévision », réduite par le facteur
+`n / (n + 24)`, où `n` est le nombre d’heures appariées. Les prévisions ajustées sont
+ramenées à zéro si elles deviennent négatives.
+
+Avec moins de 12 heures appariées, un support trop court ou un refus du modèle gelé, le
+résultat indique le repli et conserve les valeurs du modèle gelé ou son propre repli.
+La correction est estimée de nouveau pour chaque cas. Les poids et les mesures cibles
+des 24 heures à prévoir restent hors de l’ajustement. Cette règle technique et ses
+seuils doivent être validés par E4 avant la mesure finale.
+
+## Produire les fichiers pour E4
+
+```sh
+uv run --locked --group dl python -m src.models.new.batch \
+  --cases data/evaluation/proto-v1/cases.csv --snapshot hist-20261117 \
+  --experiment E3-comparaison --model team2 --variant both --budget 168
 ```
 
-Cette commande installe notamment PyTorch et `chronos-forecasting` dans l'environnement
-du projet. Pour vérifier l'installation :
+La commande utilise le bloc de validation par défaut et écrit `.pred.csv`, `.runs.csv` et
+les détails d’adaptation en JSON dans `data/prediction_results/E3-comparaison/`.
+Le bloc test requiert `--split test --allow-test` après le gel du protocole et des modèles.
+La comparaison des scores agrégés relève d’E4.
 
-```powershell
-py -m uv run --locked --group dl python -c "import torch, chronos; print(torch.__version__, chronos.__file__)"
-```
-
-Les poids `amazon/chronos-2` sont téléchargés au premier chargement du modèle. L'identifiant
-de modèle public ne certifie pas l'absence de contamination par les données du projet.
-
-## Lancer la validation Chronos-2
-
-Depuis la racine du dépôt, exécuter :
-
-```
-$env:PYTHONPATH = (Get-Location).Path
-py -m uv run --locked --group dl python .\src\models\new\validation.example.chronos.py
-```
-
-Le script traite tous les cas de validation `S_dev_new` (budgets de 24, 72 et 168 heures)
-et écrit les prévisions ainsi que les résultats d'exécution dans
-`data/prediction_results/EXP-E3/`, avec le suffixe `validation-all`.
-
-## Tâches à faire
-
-1. Demander à l'équipe 4 un rapport comparant les premières prévisions Chronos-2 à la
-   vérité terrain, puis analyser les résultats sur les cas et budgets concernés.
-2. À partir de ce rapport, décider si une adaptation de Chronos-2 est justifiée. Si oui,
-   l'implémenter sur le support local autorisé, sans utiliser les cibles de validation.
-3. Développer la prédiction sur les nouveaux sites avec `google_TimesFM_2.5`, en respectant
-   le contrat commun de prévision à 24 heures et les règles de séparation des données.
-4. Faire évaluer les méthodes implémentées par l'équipe 4 dans les mêmes conditions et
-   transmettre à E5 les résultats, coûts et limites.
-
-## Règles de comparabilité
-
-- Même historique et même contexte entre variantes.
-- Aucune normalisation sur les mesures masquées.
-- Aucun cumul silencieux de données entre cas.
-- Les réglages se choisissent sur des sites de développement distincts du test final.
-
-## Livraisons
-
-- Prévisions et coûts dans `data/prediction_results/`
-- Paramètres dans `artifacts/models/`
-- `support_id` et `adaptation_id` traçables selon les [contrats](../../../doc/CONTRATS.md)
-
-Les modules présents sont des consignes à compléter ; ils ne remplacent pas le protocole officiel du projet.
+Les scripts d’origine reproduisent les archives gelées dans `data/prediction_results/EXP-E3/`.
+Chronos-2 et TimesFM couvrent les trois budgets. Le MLP transféré couvre le budget de 168 h.
+[Chronos-2](validation.example.chronos.py) · [TimesFM](validation.example.google.py) · [MLP](validation.example.modelTeam2.py)

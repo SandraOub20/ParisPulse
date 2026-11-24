@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -45,7 +46,7 @@ def _saved(root: Path, method: str = "fakepred") -> str:
         model_run_id=make_model_run_id(config),
         config=config,
         estimator={"weights": [1.0, 2.0]},
-        donor_site_groups=["100003096"],
+        donor_site_groups=["G-1"],
         label_interval=(pd.Timestamp("2023-11-14 23:00", tz="UTC"), CUTOFF),
         train_seconds=1.0,
     )
@@ -110,23 +111,24 @@ ORIGIN = "2026-07-01T22:00:00+00:00"  # minuit local du 2 juillet 2026
 HGB_ID = "e2-hgb-ctx-20260701-s0-b357"  # modèle réel du dépôt (MOD-010)
 
 
-def _case() -> Case:
-    return Case.from_row(
-        {
-            "case_id": "K1",
-            "counter_id": "C-1",
-            "site_group_id": "G-1",
-            "origin": ORIGIN,
-            "scenario": "known_site",
-            "temporal_split": "validation",
-            "spatial_role": "S_train",
-            "local_budget_hours": "",
-            "support_start": "",
-            "support_end": "",
-            "protocol_id": "P-test",
-            "snapshot_id": "S-test",
-        }
-    )
+def _case(real: bool = False, **overrides) -> Case:
+    """Cas synthétique ; real=True : instantané et groupe de site du vrai HGB du dépôt."""
+    row = {
+        "case_id": "K1",
+        "counter_id": "C-1",
+        "site_group_id": "100003096" if real else "G-1",
+        "origin": ORIGIN,
+        "scenario": "known_site",
+        "temporal_split": "validation",
+        "spatial_role": "S_train",
+        "local_budget_hours": "",
+        "support_start": "",
+        "support_end": "",
+        "protocol_id": "P-test",
+        "snapshot_id": "hist-20261117" if real else "S-test",
+    }
+    row.update(overrides)
+    return Case.from_row(row)
 
 
 def _history(measured: bool = True) -> pd.DataFrame:
@@ -152,7 +154,7 @@ def _model(fallback: str | None = "reference") -> TrainedModel:
         model_run_id="e2-fakepred-test",
         config=config,
         estimator=None,
-        donor_site_groups=[],
+        donor_site_groups=["G-1"],
         label_interval=(CUTOFF, CUTOFF),
         train_seconds=0.0,
         fallback=fallback,
@@ -216,7 +218,7 @@ def test_vrai_hgb_sans_contexte_se_replie(monkeypatch):
     if not (root / HGB_ID).exists():
         pytest.skip("modèle HGB du dépôt absent")
     model = predict.load_trained(HGB_ID, "hgb")
-    inputs = predict.build_inputs(_case(), _history())
+    inputs = predict.build_inputs(_case(real=True), _history())
     result = predict.trained_forecast(inputs, "hgb", model)
     assert result.status == "fallback"
     assert result.status_reason.startswith("hgb_context_missing")
@@ -226,9 +228,17 @@ def test_vrai_hgb_sans_contexte_se_replie(monkeypatch):
 # --- predict_24h : variantes mlp / hgb ---------------------------------------------------
 
 
-def test_predict_24h_exige_un_model_run_id():
+def test_predict_24h_exige_un_model_run_id_sans_modele_par_defaut():
     with pytest.raises(ValueError, match="model_run_id obligatoire"):
-        predict.predict_24h(_case(), _history(), variant="hgb")
+        predict.predict_24h(_case(), _history(), variant="fakepred")
+
+
+def test_modeles_par_defaut_declares():
+    assert predict.DEFAULT_MODEL_RUN_IDS == {
+        "mlp": "e2-mlp-ctx-20260701-s0-9ce9",
+        "hgb": "e2-hgb-ctx-20260701-s0-b357",
+    }
+    assert set(predict.SUPPORTED_VARIANTS) == {"reference", "reference_profile", "mlp", "hgb"}
 
 
 def test_predict_24h_liste_toutes_les_variantes():
@@ -268,6 +278,7 @@ def _context() -> pd.DataFrame:
                 "value": "false",
                 "available_at": available if variable == "is_strike" else None,
                 "role": "known_calendar",
+                "context_version": "e1-context/0.3.0",
             }
         )
         for variable in ("is_holiday", "is_school_holiday", "is_strike")
@@ -282,6 +293,7 @@ def _context() -> pd.DataFrame:
                 "value": value,
                 "available_at": (valid - pd.Timedelta(hours=42)).map(pd.Timestamp.isoformat),
                 "role": "forecast_bulletin",
+                "context_version": "e1-context/0.3.0",
             }
         )
         for variable, value in (("temp_prev", "18.0"), ("rain_prev", "0.0"), ("wind_prev", "3.0"))
@@ -300,15 +312,15 @@ def test_vrai_hgb_prevoit_et_ne_lit_pas_le_futur(monkeypatch):
     changed = history.copy()
     changed.loc[future, ["count", "count_raw"]] = 1e6
     ctx = _context()
-    a = predict.predict_24h(_case(), history, "hgb", context=ctx, model_run_id=HGB_ID)
-    b = predict.predict_24h(_case(), changed, "hgb", context=ctx, model_run_id=HGB_ID)
+    a = predict.predict_24h(_case(real=True), history, "hgb", context=ctx, model_run_id=HGB_ID)
+    b = predict.predict_24h(_case(real=True), changed, "hgb", context=ctx, model_run_id=HGB_ID)
     assert a.status == "ok" and set(a.predictions["method_used"]) == {"hgb"}
     assert a.is_complete()
     assert a.predictions["y_pred"].tolist() == b.predictions["y_pred"].tolist()
     # témoin positif : changer la dernière semaine visible change bien la prévision
     seen = changed.copy()
     seen.loc[~future, ["count", "count_raw"]] = seen.loc[~future, "count"] * 3
-    c = predict.predict_24h(_case(), seen, "hgb", context=ctx, model_run_id=HGB_ID)
+    c = predict.predict_24h(_case(real=True), seen, "hgb", context=ctx)  # modèle par défaut
     assert c.predictions["y_pred"].tolist() != a.predictions["y_pred"].tolist()
 
 
@@ -367,7 +379,6 @@ def test_load_context_lit_tout_en_texte(tmp_path):
 @pytest.mark.parametrize(
     ("extra", "message"),
     [
-        (["--variant", "hgb"], "demande --model-run-id"),
         (["--variant", "hgb", "--model-run-id", "x", "--values", "e1_filled"], "mesures seules"),
         (["--variant", "reference", "--model-run-id", "x"], "sans objet"),
     ],
@@ -377,3 +388,76 @@ def test_main_refuse_les_appels_incoherents(extra, message, capsys):
     with pytest.raises(SystemExit):
         predict.main(base + extra)
     assert message in capsys.readouterr().err
+
+
+# --- contrôles d'éligibilité communs (repris de mlp_forecast, E5) --------------------------
+
+
+def _eligible_model(**config_changes):
+    config = TrainConfig(
+        method="fakepred",
+        fit_cutoff=CUTOFF,
+        feature_version="f1.0",
+        snapshot_id="S-test",
+        use_context=True,
+        context_version="ctx-1",
+    )
+    for key, value in config_changes.items():
+        setattr(config, key, value)
+    return TrainedModel(
+        model_run_id="e2-fakepred-test",
+        config=config,
+        estimator=None,
+        donor_site_groups=["G-1"],
+        excluded_site_groups=["R-1"],
+        label_interval=(CUTOFF, CUTOFF),
+        train_seconds=0.0,
+    )
+
+
+@pytest.mark.parametrize(
+    ("case_changes", "config_changes", "context_version", "code"),
+    [
+        ({}, {}, "ctx-1", None),
+        ({"snapshot_id": "autre"}, {}, "ctx-1", "fakepred_snapshot_incompatible"),
+        (
+            {},
+            {"fit_cutoff": pd.Timestamp(ORIGIN) + pd.Timedelta(hours=1)},
+            "ctx-1",
+            "fakepred_origin_before_fit_cutoff",
+        ),
+        ({"site_group_id": "G-2"}, {}, "ctx-1", "fakepred_site_not_in_training"),
+        ({}, {}, None, "fakepred_context_missing"),
+        ({}, {}, "ctx-2", "fakepred_context_incompatible"),
+    ],
+)
+def test_eligibilite_site_connu(case_changes, config_changes, context_version, code):
+    inputs = predict.build_inputs(_case(**case_changes), _history())
+    inputs.context_version = context_version
+    model = _eligible_model(**config_changes)
+    assert predict.eligibility_reason(inputs, model, "fakepred") == code
+
+
+def test_eligibilite_nouveau_site_doit_etre_reserve():
+    """Nouveau site (E3) : seulement un groupe exclu de l'apprentissage et déclaré réservé."""
+    model = _eligible_model()
+    inputs = predict.build_inputs(_case(), _history())
+    inputs.context_version = "ctx-1"
+    for site, code in (
+        ("R-1", None),
+        ("G-1", "fakepred_site_not_confirmed_reserved"),
+        ("X-9", "fakepred_site_not_confirmed_reserved"),
+    ):
+        inputs.case = replace(inputs.case, scenario="new_site", site_group_id=site)
+        assert predict.eligibility_reason(inputs, model, "fakepred") == code
+
+
+def test_refus_d_eligibilite_trace_sans_appeler_le_modele(monkeypatch):
+    monkeypatch.setattr(
+        predict, "_raw_forecast", lambda *a: pytest.fail("modèle appelé malgré le refus")
+    )
+    inputs = predict.build_inputs(_case(site_group_id="G-2"), _history())
+    result = predict.trained_forecast(inputs, "fakepred", _model())
+    assert result.status == "fallback"
+    assert result.status_reason == "fakepred_site_not_in_training"
+    assert result.predictions["status_reason"].eq("fakepred_site_not_in_training").all()
