@@ -113,10 +113,17 @@ def predict_24h(
             model = manager.load_model(model_name)
 
             inference_started = time.perf_counter()
-            google_output = model.forecast(
-                horizon=forecast_length,
-                inputs=[context_df["target"].to_numpy(dtype=float)],
-            )
+            if hasattr(model, "compile"):
+                google_output = model.forecast(
+                    horizon=forecast_length,
+                    inputs=[context_df["target"].to_numpy(dtype=float)],
+                )
+            else:
+                google_output = model.forecast(
+                    [context_df["target"].to_numpy(dtype=float)],
+                    forecast_context_len=1024,
+                    normalize=True,
+                )
             inference_seconds = time.perf_counter() - inference_started
 
             predictions = _extract_timesfm_predictions(
@@ -359,10 +366,11 @@ def _extract_timesfm_predictions(
             values = quantiles
     values = np.asarray(values, dtype=float).reshape(-1)
 
-    if len(values) != forecast_length:
+    if len(values) < forecast_length:
         raise ValueError(
             f"TimesFM 2.5 a retourné {len(values)} prévisions au lieu de {forecast_length}."
         )
+    values = values[:forecast_length]
 
     forecast_start = support_end
     timestamps = pd.date_range(forecast_start, periods=forecast_length, freq="h")

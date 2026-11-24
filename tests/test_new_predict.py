@@ -62,6 +62,9 @@ class FakeGoogleTimesFM:
             quantiles[24, 5] = -1.0
         return point[None, :], quantiles[None, :, :]
 
+    def compile(self, config):
+        return None
+
 
 def new_site_case(**overrides):
     support_end = ORIGIN - pd.Timedelta(hours=LAG_HOURS)
