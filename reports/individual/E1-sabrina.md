@@ -67,3 +67,37 @@ Entrées reliées aux commits de la branche `Team1-sabrina` et aux fiches de `re
 - **Décision ou adaptation :** décisions de Sabrina du 19/11/2026 : `count` remplacé directement ; grèves dans le contexte ; sites nouveaux sans attendre le cahier des charges d'E3 ; dates de découpage du protocole proposé (rien d'autre n'a été convenu) ; une seule livraison, l'historique, qui prolonge le flux.
 - **Partenaire, retour reçu et usage vérifié :** *à renseigner*.
 - **Prochaine étape :** livrer l'historique (Git LFS sinon Drive, annonce sur Discord) et présenter les décisions aux équipes.
+
+## 19/11/2026 (fin de matinée) - Livraison de `hist-20261117`, puis retours des partenaires (19 au 23/11)
+
+> Entrée reconstituée par Tasnim le 24/11/2026, à partir des commits `25fbef0`, `4b998b3`, `73817c8` et `61ff322`, et du suivi d'E2 (`reports/teams/E2_SUIVI.md`, branche `Team2`). **Sabrina : à relire et à compléter**, en particulier les outils et les échanges sur Discord.
+
+- **Question ou objectif personnel :** livrer un seul instantané, rempli et documenté, que les autres équipes peuvent récupérer sans aide.
+- **Travail réalisé et outils utilisés :**
+  - historique prêt à livrer : grèves, remplissage direct de `counts.csv`, alertes examinées (`25fbef0`, 11:00) ;
+  - zip déposé avec Git LFS sur `Team1` (`4b998b3`, 11:01) ;
+  - descriptif `livraison/README.md` (`73817c8`, 11:29), puis réécrit en version factuelle (`61ff322`, 11:38) : récupération, fichiers, règles de `counts.csv`, statuts, sites réservés, contexte, découpage, et marche à suivre pour demander une modification ;
+  - outils : *à compléter*.
+- **Expérience ou contrôle effectué :** avant la livraison, retour aux valeurs d'origine vérifié sur les 3 053 599 lignes (entrée précédente). Après la livraison, contrôle indépendant de Tasnim le 24/11 ([EXP-E1-05](../experiments/E1-verification-livraison.md)) :
+  - 47 contrôles conformes : tous les chiffres du message sont exacts ;
+  - **à traiter :** les sites de test n'ont que 6 jours de mesures à leur première origine, parce que le 23/09/2026 est un trou réseau de 24 h ;
+  - empreintes des fichiers de grèves calculées avec des fins de ligne CRLF.
+- **Versions et liens :** `livraison/hist-20261117.zip` ; [livraison/README.md](../../livraison/README.md) ; [fiche historique](../experiments/E1-historique.md).
+- **Résultat et analyse critique :** E2 a récupéré les données le jour même, avec la procédure du descriptif.
+- **Décision ou adaptation :** *à compléter* (réponse à D-11 et aux 29 heures très élevées, ci-dessous).
+- **Partenaire, retour reçu et usage vérifié :**
+  - **E2, 19/11 (E2-TECH-001) :** `hist-20261117` reçu avec un `merge origin/Team1`, empreintes vérifiées contre le manifeste, références hebdomadaires calculées sur 10 858 cas de validation. Proposition **D-11**, à valider par E1 et E4 : leurs références ne lisent que les vraies mesures (`count_raw` si `is_observed`), sans J-7 ni année d'avant. Motif : 5 234 horizons auraient eu un statut `ok` sur une valeur J-7, qui est en réalité celle de t − 336 h ;
+  - **E2, 20 et 23/11 (E2-TECH-002 et 003) :**
+    - jeu d'apprentissage et premier réseau construits sur `hist-20261117` ;
+    - 97 compteurs `S_train` utilisés, les 9 groupes réservés à E3 exclus ;
+    - contexte complet utilisé (calendrier, grèves, météo prévue) ;
+    - apprentissage depuis le 16/10/2023, « convenu avec E1 » (D-17) ;
+  - **E2, 22/11 (contrôle indépendant) :** « données saines depuis 2023 ». À signaler : 29 heures au-dessus de 1 500 vélos/h, gardées comme cibles. Tasnim l'a vérifié le 24/11 : 29 h sur 5 compteurs, dont 8 190 à 5 h le 22/10/2023 rue Lecourbe NE-SO, nettement aberrant. Les 20 heures du Totem Sébastopol (au plus 1 618) sont plausibles ;
+  - **E2, D-08 :** `counts.csv` n'a pas de colonne `available_at`. E2 applique `interval_end <= origine − 24 h` ;
+  - **E4 :** `proto-v1` corrige les 3 écarts de `proto-v0` signalés par E2 : 2 compteurs `S_dev_new` en sites connus, `snapshot_id = flux-20261115`, validation à partir du 01/06 ;
+  - E3 et E5 : *à renseigner*.
+- **Prochaine étape :**
+  - répondre à D-11 ;
+  - décider du sort des heures aberrantes ;
+  - régler l'écart des sites de test avec E3 et E4 ;
+  - mettre à jour le contrat (A8).
