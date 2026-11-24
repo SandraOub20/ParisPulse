@@ -36,9 +36,6 @@ GOOGLE_MODEL_NAME = "google_TimesFM_2.5"
 TEAM2_MODEL_NAME = "team2"
 SUPPORTED_MODELS = {CHRONOS_MODEL_NAME, GOOGLE_MODEL_NAME, TEAM2_MODEL_NAME}
 SUPPORTED_VARIANTS = {"frozen", "adapted"}
-MODEL_RUN_ID = "amazon-chronos-2"
-METHOD_RUN_ID = "e3-chronos-2-frozen-v1"
-METHOD_NAME = "chronos-2"
 POINT_QUANTILE = 0.5
 MODEL_TARGET_LIMIT = 1024
 
@@ -49,9 +46,7 @@ def predict_24h(
     variant: str = "frozen",
     model_name: str = CHRONOS_MODEL_NAME,
     *,
-    publication_lag_hours: int | None = None,
-    model_run_id: str = MODEL_RUN_ID,
-    method_run_id: str = METHOD_RUN_ID,
+    publication_lag_hours: int | None = None
 ) -> ForecastResult:
     """Prévoir 24 heures avec Chronos-2 sur le seul support local autorisé.
 
@@ -63,40 +58,18 @@ def predict_24h(
         raise ValueError(f"variant doit être l'une de {sorted(SUPPORTED_VARIANTS)}.")
     if model_name not in SUPPORTED_MODELS:
         raise ValueError(f"Modèle inconnu : {model_name}")
-
-    if model_name == CHRONOS_MODEL_NAME and variant == "adapted":
-        try:
-            manager.load_model(model_name)
-        except ImportError as exc:
-            raise RuntimeError(
-                "Chronos-2 n'est pas installé. Installez le groupe DL du projet "
-                "(chronos-forecasting)."
-            ) from exc
-        pass
-        raise NotImplementedError("La variante Chronos-2 'adapted' n'est pas encore implémentée.")
-    if model_name == GOOGLE_MODEL_NAME:
-        manager.load_model(model_name)
-        if variant == "frozen":
-            pass
-        elif variant == "adapted":
-            pass
-        raise NotImplementedError(f"{model_name} n'est pas encore implémenté dans E3.")
-    if model_name == TEAM2_MODEL_NAME:
-        manager.load_model(model_name)
-        if variant == "frozen":
-            pass
-        elif variant == "adapted":
-            pass
-        raise NotImplementedError(f"{model_name} n'est pas encore implémenté dans E3.")
-
+    
     case = case if isinstance(case, Case) else Case.from_row(case)
+
     if case.scenario != "new_site":
         raise ValueError(f"{case.case_id} : scénario {case.scenario} hors périmètre E3")
+    
     if case.spatial_role not in {"S_dev_new", "S_test_new"}:
         raise ValueError(
             f"{case.case_id} : spatial_role doit désigner un site réservé à E3 "
             "('S_dev_new' ou 'S_test_new')."
         )
+
 
     started = time.perf_counter()
     inputs, context_df, forecast_offset = _prepare_inputs(case, history, publication_lag_hours)
@@ -105,27 +78,53 @@ def predict_24h(
     forecast_length = forecast_offset + HORIZON_HOURS
     if forecast_length > MODEL_TARGET_LIMIT:
         raise ValueError(
-            f"l'intervalle à franchir ({forecast_offset} h) dépasse la limite Chronos-2"
+            f"l'intervalle à franchir ({forecast_offset} h) dépasse la limite de model"
         )
+    if model_name == CHRONOS_MODEL_NAME:
+        if variant == "frozen":
 
-    try:
-        model = manager.load_model(CHRONOS_MODEL_NAME)
-    except ImportError as exc:
-        raise RuntimeError(
-            "Chronos-2 n'est pas installé. Installez le groupe DL du projet (chronos-forecasting)."
-        ) from exc
+            method_run_id = "e3-chronos-2-frozen-v1"
+            model_run_id= "amazon-chronos-2"
 
-    inference_started = time.perf_counter()
-    chronos_output = model.predict_df(
-        context_df,
-        prediction_length=forecast_length,
-        quantile_levels=[POINT_QUANTILE],
-        id_column="item_id",
-        timestamp_column="timestamp",
-        target="target",
-    )
-    inference_seconds = time.perf_counter() - inference_started
-    predictions = _extract_predictions(chronos_output, inputs.case.origin)
+            model = manager.load_model(model_name)
+
+            inference_started = time.perf_counter()
+            chronos_output = model.predict_df(
+                context_df,
+                prediction_length=forecast_length,
+                quantile_levels=[POINT_QUANTILE],
+                id_column="item_id",
+                timestamp_column="timestamp",
+                target="target",
+            )
+            inference_seconds = time.perf_counter() - inference_started
+
+            predictions = _extract_predictions(chronos_output, inputs.case.origin, "chronos-2")
+        elif variant == "adapted":
+            method_run_id = "e3-chronos-2-adapted-v1"
+            model_run_id= "amazon-chronos-2"
+            pass
+    elif model_name == GOOGLE_MODEL_NAME:
+        manager.load_model(model_name)
+        if variant == "frozen":
+            method_run_id = "e3-google-TimesFM_2.5-frozen-v1"
+            model_run_id= "google-TimesFM_2.5"
+            pass
+        elif variant == "adapted":
+            method_run_id = "e3-google-TimesFM_2.5-adapted-v1"
+            model_run_id= "google-TimesFM_2.5"
+            pass
+        raise NotImplementedError(f"{model_name} n'est pas encore implémenté dans E3.")
+    elif model_name == TEAM2_MODEL_NAME:
+        manager.load_model(model_name)
+        if variant == "frozen":
+            method_run_id = "e3-team3-mlp-frozen-v1"
+            model_run_id= "team3-frozen"
+            pass
+        elif variant == "adapted":
+            method_run_id = "e3-team3-mlp-adapted-v1"
+            model_run_id= "team3-adapted"
+            pass
 
     return ForecastResult(
         case=inputs.case,
@@ -275,7 +274,7 @@ def _prepare_inputs(
     return inputs, context_df, forecast_offset
 
 
-def _extract_predictions(output: pd.DataFrame, origin: pd.Timestamp) -> pd.DataFrame:
+def _extract_predictions(output: pd.DataFrame, origin: pd.Timestamp, method_name: str) -> pd.DataFrame:
     if not isinstance(output, pd.DataFrame):
         raise TypeError("Chronos-2 predict_df doit retourner un DataFrame.")
     if "timestamp" not in output:
@@ -305,7 +304,7 @@ def _extract_predictions(output: pd.DataFrame, origin: pd.Timestamp) -> pd.DataF
     clipped = array < 0
     predictions = targets.assign(
         y_pred=np.maximum(array, 0.0),
-        method_used=METHOD_NAME,
+        method_used=method_name,
         prediction_status="ok",
         status_reason=np.where(clipped, "negative_quantile_clipped_to_zero", None),
     )
