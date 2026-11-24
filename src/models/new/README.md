@@ -3,9 +3,10 @@
 ## Prévision Chronos-2
 
 `predict.py` fournit `predict_24h(case, history, variant="frozen")` et
-`save_forecasts(result, path)`. Seul Chronos-2 en variante `frozen` produit une prévision.
-Les chemins `adapted`, `google_TimesFM_2.5` et `team2` sont présents comme points d'extension
-et lèvent `NotImplementedError` jusqu'à leur implémentation.
+`save_forecasts(result, path)`. Chronos-2 et le MLP Team2 en variante `frozen` produisent
+une prévision. Le MLP peut utiliser le contexte disponible à l'origine; en cas de refus, la
+référence hebdomadaire est utilisée et le motif MLP est tracé. Les chemins `adapted` et
+`google_TimesFM_2.5` restent à implémenter.
 
 Le cas doit être un `new_site` d'un site réservé (`S_dev_new` ou `S_test_new`) avec un
 budget local positif (1, 3 ou 7 jours). L'historique fourni est refiltré sur le compteur, le support du cas et
@@ -36,6 +37,7 @@ py -m uv run --locked --group dl python -c "import torch, chronos; print(torch._
 Les poids `amazon/chronos-2` sont téléchargés au premier chargement du modèle. L'identifiant
 de modèle public ne certifie pas l'absence de contamination par les données du projet.
 
+
 ## Lancer la validation Chronos-2
 
 Depuis la racine du dépôt, exécuter :
@@ -49,15 +51,28 @@ Le script traite tous les cas de validation `S_dev_new` (budgets de 24, 72 et 16
 et écrit les prévisions ainsi que les résultats d'exécution dans
 `data/prediction_results/EXP-E3/`, avec le suffixe `validation-all`.
 
+## Prevision avec MLP Team2 
+
+**seulement sur sur le budget 7 jours :** Il lui faut au moins 84 heures de mesures dans la dernière semaine disponible. Il marchera donc sur les cas avec 7 jours d'historique, pas pour ceux à 1 ou 3 jours. Voir la doc dans [](/reports/teams/E2_PRISE_EN_MAIN.md)
+
+### Lancer la validation MLP-Team2 
+Depuis la racine du dépôt, exécuter :
+
+```
+$env:PYTHONPATH = (Get-Location).Path
+py -m uv run --locked --group dl python .\src\models\new\validation.example.modelTeam2.py
+```
+
+Le script sélectionne les cas `S_dev_new` de validation ayant `local_budget_hours = 168`,
+charge l'historique et le `context.csv` de l'instantané `hist-20261117`, puis écrit les
+prévisions et les coûts dans `data/prediction_results/EXP-E3/`.
+
 ## Tâches à faire
 
-1. Demander à l'équipe 4 un rapport comparant les premières prévisions Chronos-2 à la
-   vérité terrain, puis analyser les résultats sur les cas et budgets concernés.
-2. À partir de ce rapport, décider si une adaptation de Chronos-2 est justifiée. Si oui,
+1. Demander à l'équipe 4 un rapport comparant les premières prévisions (Chronos-2, google et de model team3) comparée à la vérité terrain, puis analyser les résultats sur les cas et budgets concernés.
+2. À partir de ce rapport, décider si une adaptation d'un (ou plusieurs) des models est justifiée. Si oui,
    l'implémenter sur le support local autorisé, sans utiliser les cibles de validation.
-3. Développer la prédiction sur les nouveaux sites avec `google_TimesFM_2.5`, en respectant
-   le contrat commun de prévision à 24 heures et les règles de séparation des données.
-4. Faire évaluer les méthodes implémentées par l'équipe 4 dans les mêmes conditions et
+3. Faire évaluer les méthodes implémentées par l'équipe 4 dans les mêmes conditions et
    transmettre à E5 les résultats, coûts et limites.
 
 ## Règles de comparabilité

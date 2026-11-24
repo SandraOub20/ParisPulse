@@ -13,6 +13,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from src.models.known import baseline, neural
 from src.models.known.baseline import admissible_history
 from src.models.known.predict import (
     default_publication_lag,
@@ -46,33 +47,34 @@ def predict_24h(
     variant: str = "frozen",
     model_name: str = CHRONOS_MODEL_NAME,
     *,
-    publication_lag_hours: int | None = None
+    publication_lag_hours: int | None = None,
+    context: pd.DataFrame | None = None,
 ) -> ForecastResult:
-    """Prévoir 24 heures avec Chronos-2 sur le seul support local autorisé.
+    """Prévoir 24 heures avec un modèle sur le seul support local autorisé.
 
     L'entrée ``history`` peut contenir le comptage complet du compteur : elle est
     refiltrée par scénario, coupure, disponibilité, budget local et mesures publiées.
-    L'adaptation et les autres modèles sont hors périmètre.
+    Le contexte est filtré selon sa disponibilité à l'origine.
     """
     if variant not in SUPPORTED_VARIANTS:
         raise ValueError(f"variant doit être l'une de {sorted(SUPPORTED_VARIANTS)}.")
     if model_name not in SUPPORTED_MODELS:
         raise ValueError(f"Modèle inconnu : {model_name}")
-    
+
     case = case if isinstance(case, Case) else Case.from_row(case)
 
     if case.scenario != "new_site":
         raise ValueError(f"{case.case_id} : scénario {case.scenario} hors périmètre E3")
-    
+
     if case.spatial_role not in {"S_dev_new", "S_test_new"}:
         raise ValueError(
             f"{case.case_id} : spatial_role doit désigner un site réservé à E3 "
             "('S_dev_new' ou 'S_test_new')."
         )
-
-
     started = time.perf_counter()
-    inputs, context_df, forecast_offset = _prepare_inputs(case, history, publication_lag_hours)
+    inputs, context_df, forecast_offset = _prepare_inputs(
+        case, history, publication_lag_hours, context
+    )
     preparation_seconds = time.perf_counter() - started
 
     forecast_length = forecast_offset + HORIZON_HOURS
@@ -80,6 +82,13 @@ def predict_24h(
         raise ValueError(
             f"l'intervalle à franchir ({forecast_offset} h) dépasse la limite de model"
         )
+
+    status = "ok"
+    status_reason = None
+    fit_cutoff = None
+    feature_version = None
+    context_version = inputs.context_version
+
     if model_name == CHRONOS_MODEL_NAME:
         if variant == "frozen":
 
@@ -116,11 +125,45 @@ def predict_24h(
             pass
         raise NotImplementedError(f"{model_name} n'est pas encore implémenté dans E3.")
     elif model_name == TEAM2_MODEL_NAME:
-        manager.load_model(model_name)
         if variant == "frozen":
             method_run_id = "e3-team3-mlp-frozen-v1"
-            model_run_id= "team3-frozen"
-            pass
+            model = manager.load_model(model_name)
+            model_run_id = model.model_run_id
+            fit_cutoff = model.config.fit_cutoff
+            feature_version = neural.INPUT_VERSION
+
+            inference_started = time.perf_counter()
+            mlp_forecast = neural.predict_mlp(
+                model.estimator,
+                inputs,
+                fit_cutoff=fit_cutoff,
+            )
+            if mlp_forecast.values is not None:
+                predictions = target_timestamps(inputs.case.origin).assign(
+                    y_pred=mlp_forecast.values,
+                    method_used="mlp",
+                    prediction_status="ok",
+                    status_reason=None,
+                )
+            else:
+                if mlp_forecast.reason is None:
+                    raise ValueError("Le MLP a refusé la prévision sans fournir de raison.")
+                fallback = baseline.weekly_reference(
+                    inputs,
+                    variant=variant,
+                    method_run_id=method_run_id,
+                )
+                predictions = fallback.predictions.copy()
+                predicted = pd.to_numeric(predictions["y_pred"], errors="coerce")
+                available = np.isfinite(predicted.to_numpy(dtype=float))
+                predictions["prediction_status"] = np.where(
+                    available, "fallback", "unavailable"
+                )
+                predictions["status_reason"] = mlp_forecast.reason
+                status = "fallback" if available.all() else "unavailable"
+                status_reason = mlp_forecast.reason
+            inference_seconds = time.perf_counter() - inference_started
+
         elif variant == "adapted":
             method_run_id = "e3-team3-mlp-adapted-v1"
             model_run_id= "team3-adapted"
@@ -132,8 +175,12 @@ def predict_24h(
         model_run_id=model_run_id,
         variant=variant,
         predictions=predictions,
-        status="ok",
+        status=status,
+        status_reason=status_reason,
+        fit_cutoff=fit_cutoff,
         support_id=inputs.support_id,
+        context_version=context_version,
+        feature_version=feature_version,
         cost=RunCost(
             preparation_seconds=preparation_seconds,
             inference_seconds=inference_seconds,
@@ -165,6 +212,7 @@ def _prepare_inputs(
     case: Case,
     history: pd.DataFrame,
     publication_lag_hours: int | None,
+    context: pd.DataFrame | None = None,
 ) -> tuple[ForecastInputs, pd.DataFrame, int]:
     lag = default_publication_lag() if publication_lag_hours is None else publication_lag_hours
     if lag < 0:
@@ -245,10 +293,28 @@ def _prepare_inputs(
             "count": context_values.to_numpy(),
         }
     )
+    filtered_context = context.copy() if context is not None else None
+    context_version = None
+    if filtered_context is not None:
+        if "available_at" in filtered_context:
+            available_at = pd.to_datetime(
+                filtered_context["available_at"], utc=True, format="ISO8601"
+            )
+            filtered_context = filtered_context.loc[
+                available_at.isna() | (available_at <= origin)
+            ].copy()
+        if (
+            "context_version" in filtered_context
+            and filtered_context["context_version"].notna().any()
+        ):
+            context_version = str(filtered_context["context_version"].dropna().iloc[0])
+
     inputs = ForecastInputs(
         case=case,
         history=filtered_history,
         information_cutoff=cutoff,
+        context=filtered_context,
+        context_version=context_version,
         support_id=support_id,
         support_manifest={
             "support_start": support_start.isoformat(),
