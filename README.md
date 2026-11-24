@@ -14,7 +14,7 @@ Installer [uv 0.13.x](doc/ENVIRONNEMENT.md), puis, depuis la racine du dépôt :
 ./run.sh notebook
 ```
 
-Python 3.11 et les dépendances verrouillées sont installés dans `.venv/`. JupyterLab, pytest et Ruff sont inclus ; PyTorch s'ajoute avec `./run.sh setup --group dl`. Les [instructions détaillées](doc/ENVIRONNEMENT.md) couvrent VS Code, Windows, Docker et la gestion des dépendances. Aucun code métier n'est fourni par cette installation.
+Python 3.11 et les dépendances verrouillées sont installés dans `.venv/`. JupyterLab, pytest et Ruff sont inclus ; PyTorch et Chronos-2 s'ajoutent avec `./run.sh setup --group dl`. Les [instructions détaillées](doc/ENVIRONNEMENT.md) couvrent VS Code, Windows, Docker et la gestion des dépendances. Aucun code métier n'est fourni par cette installation.
 
 ## Architecture et démarrage du travail
 

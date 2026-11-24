@@ -1,8 +1,8 @@
 
-from .predict import predict
 from .adapt import adapt
+from .predict import predict_24h
 
 __all__ = [
-    "predict",
     "adapt",
+    "predict_24h",
 ]
