@@ -14,6 +14,7 @@ Réservé aux expériences ; l'application (E5) et E3 continuent d'appeler predi
 
 from __future__ import annotations
 
+import dataclasses
 import importlib
 import time
 from collections.abc import Callable
@@ -295,7 +296,9 @@ def run_experiment_batch(
         versions = context["context_version"].dropna()
         context_version = str(versions.iloc[0]) if len(versions) else None
 
-    # 1. Par cas : passé admissible (pour le repli) et éligibilité ; les échecs sont gardés.
+    # 1. Par cas : mêmes contrôles que build_inputs (les échecs sont gardés), puis une version
+    #    légère des entrées, sans historique : garder 6 014 copies du passé de chaque
+    #    compteur saturait la mémoire. Le passé n'est reconstruit qu'au repli (étape 3).
     items: list[tuple[Case, object | None, float, BaseException | None]] = []
     histories: dict[str, pd.DataFrame] = {}
     for _, row in cases.iterrows():
@@ -305,9 +308,13 @@ def run_experiment_batch(
             if case.counter_id not in histories:
                 histories[case.counter_id] = history_loader(case.counter_id)
             inputs = P.build_inputs(case, histories[case.counter_id], None, lag)
-            if context is not None:
-                inputs.context_version = context_version
-            items.append((case, inputs, time.perf_counter() - started, None))
+            light = dataclasses.replace(
+                inputs,
+                history=inputs.history.iloc[0:0].copy(),  # copie : une vue garderait tout
+                context_version=context_version if context is not None else None,
+            )
+            del inputs
+            items.append((case, light, time.perf_counter() - started, None))
         except Exception as exc:  # noqa: BLE001 - l'échec est tracé, jamais silencieux
             items.append((case, None, 0.0, exc))
 
@@ -348,6 +355,9 @@ def run_experiment_batch(
             results.append(P.error_result(case, method_run_id, variant, exc))
             continue
         values = raw_values[k] if reasons[k] is None else None
+        if values is None:  # repli : la référence a besoin du passé, reconstruit puis jeté
+            full = P.build_inputs(case, histories[case.counter_id], None, lag)
+            inputs = dataclasses.replace(inputs, history=full.history)
         result = P._assemble_result(
             inputs, method, model, values, reasons[k], method_run_id=method_run_id
         )
