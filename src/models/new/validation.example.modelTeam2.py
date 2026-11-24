@@ -15,7 +15,7 @@ from src.models.schemas import Case
 SNAPSHOT_ID = "hist-20261117"
 BUDGET_HOURS = 168 # model team2 support 84h de mesure au moin donc on part sur une semaine (7jour)
 MODEL_NAME = "team2"
-METHOD_RUN_ID = "e3-team3-mlp-frozen-v1"
+METHOD_RUN_ID = "e3-team2-mlp-frozen-v1"
 CASES_PATH = Path("data/evaluation/proto-v1/cases.csv")
 
 cases = pd.read_csv(CASES_PATH, dtype=str, keep_default_na=False)
