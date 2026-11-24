@@ -185,6 +185,7 @@ class ForecastResult:
     context_version: str | None = None
     feature_version: str | None = None
     cost: RunCost = field(default_factory=RunCost)
+    adaptation: dict[str, Any] | None = None
 
     def is_complete(self) -> bool:
         """Vrai si les 24 horizons distincts ont une prévision finie non négative."""

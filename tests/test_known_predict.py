@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from src.models.known import baseline
+from src.models.known import mlp_forecast as mlp
+from src.models.known import predict as e2
 from src.models.known.predict import (
     build_inputs,
     counts_history_loader,
@@ -114,6 +118,41 @@ def test_build_inputs_drops_future_and_unpublished_rows(tmp_path):
     assert inputs.information_cutoff == pd.Timestamp("2026-06-30T22:00", tz=UTC)
     assert inputs.history["interval_end"].max() == inputs.information_cutoff
     assert len(loader("C-1")) > len(inputs.history)
+
+
+def test_mlp_runs_with_causal_inputs_and_refuses_pre_training_origin(monkeypatch, tmp_path):
+    history = counts_history_loader("S-test", path=write_counts(tmp_path))("C-1")
+    case = Case.from_row(case_row())
+    model = SimpleNamespace(
+        model_run_id="mlp-test",
+        donor_site_groups=["G-1"],
+        config=SimpleNamespace(
+            snapshot_id=case.snapshot_id,
+            fit_cutoff=case.origin - pd.Timedelta(hours=24),
+            use_context=False,
+            context_version=None,
+            feature_version="mlp-in1",
+        ),
+    )
+    monkeypatch.setattr(e2, "load_mlp_artifact", lambda run_id: model)
+
+    def infer(model, inputs):
+        assert inputs.history["interval_end"].le(inputs.information_cutoff).all()
+        return SimpleNamespace(values=np.full(24, 12.0), reason=None)
+
+    monkeypatch.setattr(mlp, "infer_mlp", infer)
+    result = e2.predict_24h(case, history, variant="mlp")
+    assert result.predictions["y_pred"].eq(12).all()
+    assert result.predictions["method_used"].eq("mlp").all()
+    assert result.fit_cutoff == model.config.fit_cutoff
+
+    model.config.fit_cutoff = case.origin + pd.Timedelta(hours=1)
+    monkeypatch.setattr(mlp, "infer_mlp", lambda *args: pytest.fail("MLP postérieur à l’origine"))
+    fallback = e2.predict_24h(case, history, variant="mlp")
+    reference = e2.predict_24h(case, history)
+    assert fallback.status_reason == "mlp_origin_before_fit_cutoff"
+    assert fallback.predictions["prediction_status"].eq("fallback").all()
+    pd.testing.assert_series_equal(fallback.predictions["y_pred"], reference.predictions["y_pred"])
 
 
 def test_context_filter_keeps_calendar_and_drops_late_rows():

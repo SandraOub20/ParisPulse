@@ -1,10 +1,9 @@
 """A COMPLETER : Initialisation, chargement et gestion de tous les modèles (E2, Chronos-2, Google etc.)"""
 
-from src.models.known import train
+from src.models.known.mlp_forecast import load_mlp_artifact
 
-TEAM2_MODEL_RUN_ID = "e2-mlp-ctx-20260701-s0-9ce9"
+
 class ModelManager:
-
     def __init__(self):
         self.models = {}
 
@@ -18,20 +17,13 @@ class ModelManager:
             # Chronos lorsque seul un autre modèle est utilisé.
             from chronos import Chronos2Pipeline
 
-            model = Chronos2Pipeline.from_pretrained(
-                "amazon/chronos-2",
-                device_map="auto"
-            )
+            model = Chronos2Pipeline.from_pretrained("amazon/chronos-2", device_map="auto")
         elif model_name == "google_TimesFM_2.5":
             import timesfm
 
-            new_model_class = getattr(
-                timesfm, "TimesFM_2p5_200M_torch", None
-            )
+            new_model_class = getattr(timesfm, "TimesFM_2p5_200M_torch", None)
             if new_model_class is not None:
-                model = new_model_class.from_pretrained(
-                    "google/timesfm-2.5-200m-pytorch"
-                )
+                model = new_model_class.from_pretrained("google/timesfm-2.5-200m-pytorch")
                 model.compile(
                     timesfm.ForecastConfig(
                         max_context=1024,
@@ -61,12 +53,10 @@ class ModelManager:
                 )
                 model = timesfm.TimesFm(hparams=hparams, checkpoint=checkpoint)
         elif model_name == "team2":
-            model = train.load_model(TEAM2_MODEL_RUN_ID) 
+            model = load_mlp_artifact()
 
         else:
-            raise ValueError(
-                f"Modèle inconnu : {model_name}"
-            )
+            raise ValueError(f"Modèle inconnu : {model_name}")
 
         self.models[model_name] = model
 
