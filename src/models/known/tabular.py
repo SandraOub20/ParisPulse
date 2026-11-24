@@ -66,7 +66,9 @@ from src.models.schemas import HORIZON_HOURS, ForecastInputs
 
 METHOD = "hgb"
 WEIGHTS_FILE = "model.joblib"
-FILE_FORMAT = 1  # version du contenu de model.joblib : à incrémenter si HGBModel change
+# Version du contenu de model.joblib, à incrémenter si SAVED_FIELDS change.
+# 1 : objet HGBModel picklé (illisible s'il a été écrit par la commande) ; 2 : dictionnaire.
+FILE_FORMAT = 2
 
 # Réglages de l'apprentissage (fit_hgb). Utiliser hgb_hyperparameters() pour les compléter :
 # metadata.json et le nom du modèle portent alors tous les réglages réellement utilisés.
@@ -568,27 +570,57 @@ def predict_hgb(model: HGBModel, inputs: ForecastInputs) -> HGBForecast:
 # --------------------------------------------------------------------------- sauvegarde
 
 
+SAVED_FIELDS = (
+    "file_format",
+    "estimator",
+    "feature_columns",
+    "context_groups",
+    "publication_lag_hours",
+    "fit_cutoff",
+    "feature_version",
+    "training_report",
+)
+
+
 def save_hgb(model: HGBModel, path: Path) -> None:
     """Écrire model.joblib (joblib.dump) pour train.save_model.
 
+    Le fichier contient un dictionnaire de champs (SAVED_FIELDS), pas l'objet HGBModel :
+    lancé par « python -m src.models.known.tabular », ce module s'appelle __main__ et une
+    classe picklée y serait introuvable au chargement (format 1, abandonné).
     joblib = pickle : le fichier peut exécuter du code au chargement. Il n'est relu que
     via train.load_model, qui vérifie d'abord le SHA-256 enregistré dans metadata.json.
     """
-    if not isinstance(model, HGBModel):
+    if type(model).__name__ != "HGBModel":
         raise TypeError(f"HGBModel attendu, reçu {type(model).__name__}")
-    joblib.dump(model, Path(path))
+    payload = {name: getattr(model, name) for name in SAVED_FIELDS}
+    payload["feature_columns"] = list(model.feature_columns)
+    payload["context_groups"] = list(model.context_groups)
+    payload["fit_cutoff"] = F._utc(model.fit_cutoff, "fit_cutoff").isoformat()
+    joblib.dump(payload, Path(path))
 
 
 def load_hgb(path: Path) -> HGBModel:
     """Relire model.joblib et refuser un modèle incompatible avec le code actuel.
 
-    Refuse : objet qui n'est pas un HGBModel ; file_format inconnu ; feature_version
-    différente de features.FEATURE_VERSION ; feature_columns différentes de
-    features.feature_columns(context_groups) ; latence différente de la configuration.
+    Refuse : contenu qui n'est pas un modèle HGB sauvegardé par save_hgb ; file_format
+    inconnu ; feature_version différente de features.FEATURE_VERSION ; feature_columns
+    différentes de features.feature_columns(context_groups) ; latence différente de la
+    configuration.
     """
-    model = joblib.load(Path(path))
-    if not isinstance(model, HGBModel):
-        raise ValueError(f"{path} : HGBModel attendu, trouvé {type(model).__name__}")
+    saved = joblib.load(Path(path))
+    if not isinstance(saved, dict) or set(saved) != set(SAVED_FIELDS):
+        raise ValueError(f"{path} : contenu d'un HGBModel attendu, trouvé {type(saved).__name__}")
+    model = HGBModel(
+        estimator=saved["estimator"],
+        feature_columns=list(saved["feature_columns"]),
+        context_groups=tuple(saved["context_groups"]),
+        publication_lag_hours=int(saved["publication_lag_hours"]),
+        fit_cutoff=F._utc(pd.Timestamp(saved["fit_cutoff"]), "fit_cutoff"),
+        feature_version=saved["feature_version"],
+        file_format=saved["file_format"],
+        training_report=saved["training_report"],
+    )
     if model.file_format != FILE_FORMAT:
         raise ValueError(f"{path} : format {model.file_format!r}, attendu {FILE_FORMAT}")
     if model.feature_version != F.FEATURE_VERSION:
