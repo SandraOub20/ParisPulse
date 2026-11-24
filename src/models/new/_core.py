@@ -1,5 +1,4 @@
 """A COMPLETER : Initialisation, chargement et gestion de tous les modèles (E2, Chronos-2, Google etc.)"""
-from chronos import Chronos2Pipeline
 
 
 class ModelManager:
@@ -13,6 +12,10 @@ class ModelManager:
             return self.models[model_name]
 
         if model_name == "chronos-2":
+            # Chargement local pour que l'import du package E3 ne requière pas
+            # Chronos lorsque seul un autre modèle est utilisé.
+            from chronos import Chronos2Pipeline
+
             model = Chronos2Pipeline.from_pretrained(
                 "amazon/chronos-2",
                 device_map="auto"
