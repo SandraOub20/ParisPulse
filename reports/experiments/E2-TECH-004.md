@@ -1,6 +1,6 @@
 # E2-TECH-004 - Premier apprentissage du HGB sur données réelles (essai technique)
 
-- **Date, équipe, responsables et partenaires** : 2026-11-24, E2 ; Ania Garoui (assistée par Claude Code). Socle d'apprentissage commun : Idir (MOD-007) ; règles d'arrêt anticipé et de latence reprises du MLP d'Esther (MOD-008). Données E1 (`hist-20261117`).
+- **Date, équipe, responsables et partenaires** : 2026-11-24, E2 ; Ania Garoui. Socle d'apprentissage commun : Idir (MOD-007) ; règles d'arrêt anticipé et de latence reprises du MLP d'Esther (MOD-008). Données E1 (`hist-20261117`).
 - **Question et hypothèse** : l'apprentissage du HGB (`fit_hgb`, [MOD-010](../teams/E2_SUIVI.md#4-journal-des-modifications)) fonctionne-t-il sur tout le réseau des sites connus, sans fuite, et à quel coût ? Le modèle obtenu est-il plausible (contrôle sur l'arrêt anticipé) ? Essai technique : **aucune comparaison de méthodes ni choix de modèle** (protocole non validé par le professeur) et **aucune erreur calculée sur juillet–août**.
 - **Références bibliographiques** :
   - Zeng et al. : se mesurer à des références simples ;
