@@ -5,8 +5,12 @@ from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
-import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
+
+LOCAL_TZ = "Europe/Paris"
+EXPECTED_HORIZONS = range(1, 25)
+VALID_STATUSES = {"ok", "fallback"}
 
 
 def show_predictions(
@@ -16,10 +20,18 @@ def show_predictions(
 ) -> bool:
     """Display forecasts and load actual observations only after user consent.
 
+    Normal predictions use blue circular markers.
+    Fallback predictions use orange diamond markers.
+    Missing or invalid predictions remain visible as gaps.
+
     Returns True when the user has chosen to reveal observations.
     """
 
     st.subheader("Next 24 hours — bicycle forecast")
+
+    # ---------------------------------------------------------
+    # 1. Validate required input columns
+    # ---------------------------------------------------------
 
     required_columns = {
         "origin",
@@ -27,6 +39,7 @@ def show_predictions(
         "target_timestamp",
         "y_pred",
     }
+
     missing_columns = required_columns - set(predictions.columns)
 
     if missing_columns:
@@ -41,28 +54,60 @@ def show_predictions(
 
     forecast = predictions.copy()
 
-    # Parse timestamps and numeric values.
+    # ---------------------------------------------------------
+    # 2. Parse timestamps and numerical values
+    # ---------------------------------------------------------
+
     forecast["origin"] = pd.to_datetime(
-        forecast["origin"], utc=True, errors="coerce"
+        forecast["origin"],
+        utc=True,
+        errors="coerce",
     )
+
     forecast["target_timestamp"] = pd.to_datetime(
-        forecast["target_timestamp"], utc=True, errors="coerce"
+        forecast["target_timestamp"],
+        utc=True,
+        errors="coerce",
     )
+
     forecast["horizon"] = pd.to_numeric(
-        forecast["horizon"], errors="coerce"
+        forecast["horizon"],
+        errors="coerce",
     )
+
     forecast["y_pred"] = pd.to_numeric(
-        forecast["y_pred"], errors="coerce"
+        forecast["y_pred"],
+        errors="coerce",
     )
 
     invalid_origins = int(forecast["origin"].isna().sum())
-    invalid_timestamps = int(forecast["target_timestamp"].isna().sum())
+    invalid_timestamps = int(
+        forecast["target_timestamp"].isna().sum()
+    )
 
+    # Rows without a usable origin or target timestamp cannot
+    # be positioned on the forecast timeline.
     forecast = forecast.dropna(
-        subset=["origin", "horizon", "target_timestamp"]
+        subset=["origin", "target_timestamp"]
     ).copy()
 
-    # Horizons must be integers between 1 and 24.
+    if forecast.empty:
+        st.error("No forecast rows have valid timestamps.")
+        return False
+
+    # All rows must belong to the same forecast origin.
+    if forecast["origin"].nunique() != 1:
+        st.error(
+            "A forecast case must contain exactly one origin."
+        )
+        return False
+
+    origin = forecast["origin"].iloc[0]
+
+    # ---------------------------------------------------------
+    # 3. Validate horizons
+    # ---------------------------------------------------------
+
     valid_horizon = (
         forecast["horizon"].notna()
         & np.isfinite(forecast["horizon"])
@@ -71,6 +116,7 @@ def show_predictions(
     )
 
     invalid_horizons = int((~valid_horizon).sum())
+
     forecast = forecast.loc[valid_horizon].copy()
     forecast["horizon"] = forecast["horizon"].astype(int)
 
@@ -78,14 +124,20 @@ def show_predictions(
         st.error("No valid forecast horizons are available.")
         return False
 
-    # Each target timestamp must match origin + (horizon - 1) hours.
-    expected_timestamps = (
+    # ---------------------------------------------------------
+    # 4. Validate target timestamps
+    # ---------------------------------------------------------
+
+    expected_timestamps_utc = (
         forecast["origin"]
-        + pd.to_timedelta(forecast["horizon"] - 1, unit="h")
+        + pd.to_timedelta(
+            forecast["horizon"] - 1,
+            unit="h",
+        )
     )
 
     timestamp_mismatch = (
-        forecast["target_timestamp"] != expected_timestamps
+        forecast["target_timestamp"] != expected_timestamps_utc
     )
 
     if timestamp_mismatch.any():
@@ -95,23 +147,24 @@ def show_predictions(
         )
         return False
 
-    # A forecast must have one row per horizon.
+    # Exactly one row per horizon is expected.
     if forecast["horizon"].duplicated().any():
         st.error("Duplicate forecast horizons were detected.")
         return False
 
     forecast = forecast.sort_values("horizon").copy()
 
-    expected_horizons = set(range(1, 25))
     present_horizons = set(forecast["horizon"])
-    missing_horizons = sorted(expected_horizons - present_horizons)
+    expected_horizons = set(EXPECTED_HORIZONS)
 
-    # Convert timestamps to Paris local time for display.
-    forecast["target_timestamp"] = (
-        forecast["target_timestamp"].dt.tz_convert("Europe/Paris")
+    missing_horizons = sorted(
+        expected_horizons - present_horizons
     )
 
-    # Validate prediction values.
+    # ---------------------------------------------------------
+    # 5. Prepare status and prediction values
+    # ---------------------------------------------------------
+
     finite_predictions = (
         forecast["y_pred"].notna()
         & np.isfinite(forecast["y_pred"])
@@ -125,22 +178,53 @@ def show_predictions(
             .str.lower()
             .str.strip()
         )
-
-        valid_statuses = {"ok", "fallback"}
-
-        forecast["is_valid"] = (
-            forecast["prediction_status"].isin(valid_statuses)
-            & finite_predictions
-        )
     else:
-        forecast["is_valid"] = finite_predictions
+        # Compatibility with older forecast files without status.
+        forecast["prediction_status"] = np.where(
+            finite_predictions,
+            "ok",
+            "unavailable",
+        )
+
+    if "method_used" not in forecast.columns:
+        forecast["method_used"] = pd.Series(
+            pd.NA,
+            index=forecast.index,
+            dtype="string",
+        )
+
+    if "status_reason" not in forecast.columns:
+        forecast["status_reason"] = pd.Series(
+            pd.NA,
+            index=forecast.index,
+            dtype="string",
+        )
+
+    forecast["is_valid"] = (
+        forecast["prediction_status"].isin(VALID_STATUSES)
+        & finite_predictions
+    )
 
     valid_horizons = set(
         forecast.loc[forecast["is_valid"], "horizon"]
     )
 
+    
+
+    fallback_hours = int(
+        (
+            forecast["prediction_status"].eq("fallback")
+            & forecast["is_valid"]
+        ).sum()
+    )
+
+    # ---------------------------------------------------------
+    # 6. Display validation information
+    # ---------------------------------------------------------
+
     st.caption(
         f"Valid forecasts: {len(valid_horizons)} / 24 | "
+        f"Fallback hours: {fallback_hours} | "
         f"Invalid origins: {invalid_origins} | "
         f"Invalid timestamps: {invalid_timestamps} | "
         f"Invalid horizons: {invalid_horizons}"
@@ -157,109 +241,408 @@ def show_predictions(
             "This case does not contain 24 valid hourly forecasts."
         )
 
-    display_forecast = forecast[forecast["is_valid"]].copy()
+    # ---------------------------------------------------------
+    # 7. Build a complete 24-hour timeline
+    # ---------------------------------------------------------
 
-    if not display_forecast.empty:
-        if "method_used" in display_forecast.columns:
-            methods = sorted(
-                display_forecast["method_used"]
-                .dropna()
-                .astype(str)
-                .unique()
-            )
+    # Reindexing restores missing horizons as empty rows.
+    # It does not replace missing predictions with zero.
+    plot_data = forecast.set_index("horizon").reindex(
+        list(EXPECTED_HORIZONS)
+    )
 
-            if methods:
-                st.caption("Methods used: " + ", ".join(methods))
+    plot_data.index.name = "row_index"
+    plot_data["horizon"] = plot_data.index.astype(int)
 
-        fig = px.line(
-            display_forecast,
-            x="target_timestamp",
-            y="y_pred",
-            title="Predicted bicycle traffic",
-            labels={
-                "target_timestamp": "Target time (Europe/Paris)",
-                "y_pred": "Predicted bicycle count",
-            },
-            markers=True,
+    # Remember which hours actually existed in the source CSV.
+    source_row_present = plot_data["target_timestamp"].notna()
+
+    # Convert existing timestamps to Paris time.
+    plot_data["target_timestamp"] = (
+        plot_data["target_timestamp"].dt.tz_convert(LOCAL_TZ)
+    )
+
+    # Generate expected timestamps only for positioning missing
+    # horizon rows on the timeline. No prediction is generated.
+    expected_local_timestamps = pd.Series(
+        [
+            origin + pd.Timedelta(hours=h - 1)
+            for h in EXPECTED_HORIZONS
+        ],
+        index=plot_data.index,
+    ).dt.tz_convert(LOCAL_TZ)
+
+    plot_data["target_timestamp"] = (
+        plot_data["target_timestamp"].combine_first(
+            expected_local_timestamps
         )
-        fig.update_layout(hovermode="x unified")
-        st.plotly_chart(fig, use_container_width=True)
+    )
+
+    # Missing source rows receive explicit diagnostic labels.
+    plot_data["prediction_status"] = (
+        plot_data["prediction_status"].astype("string")
+    )
+
+    plot_data.loc[
+        ~source_row_present,
+        "prediction_status",
+    ] = "missing_horizon"
+
+    plot_data["status_reason"] = (
+        plot_data["status_reason"].astype("string")
+    )
+
+    plot_data.loc[
+        ~source_row_present,
+        "status_reason",
+    ] = "No prediction row in source CSV"
+
+    # Recalculate validity after inserting missing horizons.
+    plot_data["is_valid"] = (
+        plot_data["prediction_status"].isin(VALID_STATUSES)
+        & plot_data["y_pred"].notna()
+        & np.isfinite(plot_data["y_pred"])
+        & plot_data["y_pred"].ge(0)
+    )
+
+    # Invalid values become NaN in the graph, never zero.
+    plot_data["plot_y"] = pd.to_numeric(
+        plot_data["y_pred"],
+        errors="coerce",
+    ).where(plot_data["is_valid"])
+
+    plot_data["is_fallback"] = (
+        plot_data["prediction_status"].eq("fallback")
+        & plot_data["is_valid"]
+    )
+
+    # ---------------------------------------------------------
+    # 8. Display effective methods
+    # ---------------------------------------------------------
+
+    methods = sorted(
+        plot_data.loc[
+            plot_data["is_valid"],
+            "method_used",
+        ]
+        .dropna()
+        .astype(str)
+        .unique()
+    )
+
+    if methods:
+        st.caption(
+            "Methods used: " + ", ".join(methods)
+        )
+
+    # ---------------------------------------------------------
+    # 9. Draw the forecast chart
+    # ---------------------------------------------------------
+
+    fig = go.Figure()
+
+    # Trend line: connectgaps=False preserves missing hours.
+    fig.add_trace(
+        go.Scatter(
+            x=plot_data["target_timestamp"],
+            y=plot_data["plot_y"],
+            mode="lines",
+            name="Forecast trend",
+            line=dict(
+                color="#94a3b8",
+                width=2,
+            ),
+            connectgaps=False,
+            hoverinfo="skip",
+        )
+    )
+
+    normal_points = plot_data.loc[
+        plot_data["is_valid"]
+        & ~plot_data["is_fallback"]
+    ]
+
+    fallback_points = plot_data.loc[
+        plot_data["is_fallback"]
+    ]
+
+    # Normal predictions: blue circles.
+    if not normal_points.empty:
+        normal_customdata = normal_points[
+            [
+                "horizon",
+                "method_used",
+                "prediction_status",
+            ]
+        ].fillna("").to_numpy()
+
+        fig.add_trace(
+            go.Scatter(
+                x=normal_points["target_timestamp"],
+                y=normal_points["plot_y"],
+                mode="markers",
+                name="Normal prediction",
+                marker=dict(
+                    color="#2563eb",
+                    size=10,
+                    symbol="circle",
+                    line=dict(
+                        color="white",
+                        width=1,
+                    ),
+                ),
+                customdata=normal_customdata,
+                hovertemplate=(
+                    "Horizon: %{customdata[0]}<br>"
+                    "Time: %{x}<br>"
+                    "Prediction: %{y}<br>"
+                    "Method: %{customdata[1]}<br>"
+                    "Status: %{customdata[2]}"
+                    "<extra>Normal prediction</extra>"
+                ),
+            )
+        )
+
+    # Fallback predictions: orange diamonds.
+    if not fallback_points.empty:
+        fallback_customdata = fallback_points[
+            [
+                "horizon",
+                "method_used",
+                "prediction_status",
+                "status_reason",
+            ]
+        ].fillna("").to_numpy()
+
+        fig.add_trace(
+            go.Scatter(
+                x=fallback_points["target_timestamp"],
+                y=fallback_points["plot_y"],
+                mode="markers",
+                name="Fallback prediction",
+                marker=dict(
+                    color="#f59e0b",
+                    size=12,
+                    symbol="diamond",
+                    line=dict(
+                        color="white",
+                        width=1,
+                    ),
+                ),
+                customdata=fallback_customdata,
+                hovertemplate=(
+                    "Horizon: %{customdata[0]}<br>"
+                    "Time: %{x}<br>"
+                    "Prediction: %{y}<br>"
+                    "Method: %{customdata[1]}<br>"
+                    "Status: %{customdata[2]}<br>"
+                    "Reason: %{customdata[3]}"
+                    "<extra>Fallback prediction</extra>"
+                ),
+            )
+        )
+
+    fig.update_layout(
+        title="Predicted bicycle traffic — next 24 hours",
+        xaxis_title="Target time (Europe/Paris)",
+        yaxis_title="Predicted bicycle count",
+        hovermode="x unified",
+        legend_title="Prediction type",
+        height=480,
+    )
+
+    if plot_data["is_valid"].any():
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+        )
     else:
         st.info("No valid prediction is available to display.")
 
-    # Reset the reveal state when the selected case changes.
-    state_key = f"reveal_observations_{case_id or 'default'}"
+    # ---------------------------------------------------------
+    # 10. Report unavailable, invalid and missing predictions
+    # ---------------------------------------------------------
+
+    gap_rows = plot_data.loc[
+        ~plot_data["is_valid"],
+        [
+            "prediction_status",
+            "status_reason",
+        ],
+    ].reset_index()
+
+    if not gap_rows.empty:
+        st.warning(
+            f"{len(gap_rows)} forecast hour(s) are unavailable, "
+            "invalid or missing. They are displayed as gaps, not zeros."
+        )
+
+        st.dataframe(
+            gap_rows.rename(
+                columns={
+                    "prediction_status": "status",
+                    "status_reason": "reason",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    # Preserve all 24 timestamps for the actual-observation comparison.
+    display_forecast = plot_data.reset_index(drop=True)
+    # ---------------------------------------------------------
+    # 11. Reveal actual observations only after user consent
+    # ---------------------------------------------------------
+
+    method_key = "unknown_method"
+
+    if "method_run_id" in forecast.columns:
+        method_values = (
+            forecast["method_run_id"]
+            .dropna()
+            .astype(str)
+            .unique()
+        )
+
+        if len(method_values) == 1:
+            method_key = method_values[0]
+
+    case_key = case_id or "default"
+
+    state_key = (
+        f"reveal_observations_{method_key}_{case_key}"
+    )
 
     revealed = st.toggle(
         "Reveal actual observations",
         key=state_key,
     )
 
-    # Actual observations are loaded only after explicit user consent.
-    if revealed:
-        if load_observations is None:
-            st.info("Actual observations are not connected yet.")
-            return True
+    if not revealed:
+        return False
 
-        observations = load_observations()
-
-        if observations is None or observations.empty:
-            st.info("Actual observations are not available for this case.")
-            return True
-
-        required_actual_columns = {"target_timestamp", "y_true"}
-        missing_actual_columns = (
-            required_actual_columns - set(observations.columns)
+    if load_observations is None:
+        st.info(
+            "Actual observations are not connected yet."
         )
+        return True
 
-        if missing_actual_columns:
-            st.error(
-                "Missing observation columns: "
-                + ", ".join(sorted(missing_actual_columns))
-            )
-            return True
+    observations = load_observations()
 
-        actual = observations.copy()
-
-        actual["target_timestamp"] = pd.to_datetime(
-            actual["target_timestamp"], utc=True, errors="coerce"
+    if observations is None or observations.empty:
+        st.info(
+            "Actual observations are not available for this case."
         )
-        actual["y_true"] = pd.to_numeric(
-            actual["y_true"], errors="coerce"
+        return True
+
+    required_actual_columns = {
+        "target_timestamp",
+        "y_true",
+    }
+
+    missing_actual_columns = (
+        required_actual_columns - set(observations.columns)
+    )
+
+    if missing_actual_columns:
+        st.error(
+            "Missing observation columns: "
+            + ", ".join(sorted(missing_actual_columns))
         )
+        return True
 
-        actual = actual.dropna(
-            subset=["target_timestamp"]
-        ).copy()
+    # ---------------------------------------------------------
+    # 12. Validate and join actual observations
+    # ---------------------------------------------------------
 
-        actual["target_timestamp"] = (
-            actual["target_timestamp"].dt.tz_convert("Europe/Paris")
+    actual = observations.copy()
+
+    actual["target_timestamp"] = pd.to_datetime(
+        actual["target_timestamp"],
+        utc=True,
+        errors="coerce",
+    )
+
+    actual["y_true"] = pd.to_numeric(
+        actual["y_true"],
+        errors="coerce",
+    )
+
+    actual = actual.dropna(
+        subset=["target_timestamp"]
+    ).copy()
+
+    actual["target_timestamp"] = (
+        actual["target_timestamp"].dt.tz_convert(LOCAL_TZ)
+    )
+
+    if actual["target_timestamp"].duplicated().any():
+        st.error(
+            "Duplicate observation timestamps were detected."
         )
+        return True
 
-        if actual["target_timestamp"].duplicated().any():
-            st.error("Duplicate observation timestamps were detected.")
-            return True
+    comparison = display_forecast[
+        [
+            "horizon",
+            "target_timestamp",
+            "plot_y",
+        ]
+    ].rename(
+        columns={"plot_y": "y_pred"}
+    )
 
-        comparison = display_forecast.merge(
-            actual[["target_timestamp", "y_true"]],
-            on="target_timestamp",
-            how="left",
-            validate="one_to_one",
+    comparison = comparison.merge(
+        actual[
+            [
+                "target_timestamp",
+                "y_true",
+            ]
+        ],
+        on="target_timestamp",
+        how="left",
+        validate="one_to_one",
+    )
+
+    # ---------------------------------------------------------
+    # 13. Display predictions versus actual observations
+    # ---------------------------------------------------------
+
+    comparison_fig = go.Figure()
+
+    comparison_fig.add_trace(
+        go.Scatter(
+            x=comparison["target_timestamp"],
+            y=comparison["y_pred"],
+            mode="lines+markers",
+            name="Prediction",
+            line=dict(color="#2563eb", width=2),
+            connectgaps=False,
         )
+    )
 
-        comparison_fig = px.line(
-            comparison,
-            x="target_timestamp",
-            y=["y_pred", "y_true"],
-            title="Predictions vs actual observations",
-            labels={
-                "target_timestamp": "Target time (Europe/Paris)",
-                "value": "Bicycle count",
-                "variable": "Series",
-            },
-            markers=True,
+    comparison_fig.add_trace(
+        go.Scatter(
+            x=comparison["target_timestamp"],
+            y=comparison["y_true"],
+            mode="lines+markers",
+            name="Actual observations",
+            line=dict(color="#16a34a", width=2),
+            connectgaps=False,
         )
-        comparison_fig.update_layout(hovermode="x unified")
-        st.plotly_chart(comparison_fig, use_container_width=True)
+    )
 
-    return revealed
+    comparison_fig.update_layout(
+        title="Predictions vs actual observations",
+        xaxis_title="Target time (Europe/Paris)",
+        yaxis_title="Bicycle count",
+        hovermode="x unified",
+        height=480,
+    )
+
+    st.plotly_chart(
+        comparison_fig,
+        use_container_width=True,
+    )
+
+    return True
