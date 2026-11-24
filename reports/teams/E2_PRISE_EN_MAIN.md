@@ -4,6 +4,8 @@ Pour Ania (HGB) et Esther (entraînement du MLP). Auteur : Idir. Branche `Team2-
 
 > **Mise à jour du 2026-11-23 (MOD-008, Esther, branche `Team2-Esther`)** : le MLP apprend (`fit_mlp`) et prévoit (`predict_mlp`). Sections modifiées : « Ce qui existe », « Démarrer », « Entraîner un modèle », « MLP : apprentissage et prévision », « Règles à garder », « Points ouverts ». Détail et justification : [E2_SUIVI.md, MOD-008](E2_SUIVI.md#4-journal-des-modifications). Premier essai réel : [E2-TECH-003](../experiments/E2-TECH-003.md).
 
+> **Mise à jour du 2026-11-24 (MOD-011, Idir)** : le HGB existe (`tabular.py`, MOD-010, Ania) et les deux modèles sont branchés dans `predict.py`. Sections modifiées : « Ce qui existe », « Démarrer », « Entraîner un modèle », « Ania : brancher le HGB », « Règles » (graine), « Prévoir un cas », « Prévoir avec `predict_24h` », « Points ouverts ». Détail : [E2_SUIVI.md, MOD-011](E2_SUIVI.md#4-journal-des-modifications).
+
 ## Ce qui existe
 
 | Fichier | Fonctions | Rôle |
@@ -18,8 +20,12 @@ Pour Ania (HGB) et Esther (entraînement du MLP). Auteur : Idir. Branche `Team2-
 | | `fit_mlp` | apprentissage ; « mlp » est déclaré avec `fit=fit_mlp` |
 | | `predict_mlp`, `predict_windows` | prévision d'un cas ou refus motivé ; même calcul pour beaucoup de cas à la fois |
 | | `main` | `python -m src.models.known.neural` : apprend, sauvegarde, écrit le bilan en JSON |
+| [tabular.py](../../src/models/known/tabular.py) | `fit_hgb`, `predict_hgb`, `save_hgb` / `load_hgb`, `main` | HGB (Ania, MOD-010) : mêmes origines que le MLP, refus `hgb_*` |
+| [predict.py](../../src/models/known/predict.py) | `load_trained` | charge **une fois** un modèle `mlp` ou `hgb` ; méthode vérifiée dans `metadata.json` avant tout import (le HGB tourne sans torch) (MOD-011) |
+| | `trained_forecast` | prévision du modèle, ou repli tracé sur la référence s'il refuse (MOD-011) |
+| | `predict_24h`, `run_experiment`, `main` | variantes `reference`, `reference_profile`, `mlp`, `hgb` ; `model_run_id` obligatoire pour les modèles ; `load_context` lit le contexte E1 (MOD-011) |
 
-Tests : `tests/test_known_train.py`, `tests/test_known_neural.py`, `tests/test_known_neural_fit.py` (MOD-008, 43 tests).
+Tests : `tests/test_known_train.py`, `tests/test_known_neural.py`, `tests/test_known_neural_fit.py` (MOD-008, 43 tests), `tests/test_known_tabular.py` (MOD-010), `tests/test_known_predict_trained.py` (MOD-011, 21 tests).
 
 ## Démarrer
 
@@ -28,7 +34,7 @@ Méthode du projet ([ENVIRONNEMENT.md](../../doc/ENVIRONNEMENT.md)), avec uv 0.1
 ```bash
 ./run.sh setup --group dl          # crée .venv avec PyTorch CPU (le groupe dl est indispensable au MLP)
 git lfs pull --include="livraison/hist-20261117.zip" && unzip -o livraison/hist-20261117.zip
-./run.sh test                      # 265 tests passés attendus (MOD-008)
+./run.sh test                      # 371 tests passés attendus (MOD-011)
 ./run.sh check                     # verrouillage, ruff, format
 ```
 
@@ -49,7 +55,7 @@ from src.models.known import neural, train  # importer neural DÉCLARE la métho
 
 data = train.load_training_data("hist-20261117")
 config = train.TrainConfig(
-    method="mlp",                                    # ou "hgb" (une fois tabular.py écrit)
+    method="mlp",                                    # ou "hgb" (importer alors tabular)
     fit_cutoff=pd.Timestamp("2026-06-30 22:00", tz="UTC"),   # 01/07 minuit à Paris
     train_start=None,                                # None = depuis le début des données (2023)
     use_context=True,
@@ -68,9 +74,9 @@ Le nom du modèle contient une empreinte de la config : changer un réglage chan
 
 **Piège** : sans `import src.models.known.neural`, `train.fit(... method="mlp" ...)` lève `KeyError: méthode 'mlp' inconnue` (la méthode se déclare à l'import du module).
 
-## Ania : brancher le HGB (`tabular.py`)
+## Ania : brancher le HGB (`tabular.py`) - fait (MOD-010)
 
-Une méthode fournit 4 fonctions et se déclare. `train.fit` lui donne **les mêmes origines qu'au MLP** : la comparaison est équitable.
+Cette section décrit comment une méthode se branche sur `train.fit` ; le HGB est écrit ainsi ([E2-TECH-004](../experiments/E2-TECH-004.md)). Une méthode fournit 4 fonctions et se déclare. `train.fit` lui donne **les mêmes origines qu'au MLP** : la comparaison est équitable.
 
 ```python
 from src.models.known import features as F
@@ -119,7 +125,7 @@ Une clé inconnue (faute de frappe) ou une valeur hors domaine est refusée.
 2. **Exemples gardés** : fenêtre utilisable, contexte complet (si `use_context`), au moins une vraie cible. Les exclusions sont comptées dans le bilan.
 3. **Perte L1 masquée, pondérée par le niveau** (`_masked_l1`) : une heure non mesurée ne compte jamais. Avec la pondération, on minimise l'erreur absolue en vélos/h, la métrique du projet ; c'est la pondération par l'échelle de DeepAR. La L1 traite aussi les cibles extrêmes (≈ 0,1 % au-delà de 59 fois le niveau) : son gradient ne dépend que du **signe** de l'erreur, donc une cible aberrante ne pèse pas plus qu'une autre. Aucun plafond arbitraire.
 4. **Arrêt anticipé** sur les origines du 03/06 au 29/06/2026 (pour `fit_cutoff` au 01/07) : elles ne servent qu'à choisir la meilleure époque. Le réseau rendu est celui de cette époque, **sans** réapprentissage sur juin. Juillet-août n'est jamais lu.
-5. **Graine** `config.seed` : même graine, mêmes poids. Le générateur aléatoire global de torch n'est pas modifié.
+5. **Graine** `config.seed` : même graine, mêmes poids **sur la même machine, avec le même nombre de threads torch**. Sur une autre machine, l'ordre des calculs change et l'arrêt anticipé peut choisir une autre époque (contrôle du 2026-11-24 : époque 17 au lieu de 20, MAE de contrôle 17,57 au lieu de 17,51, écart bien plus petit que celui entre graines). Le générateur aléatoire global de torch n'est pas modifié.
 
 ### Lire le bilan (`training_report.json` ou `net.training_report`)
 
@@ -136,7 +142,9 @@ Une clé inconnue (faute de frappe) ou une valeur hors domaine est refusée.
 ```python
 from src.models.known import neural, predict, train
 
-model = train.load_model(model_run_id)                      # charger UNE fois
+# Plus simple (MOD-011) : predict.predict_24h(case, history, "mlp", context=ctx, model_run_id=...)
+# fait tout ci-dessous, avec le repli. Le détail, pour comprendre :
+model = predict.load_trained(model_run_id, "mlp")           # charger UNE fois (cache)
 inputs = predict.build_inputs(case, history, context)       # passé et contexte connus à l'origine
 result = neural.predict_mlp(model.estimator, inputs, fit_cutoff=model.config.fit_cutoff)
 if result.ok:
@@ -157,14 +165,28 @@ else:
 
 Une latence du cas différente de celle de l'apprentissage lève `ValueError` : c'est une erreur de configuration, pas une condition des données. `predict_windows(net, build_windows(...))` fait le même calcul pour beaucoup de cas : un test vérifie que les deux chemins donnent la même chose.
 
-### Brancher le MLP dans `predict.py` (à faire, à annoncer à E5 avant fusion)
+### Prévoir avec `predict_24h` (fait, MOD-011)
 
-Recette proposée pour une variante `"mlp"` de `predict_24h`, sans changer sa signature :
+```python
+from src.models.known import predict
 
-1. Charger `train.load_model(model_run_id)` une seule fois (cache par `model_run_id`). `predict_24h` accepte déjà `model_run_id=`, encore inutilisé.
-2. `inputs = build_inputs(...)` comme aujourd'hui, puis `neural.predict_mlp(model.estimator, inputs, fit_cutoff=model.config.fit_cutoff)`.
-3. Si `ok` : `ForecastResult` avec `method_used="mlp"`, statut `ok`, `model_run_id`, `fit_cutoff`, `feature_version=neural.INPUT_VERSION`.
-4. Sinon : `baseline.weekly_reference(inputs, ...)` sur les 24 horizons, statut `fallback` et `status_reason` = code de refus du MLP. La méthode réellement employée reste tracée dans `method_used` (CONTRATS §7 : sortie brute et système après repli séparés).
+ctx = predict.load_context("hist-20261117")       # contexte E1, lu une fois
+result = predict.predict_24h(case, history, "hgb", context=ctx,
+                             model_run_id="e2-hgb-ctx-20260701-s0-b357")
+```
+
+- Le modèle prévoit : statut `ok`, `method_used` = `mlp` ou `hgb`.
+- Il refuse : la référence de sa fiche (`fallback: reference`) prévoit les 24 heures ; statut `fallback`, `status_reason` = code de refus, `method_used` = méthode réellement employée. Une heure sans repli reste vide, jamais 0.
+- **Le contexte est obligatoire** : sans `context=`, les deux modèles refusent (`*_context_missing`) et la référence répond.
+- Commande pour tous les cas d'un `cases.csv` :
+
+  ```bash
+  python -m src.models.known.predict --cases data/evaluation/proto-v1/cases.csv \
+    --snapshot hist-20261117 --experiment <EXP> --variant hgb --model-run-id e2-hgb-ctx-20260701-s0-b357
+  ```
+
+  Environ 0,5 s par cas. Sans `--model-run-id`, le modèle par défaut est servi (D-24, MOD-014). Refus d'un modèle avec `--values e1_filled` (D-11).
+- Avant de prévoir, `eligibility_reason` refuse : instantané différent, origine avant la coupure, site absent de l'apprentissage, nouveau site non réservé, version de contexte différente (contrôles repris d'E5, MOD-014). `mlp_forecast.py` reste le point d'entrée MLP de l'application et d'E3.
 
 ## Règles à garder
 
@@ -179,6 +201,6 @@ Recette proposée pour une variante `"mlp"` de `predict_24h`, sans changer sa si
 ## Points ouverts
 
 - `fit_cutoff` commun au 01/07/2026 et début des données (2023) : à écrire dans `config/project.yaml` (E4).
-- `predict.py` : brancher la variante MLP selon la recette ci-dessus, puis l'annoncer à E5 (nouvelle valeur de `variant` et de `method_used`, codes `mlp_*` dans `status_reason`).
-- Fiche EXP-E2-03 (MLP contre HGB contre références) à figer **avant** les scores de validation.
+- Annoncer à E4 et E5 les variantes `mlp` / `hgb`, le contexte obligatoire et les codes de refus (MOD-011).
+- Fiches [EXP-E2-03](../experiments/EXP-E2-03.md) (MLP, HGB, références) et [EXP-E2-04](../experiments/EXP-E2-04.md) (avec ou sans contexte) : brouillons à figer **avant** les scores de validation.
 - `training_origins` prend environ 70 s sur les données réelles : optimisation possible.

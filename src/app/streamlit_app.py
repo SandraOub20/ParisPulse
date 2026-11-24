@@ -18,7 +18,8 @@ from src.app.dashboard.forecast_case import model_forecast_plot
 from src.app.export import study_zip
 from src.common.config import data_path
 from src.eval.cases import E3_ROLES, case_csv, forecasting_team
-from src.models.known.predict import default_publication_lag
+from src.models.known.mlp_forecast import MLP_MODEL_RUN_ID
+from src.models.known.predict import MLP_VARIANT, default_publication_lag
 from src.models.schemas import HORIZON_HOURS, Case
 
 TEAL = "#087f73"
@@ -356,11 +357,11 @@ def show_study(studies: tuple[service.Study, ...], evaluations: tuple[dict, ...]
                 "Raison": forecast["status_reason"].replace(STATUS_REASONS).fillna(""),
             }
         )
-        if len(studies) > 1:
-            alternative = service.method_label(studies[1])
-            details[f"Vélos prévus · {alternative}"] = studies[1].forecast["y_pred"].round(1)
-            details[f"Statut · {alternative}"] = (
-                studies[1].forecast["prediction_status"].map(PREDICTION_LABELS)
+        for other in studies[1:]:
+            alternative = service.method_label(other)
+            details[f"Vélos prévus · {alternative}"] = other.forecast["y_pred"].round(1)
+            details[f"Statut · {alternative}"] = other.forecast["prediction_status"].map(
+                PREDICTION_LABELS
             )
         if evaluation is not None:
             details["Vélos mesurés"] = evaluation["observations"]["y_true"]
@@ -368,6 +369,19 @@ def show_study(studies: tuple[service.Study, ...], evaluations: tuple[dict, ...]
         st.dataframe(details, hide_index=True, height=310)
         for item in studies:
             st.caption(f"{item.source} · {service.method_label(item)} · {item.case.protocol_id}")
+            if item.adaptation:
+                bias = item.adaptation.get("bias_bikes_per_hour")
+                if bias is not None:
+                    pairs = item.adaptation["paired_hours"]
+                    st.caption(
+                        f"Ajustement local de {bias:+.1f} vélos/h sur {pairs} heures du passé."
+                    )
+                elif item.adaptation["reason"] == "adaptation_insufficient_local_pairs":
+                    st.caption(
+                        "Historique local trop court ou incomplet pour ajuster le biais. Repli gelé."
+                    )
+                else:
+                    st.caption("Le modèle gelé a refusé ce cas. Son repli est conservé.")
     alternatives = tuple(
         (item, evaluations[index] if evaluations is not None else None)
         for index, item in enumerate(studies[1:], start=1)
@@ -413,7 +427,7 @@ def show_comparison(
     elif not complete:
         st.caption("La comparaison des scores exige 24 prévisions pour chaque méthode.")
     else:
-        st.caption("Les deux scores utilisent les mêmes heures réellement mesurées.")
+        st.caption("Les scores utilisent les mêmes heures réellement mesurées.")
 
 
 def protocol_cases(snapshot_id: str, counter: pd.Series, scenario: str) -> pd.DataFrame:
@@ -469,6 +483,14 @@ def configure_known(
         **service.REFERENCE_LABELS,
         service.COMPARE_REFERENCES: "Comparer les deux références",
     }
+    if (
+        find_spec("torch") is not None
+        and (data_path("models") / MLP_MODEL_RUN_ID / "metadata.json").is_file()
+    ):
+        methods[MLP_VARIANT] = "MLP entraîné avec contexte"
+        methods[service.COMPARE_MLP] = "Comparer le MLP aux deux références"
+    else:
+        st.caption("Le MLP E2 nécessite PyTorch et les poids du modèle.")
     method = st.selectbox(
         "Méthode",
         list(methods),
@@ -560,24 +582,43 @@ def configure_new(
     labels = {}
     can_run = case.spatial_role in E3_ROLES and bool(case.local_budget_hours)
     if can_run:
-        if find_spec("chronos") is not None and find_spec("torch") is not None:
-            labels[(None, service.CHRONOS_LIVE)] = "Chronos-2 gelé · calcul à la demande"
-            labels[(None, service.COMPARE_CHRONOS)] = "Comparer la référence locale et Chronos-2"
-        else:
-            st.caption("Chronos-2 à la demande nécessite le groupe de dépendances `dl`.")
         labels[(None, service.LOCAL_REFERENCE)] = "Référence locale E3 · calcul à la demande"
-    for row in sources.dropna().drop_duplicates().itertuples(index=False):
+        if find_spec("torch") is not None:
+            for model, (label, dependency) in service.E3_MODELS.items():
+                if find_spec(dependency) is None:
+                    continue
+                if (
+                    dependency == "torch"
+                    and not (data_path("models") / MLP_MODEL_RUN_ID / "metadata.json").is_file()
+                ):
+                    continue
+                labels[(None, f"{model}:frozen")] = f"{label} gelé · calcul à la demande"
+                labels[(None, f"{model}:adapted")] = f"{label} adapté · calcul à la demande"
+                labels[(None, f"{model}:compare")] = (
+                    f"Comparer {label} gelé, adapté et référence locale"
+                )
+        if len(labels) == 1:
+            st.caption("Les modèles E3 à la demande nécessitent le groupe `dl`.")
+    sources = sources.dropna().drop_duplicates()
+    repeated = set(sources.loc[sources["method_run_id"].duplicated(keep=False), "method_run_id"])
+    for row in sources.itertuples(index=False):
         title = (
             "Chronos-2 gelé"
             if row.variant == "frozen" and "chronos" in row.method_run_id
             else row.method_run_id
         )
-        labels[(row.archive, row.method_run_id)] = (
-            f"{title} · archive {Path(row.archive).parent.name}"
+        archive = Path(row.archive)
+        archive_label = (
+            archive.name.removesuffix(".pred.csv")
+            if row.method_run_id in repeated
+            else archive.parent.name
         )
+        labels[(row.archive, row.method_run_id)] = f"{title} · archive {archive_label}"
         if can_run:
             comparison = f"{service.COMPARE_ARCHIVE_PREFIX}{row.method_run_id}"
-            labels[(row.archive, comparison)] = f"Comparer la référence locale à {title} (archive)"
+            labels[(row.archive, comparison)] = (
+                f"Comparer la référence locale à {title} · archive {archive_label}"
+            )
     if not labels:
         st.info("Ce cas n’a pas de méthode disponible avec le budget renseigné.")
         return None, None, None
@@ -795,7 +836,20 @@ def main() -> None:
                             archive.with_name(archive.name.removesuffix(".pred.csv") + ".runs.csv")
                         ),
                     )
-                run_key = (case, method, archive_version, counts_version, inventory_version, lag)
+                context_version = (
+                    signature(snapshot / "context.csv")
+                    if service.uses_model_context(method)
+                    else None
+                )
+                run_key = (
+                    case,
+                    method,
+                    archive_version,
+                    counts_version,
+                    inventory_version,
+                    lag,
+                    context_version,
+                )
                 if st.session_state.get("scope") != run_key:
                     st.session_state["scope"] = run_key
                     st.session_state.pop("forecast-result", None)
@@ -827,7 +881,15 @@ def main() -> None:
                             "Lecture de l’archive…" if opens_only else "Calcul des 24 heures…"
                         ):
                             studies = service.run_studies(
-                                case, method, archive, history, catalog, lag
+                                case,
+                                method,
+                                archive,
+                                history,
+                                catalog,
+                                lag,
+                                context=context_cached(context_version)
+                                if context_version
+                                else None,
                             )
                     except (OSError, ValueError, KeyError, RuntimeError) as error:
                         st.error(f"Prévision indisponible · {error}")

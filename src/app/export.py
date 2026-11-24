@@ -24,6 +24,8 @@ def study_summary(study: Study, evaluation: dict | None) -> dict:
         "expected_hours": len(forecast),
         "status_counts": coverage,
     }
+    if study.adaptation is not None:
+        manifest["adaptation"] = study.adaptation
     if evaluation is not None:
         manifest["evaluation"] = {
             "scope": "Contrôle local sur ce cas",
