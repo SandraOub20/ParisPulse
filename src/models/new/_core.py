@@ -1,6 +1,6 @@
 """A COMPLETER : Initialisation, chargement et gestion de tous les modèles (E2, Chronos-2, Google etc.)"""
 
-from src.models.known import train
+from src.models.known import neural, train
 
 TEAM2_MODEL_RUN_ID = "e2-mlp-ctx-20260701-s0-9ce9"
 class ModelManager:
@@ -61,7 +61,10 @@ class ModelManager:
                 )
                 model = timesfm.TimesFm(hparams=hparams, checkpoint=checkpoint)
         elif model_name == "team2":
-            model = train.load_model(TEAM2_MODEL_RUN_ID) 
+            model = train.load_model(
+                TEAM2_MODEL_RUN_ID,
+                expected_feature_version=neural.INPUT_VERSION,
+            )
 
         else:
             raise ValueError(
