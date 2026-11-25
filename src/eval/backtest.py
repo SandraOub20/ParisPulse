@@ -285,8 +285,10 @@ def make_error(cases, forecast, observations, path):
     error["protocol_id"] = PROTOCOLE_ID
     error["snapshot_id"] = SNAPSHOT_ID
 
-    # Conversion de l'indicateur de score
-    error["is_scoreable"] = error["is_scoreable"].fillna(False).astype(bool)
+    # y_true : seulement les heures réellement mesurées (jamais une valeur reconstituée par E1)
+    error["y_true"] = error["y_true"].where(error["is_scoreable"].fillna(False).astype(bool))
+    # is_scoreable : la prévision ET la mesure existent
+    error["is_scoreable"] = error["is_evaluable"].fillna(False).astype(bool)
 
     # Conserver les colonnes de sortie
     error = error[COLUMNS_ERROR]
@@ -620,6 +622,14 @@ def make_coverage(cases, forecast, observations, path):
             how="left",
             validate="one_to_one",
         )
+
+        # raison donnée par l'équipe qui prévoit (et non le texte générique de Metric)
+        reasons = (
+            forecast_group.dropna(subset=["status_reason"])
+            .groupby("case_id")["status_reason"]
+            .first()
+        )
+        coverage["status_reason"] = coverage["case_id"].map(reasons)
 
         # Ajouter les identifiants du protocole et du snapshot
         coverage["protocol_id"] = PROTOCOLE_ID
