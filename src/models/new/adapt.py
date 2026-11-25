@@ -28,7 +28,7 @@ class Chronos2Calibrator:
     local_budget_hours: int
     coefficients: dict[str, tuple[float, float]]
 
-    def correct(self, predictions: pd.DataFrame) -> pd.DataFrame:
+    def correct_v1(self, predictions: pd.DataFrame) -> pd.DataFrame:
         """Appliquer ``max(0, a * prévision + b)`` selon l'heure cible."""
         required = {"target_timestamp", "y_pred"}
         if not required.issubset(predictions.columns):
@@ -43,7 +43,7 @@ class Chronos2Calibrator:
 
         # La correction horaire est exprimée en heure de Paris, pas en heure UTC.
         timestamps = pd.to_datetime(corrected["target_timestamp"], utc=True)
-        buckets = timestamps.dt.tz_convert(_LOCAL_TIMEZONE).dt.hour.map(_time_bucket)
+        buckets = timestamps.dt.tz_convert(_LOCAL_TIMEZONE).dt.hour.map(_time_bucket_v1)
         values = np.empty_like(raw_values)
         clipped = np.zeros(len(values), dtype=bool)
         for index, (bucket, raw_value) in enumerate(zip(buckets, raw_values, strict=True)):
@@ -82,11 +82,8 @@ def adapt(
     model = manager.load_model(model_name)
     adapted_model = model
     if model_name == "chronos-2":
-        budget = _resolve_budget(history, local_budget_hours)
-        coefficients = _fit_chronos_calibrator(model, history, budget)
-        # Le pipeline partagé est conservé tel quel : seuls ces paramètres locaux
-        # changent le résultat de la prévision adaptée.
-        adapted_model = Chronos2Calibrator(model, budget, coefficients)
+        # TODO : adapter Chronos-2 sur history (travailler sur adapted_model).
+        adapted_model = None
     elif model_name == "google_TimesFM_2.5":
         # TODO : adapter TimesFM 2.5 sur history (travailler sur adapted_model).
         adapted_model = None
@@ -100,12 +97,12 @@ def adapt(
     return adapted_model
 
 
-def _resolve_budget(history: pd.DataFrame, local_budget_hours: int | None) -> int:
+def _resolve_budget_v1(history: pd.DataFrame, local_budget_hours: int | None) -> int:
     """Autoriser explicitement les budgets d'un et trois jours, jamais sept."""
     if local_budget_hours is not None:
         budget = int(local_budget_hours)
     else:
-        # Cet inféré couvre les appels directs à adapt() qui n'ont pas de Case.
+        # Cet inféré couvre les appels directs à adapt_v1() qui n'ont pas de Case.
         if "timestamp" not in history or history.empty:
             raise ValueError("L'historique Chronos doit contenir au moins un timestamp.")
         timestamps = pd.to_datetime(history["timestamp"], utc=True)
@@ -118,7 +115,7 @@ def _resolve_budget(history: pd.DataFrame, local_budget_hours: int | None) -> in
     return budget
 
 
-def _fit_chronos_calibrator(
+def _fit_chronos_calibrator_v1(
     model: Any, history: pd.DataFrame, budget: int
 ) -> dict[str, tuple[float, float]]:
     """Ajuster des corrections ridge sur des prévisions à origines glissantes."""
@@ -147,7 +144,7 @@ def _fit_chronos_calibrator(
     if len(timestamps) < _MIN_CONTEXT_HOURS + 2:
         return identity
 
-    calibration_rows = _rolling_residuals(model, timestamps, counts)
+    calibration_rows = _rolling_residuals_v1(model, timestamps, counts)
     if calibration_rows.empty:
         return identity
 
@@ -164,7 +161,7 @@ def _fit_chronos_calibrator(
     validation = calibration_rows.loc[calibration_rows["origin_index"].isin(validation_origins)]
 
     ridge_strength = _ONE_DAY_RIDGE_STRENGTH if budget == 24 else _RIDGE_STRENGTH
-    global_coefficients = _validated_coefficients(
+    global_coefficients = _validated_coefficients_v1(
         training, validation, ridge_strength=ridge_strength
     )
     coefficients = {"global": global_coefficients}
@@ -180,7 +177,7 @@ def _fit_chronos_calibrator(
                 or len(valid_group) < _MIN_VALIDATION_SAMPLES
             ):
                 continue
-            coefficients[bucket] = _validated_coefficients(
+            coefficients[bucket] = _validated_coefficients_v1(
                 train_group,
                 valid_group,
                 fallback=global_coefficients,
@@ -189,7 +186,7 @@ def _fit_chronos_calibrator(
     return coefficients
 
 
-def _rolling_residuals(model: Any, timestamps: pd.Series, counts: np.ndarray) -> pd.DataFrame:
+def _rolling_residuals_v1(model: Any, timestamps: pd.Series, counts: np.ndarray) -> pd.DataFrame:
     """Créer des résidus sans sortir de la période d'historique autorisée."""
     context_frames: list[pd.DataFrame] = []
     origin_by_id: dict[str, int] = {}
@@ -263,7 +260,7 @@ def _rolling_residuals(model: Any, timestamps: pd.Series, counts: np.ndarray) ->
             rows.append(
                 {
                     "origin_index": origin_index,
-                    "bucket": _time_bucket(local_hour),
+                    "bucket": _time_bucket_v1(local_hour),
                     "forecast": max(0.0, float(forecast)),
                     "actual": float(actual),
                 }
@@ -271,7 +268,7 @@ def _rolling_residuals(model: Any, timestamps: pd.Series, counts: np.ndarray) ->
     return pd.DataFrame(rows)
 
 
-def _validated_coefficients(
+def _validated_coefficients_v1(
     training: pd.DataFrame,
     validation: pd.DataFrame,
     *,
@@ -282,21 +279,21 @@ def _validated_coefficients(
     if len(training) < _MIN_TRAINING_SAMPLES or len(validation) < _MIN_VALIDATION_SAMPLES:
         return fallback
 
-    candidate = _ridge_coefficients(training["forecast"], training["actual"], ridge_strength)
+    candidate = _ridge_coefficients_v1(training["forecast"], training["actual"], ridge_strength)
     baseline_values = validation["forecast"].to_numpy(dtype=float)
     actual_values = validation["actual"].to_numpy(dtype=float)
     corrected_values = np.maximum(0.0, candidate[0] * baseline_values + candidate[1])
 
     # Exiger une amélioration des deux métriques sur les origines réservées évite
     # de retenir une correction qui n'aide que la moyenne quadratique ou absolue.
-    baseline_mae, baseline_rmse = _errors(baseline_values, actual_values)
-    corrected_mae, corrected_rmse = _errors(corrected_values, actual_values)
+    baseline_mae, baseline_rmse = _errors_v1(baseline_values, actual_values)
+    corrected_mae, corrected_rmse = _errors_v1(corrected_values, actual_values)
     if corrected_mae < baseline_mae and corrected_rmse < baseline_rmse:
         return candidate
     return fallback
 
 
-def _ridge_coefficients(
+def _ridge_coefficients_v1(
     forecasts: pd.Series, actuals: pd.Series, ridge_strength: float
 ) -> tuple[float, float]:
     """Résoudre une régression linéaire régularisée vers a=1 et b=0."""
@@ -317,12 +314,12 @@ def _ridge_coefficients(
     return a, b
 
 
-def _errors(predictions: np.ndarray, actuals: np.ndarray) -> tuple[float, float]:
+def _errors_v1(predictions: np.ndarray, actuals: np.ndarray) -> tuple[float, float]:
     errors = predictions - actuals
     return float(np.mean(np.abs(errors))), float(np.sqrt(np.mean(errors**2)))
 
 
-def _time_bucket(hour: int) -> str:
+def _time_bucket_v1(hour: int) -> str:
     """Classer une heure de Paris dans un petit nombre de plages."""
     if 6 <= hour <= 11:
         return "morning"
