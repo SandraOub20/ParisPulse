@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-24T19:52:10+00:00",
+  "generated_at": "2026-11-25T16:42:17+00:00",
   "script": "src/eval/backtest.py",
   "snapshot_id": "hist-20261117",
   "protocol_id": "proto-v1",
@@ -12,9 +12,9 @@
     "data/prediction_results/EXP-E3/e3-team3-mlp-frozen-v1-validation-b-168.pred.csv": "6731a3553ed1d6711f6b7fe39a4d70e65f466ac478434928ec87e639a44d566e"
   },
   "outputs_sha256": {
-    "data/evaluation/proto-v1/EXP-E3/errors.csv": "0361a8562284df462fef14fadb77858c46c10706fdd41447c9f5bec5aab7cf4f",
+    "data/evaluation/proto-v1/EXP-E3/errors.csv": "8ba638ace0b551828d312279e488fe1740de2a3a8fadb67d503ff3f9c704cf86",
     "data/evaluation/proto-v1/EXP-E3/scores.csv": "8e3b889255c98e5055c9fdcbdb4ebfd61bff90c3a3c0c92c678aced5855cc445",
-    "data/evaluation/proto-v1/EXP-E3/coverage.csv": "1262242a47ec8fb67c30cdf44bc4469248bfe54137fc275646a219104ee5c12d",
+    "data/evaluation/proto-v1/EXP-E3/coverage.csv": "0a72da9ef477b6b3bce93f45f4c451e1b54ac285a9bc5362116b011433a63eea",
     "data/evaluation/proto-v1/EXP-E3/scores_by_counter.csv": "dddbd150b3a7aa6312d1086bef6a044cdf17a16ee34fe58d8ec343d39fc80c6a"
   }
 }

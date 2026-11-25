@@ -1,0 +1,23 @@
+{
+  "generated_at": "2026-11-25T16:41:54+00:00",
+  "script": "src/eval/backtest.py",
+  "snapshot_id": "hist-20261117",
+  "protocol_id": "proto-v1",
+  "experiment_id": "EXP-E2",
+  "inputs_sha256": {
+    "data/evaluation/proto-v1/cases.csv": "2f09e096be138c1be5a2ef65e1395752593a4c270cbb75b379e2fa470ea8ac0d",
+    "data/processed/hist-20261117/counts.csv": "6bd3039dc68a62eb69a822caffe41f9434ee83de36d8495921439fc9ece9b79f",
+    "data/prediction_results/EXP-E2/e2-hgb-ctx-20260701-s0-b357.pred.csv": "a1b6e02fc3171ade96b33591e90869f792d7fb5137b78f17af4283fdb45203cd",
+    "data/prediction_results/EXP-E2/e2-mlp-ctx-20260701-s0-9ce9.pred.csv": "6a2c58499eaf6272e136e1f0cc469ccc5e316ad3303e24f9e2bcc453ba046adc",
+    "data/prediction_results/EXP-E2/e2-mlp-ctx-20260701-s1-9318.pred.csv": "96dc0cfe9bb0aac400ea0ac7f65cf95f22f28913bdf46b5bae5c9b3c751fb8ec",
+    "data/prediction_results/EXP-E2/e2-mlp-ctx-20260701-s2-6278.pred.csv": "1a580d2bd51774dd3f1068c02e1d407ced0598560e0d646763f95405373df7e2",
+    "data/prediction_results/EXP-E2/e2-reference-measured.pred.csv": "1898d34ca53ac3d3186efb7ec66177b5ea923cfe54df5983e692afa386debe17",
+    "data/prediction_results/EXP-E2/e2-reference_profile-measured.pred.csv": "08ac2eac243a633a2830d24b07ba97dac771c218bdd45e86cace02adcced2f73"
+  },
+  "outputs_sha256": {
+    "data/evaluation/proto-v1/EXP-E2/errors.csv": "7863f512b337a855fe207c85f4dcb2b4e2a3ae7b0df1677eb40a7ef119e90b95",
+    "data/evaluation/proto-v1/EXP-E2/scores.csv": "cacb7fa46f6eaafbd1f823a5d2fbc1fc0f406686ac4f3dbb789a1ab9c109d0f8",
+    "data/evaluation/proto-v1/EXP-E2/coverage.csv": "53fbfdd2c8d221e1d87db84e9df38ac53423995d56b8fdaac8386a43f5397478",
+    "data/evaluation/proto-v1/EXP-E2/scores_by_counter.csv": "ea79e349742babadc9abede75d1b164036aacbfc3eb9671d59d22a5f5a5810c5"
+  }
+}
