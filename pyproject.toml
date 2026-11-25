@@ -24,7 +24,11 @@ dev = [
     "pytest>=8,<10",
     "ruff>=0.11,<1",
 ]
-dl = ["torch>=2.6,<3", "chronos-forecasting>=2.0"]
+dl = [
+    "torch>=2.6,<3",
+    "chronos-forecasting>=2.0",
+    "timesfm[torch]",
+]
 
 [tool.uv]
 package = false
@@ -38,6 +42,7 @@ explicit = true
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
+timesfm = { git = "https://github.com/google-research/timesfm.git", rev = "master" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

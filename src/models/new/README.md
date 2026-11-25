@@ -1,23 +1,6 @@
 # Nouveaux sites - équipe 3
 
-## Prévision Chronos-2
-
-`predict.py` fournit `predict_24h(case, history, variant="frozen")` et
-`save_forecasts(result, path)`. Seul Chronos-2 en variante `frozen` produit une prévision.
-Les chemins `adapted`, `google_TimesFM_2.5` et `team2` sont présents comme points d'extension
-et lèvent `NotImplementedError` jusqu'à leur implémentation.
-
-Le cas doit être un `new_site` d'un site réservé (`S_dev_new` ou `S_test_new`) avec un
-budget local positif (1, 3 ou 7 jours). L'historique fourni est refiltré sur le compteur, le support du cas et
-la coupure `origin - publication_lag_hours`
-(24 h par défaut, comme E2). Seules les mesures publiées (`count_raw` avec
-`is_observed=true`, ou `count` si `count_raw` est absent) entrent dans le modèle; les
-estimations d'E1 ne sont pas utilisées. La médiane Chronos-2 est la prévision ponctuelle;
-les valeurs négatives sont ramenées à zéro et marquées dans `status_reason`. Le résultat
-suit `ForecastResult` et les colonnes CSV communes; `save_forecasts` réutilise les
-exporteurs E2 pour écrire les fichiers `.pred.csv` et `.runs.csv`.
-
-### Installer les dépendances DL
+## Installation des dépendances pour les prediction new_sites
 
 Depuis la racine du dépôt, synchroniser l'environnement verrouillé avec le groupe
 deep-learning :
@@ -26,51 +9,99 @@ deep-learning :
 py -m uv sync --locked --group dl
 ```
 
-Cette commande installe notamment PyTorch et `chronos-forecasting` dans l'environnement
-du projet. Pour vérifier l'installation :
+Ce groupe installe les dépendances nécessaires au MLP Team2 (dont PyTorch) et à Chronos-2.
+Pour vérifier l'installation :
 
 ```powershell
 py -m uv run --locked --group dl python -c "import torch, chronos; print(torch.__version__, chronos.__file__)"
 ```
 
-Les poids `amazon/chronos-2` sont téléchargés au premier chargement du modèle. L'identifiant
-de modèle public ne certifie pas l'absence de contamination par les données du projet.
+Chronos-2 télécharge ses poids `amazon/chronos-2` lors du premier chargement. 
 
-## Lancer la validation Chronos-2
+## Cadre commun de prévision
+
+`predict.py` fournit `predict_24h(case, history, variant="frozen")` et
+`save_forecasts(result, path)`. Les cas (cases choisie) doivent être des `new_site` réservés à E3 (`S_dev_new` ou `S_test_new`) avec un budget local positif de 1, 3 ou 7 jours.
+
+L'historique est refiltré sur le compteur, le support local du cas et la coupure
+`origin - publication_lag_hours` (24 h par défaut). Seules les mesures publiées
+(`count_raw` avec `is_observed=true`, ou `count` si `count_raw` est absent) sont utilisées;
+les estimations d'E1 sont exclues. Les résultats suivent le contrat `ForecastResult` et les
+colonnes CSV communes. Les fichiers de prévisions et de coûts sont écrits dans
+`data/prediction_results/`.
+
+## Prévision Chronos-2
+
+Chronos-2 est disponible (pour l'instant) qu'en variante `frozen`. La prévision ponctuelle (par defaut si chronos echoue) est la médiane; les
+valeurs négatives sont ramenées à zéro et signalées dans `status_reason`.
+
+### Lancer la validation Chronos-2
+
+Depuis la racine du dépôt, exécuter :
+
+```powershell
+$env:PYTHONPATH = (Get-Location).Path
+py -m uv run --locked --group dl python .\src\models\new\validation.example.chronos.py
+```
+
+Le script traite tous les cas de validation `S_dev_new` des budgets 24 (1j), 72 (3j) et 168 (7j) heures,
+puis écrit les prévisions et les exécutions dans `data/prediction_results/EXP-E3/` avec le
+suffixe `validation-all`.
+
+## Prévision MLP Team2
+
+Le MLP de l'équipe 2 est disponible en variante `frozen`. Il utilise le contexte (jour de greve, meteo...) disponible à
+l'origine et requiert 7 jours de support local : son entrée couvre 168 heures, dont au
+moins 84 doivent être mesurées. Si le MLP refuse un cas, la référence hebdomadaire est
+utilisée et le motif du refus est tracé. Voir la
+[documentation de l'équipe 2](../../../reports/teams/E2_PRISE_EN_MAIN.md).
+
+### Lancer la validation MLP Team2
+
+Depuis la racine du dépôt, exécuter :
+
+```powershell
+$env:PYTHONPATH = (Get-Location).Path
+py -m uv run --locked --group dl python .\src\models\new\validation.example.modelTeam2.py
+```
+
+Le script sélectionne les cas `S_dev_new` de validation ayant `local_budget_hours = 168`.
+Il charge l'historique et le `context.csv` de l'instantané `hist-20261117`, puis écrit les
+prévisions et les coûts dans `data/prediction_results/EXP-E3/` avec le suffixe
+`validation-budget-168`.
+
+## Prévision Google TimesFM 2.5
+
+le modele publique Google TimesFM 2.5 est un concurrent direct a chronos-2.
+
+### Lancer la validation Google TimesFM 2.5
 
 Depuis la racine du dépôt, exécuter :
 
 ```
 $env:PYTHONPATH = (Get-Location).Path
-py -m uv run --locked --group dl python .\src\models\new\validation.example.chronos.py
+py -m uv run --locked --group dl python .\src\models\new\validation.example.google.py
 ```
 
-Le script traite tous les cas de validation `S_dev_new` (budgets de 24, 72 et 168 heures)
-et écrit les prévisions ainsi que les résultats d'exécution dans
-`data/prediction_results/EXP-E3/`, avec le suffixe `validation-all`.
+---
 
 ## Tâches à faire
 
-1. Demander à l'équipe 4 un rapport comparant les premières prévisions Chronos-2 à la
-   vérité terrain, puis analyser les résultats sur les cas et budgets concernés.
-2. À partir de ce rapport, décider si une adaptation de Chronos-2 est justifiée. Si oui,
+1. Faire évaluer par l'équipe 4 les prévisions des modèles implémentés et analyser les
+   résultats par cas et par budget.
+2. À partir de ces résultats, décider si une adaptation est justifiée et, le cas échéant,
    l'implémenter sur le support local autorisé, sans utiliser les cibles de validation.
-3. Développer la prédiction sur les nouveaux sites avec `google_TimesFM_2.5`, en respectant
-   le contrat commun de prévision à 24 heures et les règles de séparation des données.
-4. Faire évaluer les méthodes implémentées par l'équipe 4 dans les mêmes conditions et
-   transmettre à E5 les résultats, coûts et limites.
+3. Implémenter Google TimesFM 2.5, puis ajouter son script de validation.
+4. Transmettre à E5 les résultats, coûts et limites des méthodes évaluées.
 
 ## Règles de comparabilité
 
-- Même historique et même contexte entre variantes.
-- Aucune normalisation sur les mesures masquées.
-- Aucun cumul silencieux de données entre cas.
-- Les réglages se choisissent sur des sites de développement distincts du test final.
+- Utiliser le même historique et le même contexte entre variantes.
+- Ne pas normaliser à partir des mesures masquées.
+- Ne pas cumuler silencieusement les données entre cas.
+- Choisir les réglages sur des sites de développement distincts du test final.
 
-## Livraisons
+## Livrables
 
 - Prévisions et coûts dans `data/prediction_results/`
-- Paramètres dans `artifacts/models/`
-- `support_id` et `adaptation_id` traçables selon les [contrats](../../../doc/CONTRATS.md)
-
-Les modules présents sont des consignes à compléter ; ils ne remplacent pas le protocole officiel du projet.
+- (peut etre) Paramètres des modèles dans `artifacts/models/`
