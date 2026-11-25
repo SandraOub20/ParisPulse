@@ -190,6 +190,7 @@ def predict_24h(
         elif variant == "adapted":
             method_run_id = "e3-team2-mlp-adapted-v1"
             model_run_id= "team2-adapted"
+            manager.load_model(model_name)
             raise NotImplementedError(f"adapted n'est pas encore implémenté pour {model_name}.")
 
     return ForecastResult(
