@@ -118,6 +118,7 @@
 - **Résultats mesurés : MAE, cas complets/comparables, échecs et coût** :
 
   **Résultats provisoires du 2026-11-24**, calculés par E2 avec le code de score d'E4 (`src/eval/metrics.evaluate_all`, intersection des cas complets, même masque, MAE par compteur puis moyenne). **À remplacer par `scores.csv` d'E4.**
+  - Livraison à E4 : `data/prediction_results/EXP-E2/EXP-E2-predictions.zip` (12,9 Mo, SHA-256 `1619c83091786456…`), commité normalement, sans LFS. Il contient les `.pred.csv`, `.runs.csv` et `.cases_used.csv` des 6 méthodes (235 Mo une fois décompressé). À décompresser depuis `data/prediction_results/` avec `unzip -o EXP-E2/EXP-E2-predictions.zip`.
   - Prévisions : `data/prediction_results/EXP-E2/`, 6 fichiers, contrôlés par `src/eval/checks/check_forecasts.py` (tout conforme ; `fit_cutoff` vide pour les références, qui n'apprennent rien).
   - Calcul : `tmp/score_provisoire_exp_e2_03.py`, hors Git.
   - Population : les 6 014 cas, complets pour les 6 méthodes ; 95 compteurs avec des heures évaluables.

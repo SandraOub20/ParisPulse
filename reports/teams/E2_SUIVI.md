@@ -160,7 +160,7 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
   - `pytest -q` : tous les tests E2 passent. Le seul échec reste le test E3, qui échoue aussi sur `dev`.
 - **Résultat** (provisoire, code de score d'E4, calculé par E2) : MAE macro système HGB 22,25, MLP 22,23 / 22,35 / 22,59, `reference_profile` 27,01, `reference` 29,75. Selon la règle figée (D-26), les deux modèles passent (environ +17 %) et le **HGB est retenu** (écart MLP − HGB plus petit que l'écart entre graines). Détail dans la fiche.
 - **Points ouverts** :
-  - livrer les prévisions à E4 (format de livraison à décider : 235 Mo en clair, 12,9 Mo compressés) et obtenir `scores.csv` ;
+  - livraison à E4 décidée (option A) : un zip de 12,9 Mo commité normalement, `data/prediction_results/EXP-E2/EXP-E2-predictions.zip` (SHA-256 `1619c830917864569a4dcb0bdef9ad24a4659e04f08b23a48abfdc58c483ed88`). Pas de LFS : il aurait fallu modifier `.gitattributes`, un fichier commun, et les 235 Mo risquaient d'épuiser le quota LFS du dépôt. Décompression vérifiée : 18 fichiers identiques. Reste à obtenir `scores.csv` d'E4 ;
   - prévenir E5 du modèle retenu une fois le score confirmé.
 
 ### MOD-016 - 2026-11-24 - Seuil d'heures mesurées et masquage des fenêtres pour le MLP ; modèles B d'EXP-E2-05
@@ -642,7 +642,8 @@ Prioriser dans l'ordre. Cocher avec le renvoi `MOD-NNN` uniquement une fois vér
 - [x] MLP : apprendre 3 graines pour mesurer la variabilité (contrôle de juin : étendue 0,29 vélo/h). MOD-013 ; la variabilité sur la validation sera lue avec EXP-E2-03.
 - [x] Fiche EXP-E2-03 (MLP contre HGB contre références) avec les décisions figées avant les scores. MOD-012, gel validé par l'équipe le 2026-11-24 (D-26).
 - [x] EXP-E2-03 : calculer les prévisions des 6 modèles (MOD-017), score provisoire : HGB retenu.
-- [ ] EXP-E2-03 : livrer les prévisions à E4 et obtenir le score officiel (`scores.csv`).
+- [x] EXP-E2-03 : livrer les prévisions à E4 (zip commité, MOD-017).
+- [ ] EXP-E2-03 : obtenir le score officiel d'E4 (`scores.csv`) et le comparer au score provisoire.
 - [ ] Enregistrer la référence et les modèles dans le registre (`register_defaults`).
 - [ ] Recalcul de la référence sur une autre origine avec E5 (`use_cache=False`).
 

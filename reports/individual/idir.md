@@ -64,7 +64,7 @@ Format : [doc/SUIVI_ET_REMISE.md §4](../../doc/SUIVI_ET_REMISE.md). Entrées le
 
 ### Prochaine étape
 
-- Livrer les prévisions à E4 et obtenir le score officiel.
+- Prévisions livrées à E4 : zip de 12,9 Mo commité (au lieu de 235 Mo par LFS, qui aurait touché `.gitattributes` et risquait le quota). Attendre leur score officiel.
 - Prévisions d'EXP-E2-04 (sans contexte) et d'EXP-E2-05 (pannes simulées), en bloc.
 
 ---
