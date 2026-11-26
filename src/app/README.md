@@ -1,9 +1,10 @@
 # ParisPulse V2
 
 Lancer `./run.sh demo` depuis la racine du dépôt pour préparer les ressources et démarrer.
+La commande installe aussi le groupe `dl` (PyTorch), nécessaire au démarrage.
 Pour les lancements suivants, utiliser `./run.sh app`. Sous Windows, après avoir extrait
 `livraison/hist-20261117.zip` à la racine, utiliser
-`uv run --locked python -m streamlit run src/app/streamlit_app.py`.
+`uv run --locked --group dl python -m streamlit run src/app/streamlit_app.py`.
 
 1. Choisir un point sur la carte ou utiliser **Compteur et sens**. **Tout le réseau** est affiché
    au départ. Les filtres **Sites connus** et **Nouveaux sites** réduisent la liste. Le menu permet
@@ -33,8 +34,8 @@ Le routage suit le rôle spatial E1 et le scénario du cas. **E4 → E2** pour u
 (`S_train`). **E4 → E3** pour un nouveau site réservé (`S_dev_new` ou `S_test_new`).
 Les deux moteurs sont appelés dans l’application sur l’historique publié autorisé.
 Sur un site réservé E3, la référence locale et Chronos-2 utilisent la même règle de support.
-L’option Chronos-2 en direct apparaît avec `./run.sh setup --group dl` et charge les poids publics
-lors du premier calcul. Sans ces dépendances, la référence locale E3 reste calculable.
+L’option Chronos-2 en direct utilise le groupe `dl` et charge les poids publics
+lors du premier calcul.
 Les archives Chronos-2 gelé restent accessibles sur leurs cas enregistrés. La comparaison E3
 vérifie l’empreinte du support avant d’afficher deux méthodes ensemble. Le fichier
 `data/evaluation/<protocole>/cases.csv`, s’il est présent, fournit les dates et bornes exactes du

@@ -13,11 +13,10 @@ Projet étudiant fondé sur le [sujet](ParisPulse_Sujet_etudiants.pdf).
 Depuis la racine du dépôt :
 
 ```sh
-./run.sh setup --group dl
 ./run.sh demo
 ```
 
-La première commande installe les dépendances, dont PyTorch, **nécessaire au démarrage de l'application**. La seconde prépare l'instantané de données `hist-20261117` et ouvre l'application sur [http://localhost:8501](http://localhost:8501). Les fois suivantes, `./run.sh app` suffit.
+Cette commande installe les dépendances, dont PyTorch, prépare l'instantané de données `hist-20261117` et ouvre l'application sur [http://localhost:8501](http://localhost:8501). Les fois suivantes, `./run.sh app` suffit.
 
 Sous Windows, utiliser WSL2, ou extraire `livraison/hist-20261117.zip` à la racine puis lancer :
 
@@ -66,7 +65,6 @@ Ces résultats portent sur la **validation** seulement. Le test final (1er octob
 - Le HGB et le MLP des sites connus sont utilisables en ligne de commande, mais **pas encore dans l'application**.
 - La variante adaptée de Chronos-2 n'est pas encore intégrée.
 - Les scores des nouveaux sites ne comprennent pas de référence simple.
-- `./run.sh demo` seul échoue sur une copie neuve (`No module named 'torch'`) : lancer d'abord `./run.sh setup --group dl`.
 - `python -m src.eval.protocol` échoue (`KeyError: 'status'`). Le fichier `cases.csv` déjà livré reste utilisable.
 - `./run.sh check` signale des erreurs de lint et de formatage.
 
