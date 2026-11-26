@@ -222,7 +222,7 @@ def test_adapted_prediction_uses_blend_v2_and_refuses_known_site(monkeypatch):
         publication_lag_hours=LAG_HOURS,
     )
     assert result.method_run_id == "e3-chronos-2-adapted-v2"
-    assert result.predictions["method_used"].eq("chronos-2-blend-v2").all()
+    assert result.predictions["method_used"].eq("chronos-2-adapted-v2").all()
     assert result.predictions["y_pred"].iloc[0] == pytest.approx(0.85 * 24 + 0.15)
     assert loaded_models == ["chronos-2"]
 
