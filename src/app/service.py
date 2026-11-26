@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from src.app import v1_service
+from src.common.config import load_config
 from src.eval.cases import E3_ROLES, forecasting_team, interactive_case
 from src.models.known.baseline import weekly_reference
 from src.models.known.predict import load_context, predict_24h
@@ -164,6 +165,19 @@ def counter_role(counter: pd.Series) -> str | None:
         return None
     role = declared or role_from_status
     return role if role == "S_train" or role in E3_ROLES else None
+
+
+def default_known_day(first_day: date, last_day: date) -> date:
+    """Date proposée pour un site connu : la fin de la validation, jamais le test réservé.
+
+    Sans date de validation dans la configuration, l'avant-dernier jour mesuré est proposé.
+    """
+    validation_end = (load_config().get("protocol") or {}).get("validation_until")
+    if validation_end is None:
+        wanted = (pd.Timestamp(last_day) - pd.Timedelta(days=1)).date()
+    else:
+        wanted = pd.Timestamp(validation_end).date()
+    return min(max(first_day, wanted), last_day)
 
 
 def technical_case(counter: pd.Series, day: date, snapshot_id: str) -> Case:

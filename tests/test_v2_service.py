@@ -193,6 +193,14 @@ def test_hgb_refusal_is_shown_as_a_reference_fallback():
     assert "refus du HGB" in study.source
 
 
+def test_default_known_day_stays_out_of_the_reserved_test():
+    day = lambda text: pd.Timestamp(text).date()  # noqa: E731
+
+    assert service.default_known_day(day("2023-10-18"), day("2026-11-14")) == day("2026-08-31")
+    assert service.default_known_day(day("2023-10-18"), day("2026-05-02")) == day("2026-05-02")
+    assert service.default_known_day(day("2026-09-10"), day("2026-11-14")) == day("2026-09-10")
+
+
 def forecast_case(contents: str) -> Case:
     reader = DictReader(io.StringIO(contents))
     assert tuple(reader.fieldnames) == CASE_COLUMNS

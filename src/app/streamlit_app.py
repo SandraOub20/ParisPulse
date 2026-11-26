@@ -472,10 +472,9 @@ def configure_known(
     if first_day > last_day:
         st.info("Historique publié trop court pour constituer un cas.")
         return None, None, None
-    default_day = max(first_day, (pd.Timestamp(last_day) - pd.Timedelta(days=1)).date())
     day = st.date_input(
         "Date de départ (minuit à Paris)",
-        value=default_day,
+        value=service.default_known_day(first_day, last_day),
         min_value=first_day,
         max_value=last_day,
         format="DD/MM/YYYY",

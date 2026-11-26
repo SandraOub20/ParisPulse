@@ -9,7 +9,8 @@ Pour les lancements suivants, utiliser `./run.sh app`. Sous Windows, après avoi
 1. Choisir un point sur la carte ou utiliser **Compteur et sens**. **Tout le réseau** est affiché
    au départ. Les filtres **Sites connus** et **Nouveaux sites** réduisent la liste. Le menu permet
    aussi de sélectionner les compteurs sans coordonnées et de distinguer les sens superposés.
-2. Choisir la date et la méthode. Pour un nouveau site, choisir aussi le budget d’historique
+2. Choisir la date et la méthode. Pour un site connu, la date proposée est la fin de la
+   validation (31 août 2026), hors du test final réservé. Pour un nouveau site, choisir aussi le budget d’historique
    local. Le passé publié et les dates de la fenêtre cible sont disponibles avant le calcul.
    **Télécharger cases.csv** fournit une ligne avec le compteur, la date, le scénario, le
    protocole et, pour E3, le budget et les bornes d’historique.
