@@ -3,14 +3,16 @@ Chronos-2 reste en frozen au départ : seuls les poids du mélange sont ajustés
 médiane historique du même créneau horaire local :
 `prévision = max(0, poids × Chronos + (1 − poids) × profil local)`
 Les poids appris (avec l'adaptation v2) sont **0,80**, **0,80** et **0,85** pour les budgets 24 h, 72 h
-et 168 h. Le profil provient du support local causal du cas. L'apprentissage des poids,
-effectué sur une partie des sites réservés à `S_dev_new` (**temporal split = validation**), montre également une amélioration
-agrégée par rapport au modèle chronos frozen et au modèle chronos adapted-v1.
+et 168 h. Le profil provient du support local causal du cas. Les poids ont été choisis à partir
+des cas `S_dev_new` du split `validation`. Les scores E4 présentés plus bas montrent une amélioration
+agrégée par rapport à Chronos frozen et à adapted-v1.
 
 ### Réserves de l'adaptation v2
-- Le profil seul (comme chronos adapted-v1) est moins performant que Chronos frozen ; les gains viennent du
+- Le profil horaire seul est moins performant que Chronos frozen. Ce résultat ne correspond pas à
+  adapted-v1, qui est une adaptation par résidus ; les gains viennent du
   mélange qui conserve 80–85 % de la prévision Chronos + 20-15 % du profil locale.
-- Les poids finaux ont été réajustés pour le modèle adapté, calculé seulement une fois par notre équipe (E3) et sauvegardé dans [Artifact/models](../../artifacts/models/e3-chronos2-adapted-v2/) .
+- Les poids finaux ont été choisis une seule fois par l'équipe E3 à partir des cas de validation
+  `S_dev_new`, puis sauvegardés dans [Artifact/models](../../artifacts/models/e3-chronos2-adapted-v2/).
 
 ---
 # Comparaison de Chronos frozen, adapted-v1 et adapted-v2 (adaptation actuellement retenue)
