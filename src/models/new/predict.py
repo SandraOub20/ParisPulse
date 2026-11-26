@@ -112,7 +112,7 @@ def predict_24h(
 
             predictions = _extract_predictions(chronos_output, inputs.case.origin, "chronos-2")
         elif variant == "adapted":
-            method_run_id = "e3-chronos-2-adapted-v1"
+            method_run_id = "e3-chronos-2-adapted-v2"
             model_run_id = "amazon-chronos-2"
             adaptation_started = time.perf_counter()
             adapted_model = adapt(
@@ -134,7 +134,7 @@ def predict_24h(
             inference_seconds = time.perf_counter() - inference_started
 
             predictions = _extract_predictions(
-                chronos_output, inputs.case.origin, "chronos-2-adapted"
+                chronos_output, inputs.case.origin, "chronos-2-adapted-v2"
             )
             predictions = adapted_model.correct(predictions)
     elif model_name == GOOGLE_MODEL_NAME:

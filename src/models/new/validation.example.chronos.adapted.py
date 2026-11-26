@@ -12,8 +12,7 @@ from src.models.new.predict import predict_24h
 from src.models.schemas import Case
 
 snapshot_id = "hist-20261117"
-METHOD_RUN_ID = "e3-chronos-2-adapted-v1"
-SUPPORTED_BUDGETS = {"24", "72", "168"}
+METHOD_RUN_ID = "e3-chronos-2-adapted-v2"
 cases_path = Path("data/evaluation/proto-v1/cases.csv")
 cases = pd.read_csv(cases_path, dtype=str, keep_default_na=False)
 
@@ -22,7 +21,6 @@ selection = cases[
     (cases["scenario"] == "new_site")
     & (cases["spatial_role"] == "S_dev_new")
     & (cases["temporal_split"] == "validation")
-    & cases["local_budget_hours"].isin(SUPPORTED_BUDGETS)
 ].copy()
 if selection.empty:
     raise ValueError("Aucun cas de validation S_dev_new aux budgets 24 h, 72 h ou 168 h.")
@@ -57,7 +55,7 @@ for position, (_, row) in enumerate(selection.iterrows(), start=1):
         print(f"Progression : {position}/{len(selection)} cas; {complete} prévisions complètes")
 
 output_dir = Path("data/prediction_results/EXP-E3")
-output_stem = "e3-chronos-2-adapted-v1-validation-b24-b72-b168"
+output_stem = "e3-chronos-2-adapted-v2-validation-b24-b72-b168"
 pred_path = write_predictions(results, output_dir / f"{output_stem}.pred.csv")
 runs_path = write_runs(results, output_dir / f"{output_stem}.runs.csv")
 print(f"Prévisions : {pred_path}")

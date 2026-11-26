@@ -1,8 +1,10 @@
-"""Adaptation du modèle E3 à l'historique autorisé d'un nouveau site."""
+"""Adaptation des modèles E3 à l'historique autorisé d'un nouveau site."""
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -19,7 +21,15 @@ _RIDGE_STRENGTH = 4.0
 _ONE_DAY_RIDGE_STRENGTH = 8.0
 _LOCAL_TIMEZONE = "Europe/Paris"
 
+_BLEND_WEIGHTS_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "artifacts"
+    / "models"
+    / "e3-chronos2-adapted-v2"
+    / "blend_weights.json"
+)
 
+# Adapted-v1
 @dataclass
 class Chronos2Calibrator:
     """Conserve le Chronos gelé et les seules corrections apprises localement."""
@@ -66,36 +76,94 @@ class Chronos2Calibrator:
             corrected["status_reason"] = reasons
         return corrected
 
+# Adapted-v2
+def hourly_profile(history: pd.DataFrame) -> dict[int, float]:
+    """Calculer la médiane observée pour chaque heure locale de Paris."""
+    timestamps = pd.to_datetime(history["timestamp"], utc=True)
+    hours = timestamps.dt.tz_convert(_LOCAL_TIMEZONE).dt.hour.to_numpy()
+    values = pd.to_numeric(history["count"], errors="coerce").to_numpy(dtype=float)
+    series = pd.Series(values, index=hours).dropna()
+    return {int(hour): float(value) for hour, value in series.groupby(level=0).median().items()}
+
+
+def profile_values(profile: dict[int, float], target_timestamps: pd.Series) -> np.ndarray:
+    """Récupérer la valeur du profil pour chaque heure cible."""
+    hours = pd.to_datetime(target_timestamps, utc=True).dt.tz_convert(_LOCAL_TIMEZONE).dt.hour
+    return np.array([profile.get(int(hour), np.nan) for hour in hours], dtype=float)
+
+
+def blend_forecast(p: np.ndarray, q: np.ndarray, weight: float) -> np.ndarray:
+    """Mélanger Chronos et le profil local, en retenant Chronos si le profil manque."""
+    chronos = np.maximum(np.asarray(p, dtype=float), 0.0)
+    profile = np.asarray(q, dtype=float)
+    mixed = np.where(np.isnan(profile), chronos, weight * chronos + (1.0 - weight) * profile)
+    return np.maximum(mixed, 0.0)
+
+
+def _load_blend_weight(budget: int, path: Path | None = None) -> float:
+    weights_path = _BLEND_WEIGHTS_PATH if path is None else path
+    if not weights_path.exists():
+        raise FileNotFoundError(f"Fichier de poids de mélange introuvable : {weights_path}")
+    data = json.loads(weights_path.read_text(encoding="utf-8"))
+    weights = data.get("weights")
+    if not isinstance(weights, dict) or str(budget) not in weights:
+        raise KeyError(f"Pas de poids appris pour le budget {budget} h dans {weights_path}.")
+    weight = float(weights[str(budget)])
+    if not 0.0 <= weight <= 1.0:
+        raise ValueError(f"Poids de mélange invalide : {weight}")
+    return weight
+
+
+@dataclass
+class Chronos2BlendAdapter:
+    """Chronos gelé mélangé au profil horaire du support local."""
+
+    model: Any
+    local_budget_hours: int
+    weight: float
+    profile: dict[int, float]
+
+    def correct(self, predictions: pd.DataFrame) -> pd.DataFrame:
+        required = {"target_timestamp", "y_pred"}
+        if not required.issubset(predictions.columns):
+            raise ValueError("Il faut target_timestamp et y_pred.")
+        corrected = predictions.copy()
+        chronos = pd.to_numeric(corrected["y_pred"], errors="coerce").to_numpy(dtype=float)
+        if not np.isfinite(chronos).all():
+            raise ValueError("Les prévisions Chronos à mélanger doivent être finies.")
+        profile = profile_values(self.profile, corrected["target_timestamp"])
+        corrected["y_pred"] = blend_forecast(chronos, profile, self.weight)
+        return corrected
+
 
 def adapt(
     model_name: str,
     history: pd.DataFrame,
     *,
     local_budget_hours: int | None = None,
-) -> Any:
-    """Retourner Chronos-2 avec un calibrateur ajusté sur l'historique fourni.
-
-    Les prédictions glissantes sont construites uniquement avec les lignes de
-    ``history``. Les observations utilisées comme cibles restent dans ce même
-    historique passé et ne peuvent donc pas inclure les valeurs du cas à prévoir.
-    """
-    model = manager.load_model(model_name)
-    adapted_model = model
+):
+    """Retourner le modèle 'model_name' adapté."""
     if model_name == "chronos-2":
-        # TODO : adapter Chronos-2 sur history (travailler sur adapted_model).
-        adapted_model = None
+
+        budget = _resolve_budget_v1(history, local_budget_hours)
+        weight = _load_blend_weight(budget)
+        model = manager.load_model(model_name)
+
+        return Chronos2BlendAdapter(
+            model=model,
+            local_budget_hours=budget,
+            weight=weight,
+            profile=hourly_profile(history),
+        )
+
     elif model_name == "google_TimesFM_2.5":
-        # TODO : adapter TimesFM 2.5 sur history (travailler sur adapted_model).
-        adapted_model = None
+        raise NotImplementedError(f"adapt() n'est pas implémenté pour {model_name}.")
+
     elif model_name == "team2":
-        # TODO : adapter le modèle E2 sur history (travailler sur adapted_model).
-        adapted_model = None
+        raise NotImplementedError(f"adapt() n'est pas implémenté pour {model_name}.")
+    
     else:
         raise ValueError(f"Modèle inconnu : {model_name}")
-
-    # TODO : retourner le modèle adapté sans modifier le modèle global (model) partagé.
-    return adapted_model
-
 
 def _resolve_budget_v1(history: pd.DataFrame, local_budget_hours: int | None) -> int:
     """Autoriser explicitement les budgets d'un et trois jours, jamais sept."""
