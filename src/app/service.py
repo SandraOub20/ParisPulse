@@ -39,6 +39,15 @@ CHRONOS_LIVE = "chronos_live"
 COMPARE_REFERENCES = "compare_references"
 COMPARE_CHRONOS = "compare_chronos"
 COMPARE_ARCHIVE_PREFIX = "compare_archive:"
+# Noms affichés des méthodes d'E3, d'après le method_run_id de ses fichiers.
+E3_METHOD_LABELS = {
+    "e3-chronos-2-frozen-v1": "Chronos-2 gelé",
+    "e3-chronos-2-adapted-v1": "Chronos-2 adapté v1 (résidus)",
+    "e3-chronos-2-adapted-v2": "Chronos-2 adapté v2 (mélange)",
+    "e3-google-TimesFM_2.5-frozen-v1": "TimesFM 2.5 gelé",
+    "e3-team3-mlp-frozen-v1": "MLP d’E2 gelé",
+    "e3-team2-mlp-frozen-v1": "MLP d’E2 gelé",
+}
 CONTEXT_LABELS = {
     "is_holiday": "Jour férié",
     "is_school_holiday": "Vacances scolaires",
@@ -58,16 +67,19 @@ class Study:
     publication_lag_hours: int | None
 
 
+def e3_method_label(method_run_id: str) -> str:
+    """Nom lisible d'une méthode d'E3 ; son identifiant s'il n'est pas connu."""
+    return E3_METHOD_LABELS.get(method_run_id.removesuffix("-live"), method_run_id)
+
+
 def method_label(study: Study) -> str:
     variant = study.forecast["variant"].iloc[0]
     run_id = str(study.forecast["method_run_id"].iloc[0])
     if variant == LOCAL_REFERENCE:
         return "Référence locale"
-    if variant == "frozen" and "chronos" in run_id:
-        return "Chronos-2 gelé"
     if variant == HGB and not study.forecast["method_used"].eq(HGB).any():
         return "Repli du HGB sur la référence"
-    return KNOWN_SITE_LABELS.get(variant, run_id)
+    return KNOWN_SITE_LABELS.get(variant) or e3_method_label(run_id)
 
 
 def verify_same_support(first: Study, second: Study) -> None:

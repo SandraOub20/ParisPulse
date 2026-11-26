@@ -571,7 +571,7 @@ def configure_new(
         if case is None:
             return None, None, None
 
-    sources = rows.loc[rows["case_id"].eq(case.case_id), ["archive", "method_run_id", "variant"]]
+    sources = rows.loc[rows["case_id"].eq(case.case_id), ["archive", "method_run_id"]]
     labels = {}
     can_run = case.spatial_role in E3_ROLES and bool(case.local_budget_hours)
     if can_run:
@@ -582,11 +582,7 @@ def configure_new(
             st.caption("Chronos-2 à la demande nécessite le groupe de dépendances `dl`.")
         labels[(None, service.LOCAL_REFERENCE)] = "Référence locale E3 · calcul à la demande"
     for row in sources.dropna().drop_duplicates().itertuples(index=False):
-        title = (
-            "Chronos-2 gelé"
-            if row.variant == "frozen" and "chronos" in row.method_run_id
-            else row.method_run_id
-        )
+        title = service.e3_method_label(row.method_run_id)
         labels[(row.archive, row.method_run_id)] = (
             f"{title} · archive {Path(row.archive).parent.name}"
         )

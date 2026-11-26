@@ -127,6 +127,15 @@ def test_one_case_trial_files_are_not_listed_twice(tmp_path):
     assert catalog["archive"].unique().tolist() == [str(paths[0])]
 
 
+def test_e3_methods_have_readable_names():
+    label = service.e3_method_label
+
+    assert label("e3-chronos-2-frozen-v1-live") == "Chronos-2 gelé"
+    assert label("e3-chronos-2-adapted-v2") == "Chronos-2 adapté v2 (mélange)"
+    assert label("e3-google-TimesFM_2.5-frozen-v1") == "TimesFM 2.5 gelé"
+    assert label("une-autre-methode") == "une-autre-methode"
+
+
 def test_local_calculation_and_comparison_respect_bounded_support():
     counter = pd.Series({"counter_id": "001", "site_group_id": "01", "site_role": "S_dev_new"})
     case = service.technical_new_case(counter, pd.Timestamp("2026-07-01").date(), "test", 24, 24)
