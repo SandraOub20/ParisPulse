@@ -17,7 +17,9 @@ Pour les lancements suivants, utiliser `./run.sh app`. Sous Windows, après avoi
    24 lignes horaires.
    Pour consulter une archive Chronos-2, activer **Proposer les prévisions archivées**, choisir
    l’archive et cliquer sur **Ouvrir la prévision**.
-3. Consulter les 24 horizons, les replis et les raisons d’indisponibilité. L’option
+3. Consulter les 24 horizons, les replis et les raisons d’indisponibilité. Sur un site connu,
+   le **HGB** d’E2 est proposé par défaut, avec le contexte E1. Il se replie sur la référence
+   hebdomadaire pour une date antérieure au 1er juillet 2026 ; l’écran l’indique. L’option
    **Comparer les deux références** calcule les deux références E2 pour la même date et affiche
    leur couverture, leurs replis et leur durée de calcul. Les onglets donnent
    accès à l’historique admissible au départ et au contexte E1 connu à cette date.

@@ -28,7 +28,7 @@ uv run --locked --group dl python -m streamlit run src/app/streamlit_app.py
 L'application propose :
 
 - une carte du réseau et le choix du compteur et du sens ;
-- sites connus : les deux références hebdomadaires et leur comparaison ;
+- sites connus : le HGB (par défaut), les deux références hebdomadaires et leur comparaison ;
 - nouveaux sites : une référence locale, Chronos-2 en direct (poids téléchargés au premier calcul) et des prévisions archivées ;
 - l'historique, les données manquantes, le contexte, l'erreur du cas et un export ZIP.
 
@@ -62,7 +62,8 @@ Ces résultats portent sur la **validation** seulement. Le test final (1er octob
 ## État du projet et limites connues
 
 - La validation du protocole par le professeur n'est pas enregistrée (`validated_at: null` dans [config/project.yaml](config/project.yaml)).
-- Le HGB et le MLP des sites connus sont utilisables en ligne de commande, mais **pas encore dans l'application**.
+- Le MLP des sites connus est utilisable en ligne de commande, mais pas dans l'application.
+- Le HGB ne prévoit qu'à partir du 1er juillet 2026, fin de son apprentissage ; avant, la référence répond.
 - La variante adaptée de Chronos-2 n'est pas encore intégrée.
 - Les scores des nouveaux sites ne comprennent pas de référence simple.
 - `python -m src.eval.protocol` échoue (`KeyError: 'status'`). Le fichier `cases.csv` déjà livré reste utilisable.
