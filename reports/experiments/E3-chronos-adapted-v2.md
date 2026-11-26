@@ -29,6 +29,8 @@ les nouveaux scores (pour les versions frozen, adapted-v1 et adapted-v2) provien
 | 24 h (1j) | 26,09 | 26,21 | **25,89** | **−0,20** | 57,41 | 57,77 | **56,70** | **−0,71** |
 | 72 h (3j) | 22,83 | 23,23 | **22,06** | **−0,77** | 52,27 | 52,07 | **51,38** | **−0,89** |
 | 168 h (7j) | 19,67 | 19,92 | **19,27** | **−0,40** | 47,62 | 47,56 | **46,25** | **−1,37** |
+
+
 La nouvelle adaptation (v2) améliore les scores agrégés par rapport au modèle gelé pour les trois
 budgets et fait mieux que l'ancienne adaptation v1 en MAE et en RMSE. L'ancienne v1 n'améliorait pas la MAE.
 
