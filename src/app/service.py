@@ -84,6 +84,9 @@ def archived_forecasts(paths: tuple[Path, ...], snapshot_id: str) -> pd.DataFram
     """Indexer les sorties E3 livrées, y compris les cas dont le calcul a échoué."""
     tables = []
     for path in paths:
+        if path.name.endswith("-one-case.pred.csv"):
+            # Essai d'un seul cas, déjà présent dans le lot complet ; E4 l'écarte aussi.
+            continue
         forecasts = pd.read_csv(path, dtype="string", usecols=FORECAST_COLUMNS)
         forecasts = forecasts.loc[
             forecasts["snapshot_id"].eq(snapshot_id) & forecasts["scenario"].eq("new_site")

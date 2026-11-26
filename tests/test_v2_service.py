@@ -105,6 +105,28 @@ def test_chronos_archive_has_selectable_budgets_without_e4_file(tmp_path):
     assert study.forecast["y_pred"].tolist() == [72] * HORIZON_HOURS
 
 
+def test_one_case_trial_files_are_not_listed_twice(tmp_path):
+    origin = pd.Timestamp("2026-06-30T22:00Z")
+    frame = (
+        target_timestamps(origin)
+        .assign(
+            case_id="c",
+            snapshot_id="test",
+            scenario="new_site",
+            method_run_id="e3-chronos-2-frozen-v1",
+        )
+        .reindex(columns=FORECAST_COLUMNS)
+    )
+    paths = (tmp_path / "x-validation-all.pred.csv", tmp_path / "x-validation-one-case.pred.csv")
+    for path in paths:
+        frame.to_csv(path, index=False)
+
+    catalog = service.archived_forecasts(paths, "test")
+
+    assert len(catalog) == HORIZON_HOURS
+    assert catalog["archive"].unique().tolist() == [str(paths[0])]
+
+
 def test_local_calculation_and_comparison_respect_bounded_support():
     counter = pd.Series({"counter_id": "001", "site_group_id": "01", "site_role": "S_dev_new"})
     case = service.technical_new_case(counter, pd.Timestamp("2026-07-01").date(), "test", 24, 24)
