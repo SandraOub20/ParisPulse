@@ -16,8 +16,11 @@ Pour les lancements suivants, utiliser `./run.sh app`. Sous Windows, après avoi
    protocole et, pour E3, le budget et les bornes d’historique.
    **Calculer la prévision** transmet ce même cas au moteur et affiche son graphique et les
    24 lignes horaires.
-   Pour consulter une archive Chronos-2, activer **Proposer les prévisions archivées**, choisir
+   Pour consulter une archive d’E3, activer **Proposer les prévisions archivées**, choisir
    l’archive et cliquer sur **Ouvrir la prévision**.
+   Sur un nouveau site, **Comparer Chronos-2 avant et après adaptation** affiche la version
+   gelée et l’adaptée v2 sur le même historique local, calculées à la demande ou lues dans
+   les archives (option **(archives)**).
 3. Consulter les 24 horizons, les replis et les raisons d’indisponibilité. Sur un site connu,
    le **HGB** d’E2 est proposé par défaut, avec le contexte E1. Il se replie sur la référence
    hebdomadaire pour une date antérieure au 1er juillet 2026 ; l’écran l’indique. L’option
@@ -39,7 +42,8 @@ Les deux moteurs sont appelés dans l’application sur l’historique publié a
 Sur un site réservé E3, la référence locale et Chronos-2 utilisent la même règle de support.
 L’option Chronos-2 en direct utilise le groupe `dl` et charge les poids publics
 lors du premier calcul.
-Les archives Chronos-2 gelé restent accessibles sur leurs cas enregistrés. La comparaison E3
+Les archives d’E3 restent accessibles sur leurs cas enregistrés ; les fichiers d’essai
+`-one-case` sont écartés. La comparaison E3
 vérifie l’empreinte du support avant d’afficher deux méthodes ensemble. Le fichier
 `data/evaluation/<protocole>/cases.csv`, s’il est présent, fournit les dates et bornes exactes du
 support. Pour E2, la date exacte sélectionne le cas E4 correspondant lorsqu’il existe. Pour E3,
@@ -48,7 +52,10 @@ interactif, sans modifier les fichiers d’évaluation E4.
 
 La MAE est un contrôle par cas après calcul. La comparaison E2 affiche les deux scores sur
 les mêmes heures mesurées lorsque les deux prévisions couvrent 24 heures. Les agrégations E4
-officielles et la variante Chronos-2 adaptée restent à intégrer.
+officielles restent à intégrer.
+
+Les poids de l’adaptation v2 ont été appris par E3 sur des cas de validation des sites de
+développement. L’écran le rappelle : un gain mesuré sur ces sites est probablement optimiste.
 
 Le fond de carte OpenStreetMap demande un accès Internet. La sélection par menu, les
 prévisions et l’export fonctionnent avec les fichiers locaux.

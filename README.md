@@ -29,7 +29,7 @@ L'application propose :
 
 - une carte du réseau et le choix du compteur et du sens ;
 - sites connus : le HGB (par défaut), les deux références hebdomadaires et leur comparaison ;
-- nouveaux sites : une référence locale, Chronos-2 en direct (poids téléchargés au premier calcul) et des prévisions archivées ;
+- nouveaux sites : une référence locale, Chronos-2 en direct, gelé ou adapté (poids téléchargés au premier calcul), la comparaison avant et après adaptation, et des prévisions archivées ;
 - l'historique, les données manquantes, le contexte, l'erreur du cas et un export ZIP.
 
 Détails dans le [guide de l'application](src/app/README.md).
@@ -49,13 +49,15 @@ Cas `proto-v1`, origines de juillet et août 2026, instantané `hist-20261117`. 
 
 L'écart entre MLP et HGB est plus petit que l'écart entre trois graines du MLP (0,36) : la règle fixée dans [EXP-E2-03](reports/experiments/EXP-E2-03.md) désigne le **HGB**.
 
-**Nouveaux sites** (5 compteurs, modèles non adaptés au site), [scores E4](data/evaluation/proto-v1/EXP-E3/scores.csv) :
+**Nouveaux sites** (5 compteurs), [scores E4](data/evaluation/proto-v1/EXP-E3/scores.csv) :
 
-| Historique local | Chronos-2 | TimesFM 2.5 | MLP de l'équipe 2 |
-| --- | ---: | ---: | ---: |
-| 24 h | 26,09 | 27,98 | non applicable |
-| 72 h | 22,83 | 22,55 | non applicable |
-| 168 h | 19,67 | 19,79 | 18,80 |
+| Historique local | Chronos-2 gelé | Chronos-2 adapté v1 | Chronos-2 adapté v2 | TimesFM 2.5 gelé | MLP de l'équipe 2 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 24 h | 26,09 | 26,21 | 25,89 | 27,98 | non applicable |
+| 72 h | 22,83 | 23,23 | 22,06 | 22,55 | non applicable |
+| 168 h | 19,67 | 19,92 | 19,27 | 19,79 | 18,80 |
+
+L'adaptation v2 mélange la prévision de Chronos-2 avec le profil horaire local ([fiche E3](reports/experiments/E3-chronos-adapted-v2.md)). Ses poids ont été appris sur des cas de validation de ces mêmes sites : **son gain est probablement optimiste**.
 
 Ces résultats portent sur la **validation** seulement. Le test final (1er octobre au 14 novembre 2026) reste réservé jusqu'au gel des choix.
 
@@ -64,10 +66,12 @@ Ces résultats portent sur la **validation** seulement. Le test final (1er octob
 - La validation du protocole par le professeur n'est pas enregistrée (`validated_at: null` dans [config/project.yaml](config/project.yaml)).
 - Le MLP des sites connus est utilisable en ligne de commande, mais pas dans l'application.
 - Le HGB ne prévoit qu'à partir du 1er juillet 2026, fin de son apprentissage ; avant, la référence répond.
-- La variante adaptée de Chronos-2 n'est pas encore intégrée.
+- Les poids de Chronos-2 adapté v2 ont été appris sur la validation qui sert à l'évaluer.
+- Sur les sites réservés au test, les dates proposées tombent en partie dans le test final.
 - Les scores des nouveaux sites ne comprennent pas de référence simple.
 - `python -m src.eval.protocol` échoue (`KeyError: 'status'`). Le fichier `cases.csv` déjà livré reste utilisable.
 - `./run.sh check` signale des erreurs de lint et de formatage.
+- Un test d'E3 échoue : il attend `chronos-2-blend-v2`, le code écrit `chronos-2-adapted-v2`.
 
 ## Recalculer les résultats
 
@@ -84,14 +88,14 @@ uv run --locked --group dl python -m src.models.known.predict \
 
 Les variantes sont `reference`, `reference_profile`, `mlp` et `hgb` ; `--batch` ne s'applique qu'à `mlp` et `hgb`.
 
-Pour refaire les scores officiels à partir des prévisions livrées (environ 2 min) :
+Pour refaire les scores officiels à partir des prévisions livrées (quelques minutes) :
 
 ```sh
 (cd data/prediction_results && unzip -o EXP-E2/EXP-E2-predictions.zip)
 uv run --locked --group dl python -m src.eval.backtest
 ```
 
-La seconde commande **réécrit** les fichiers de `data/evaluation/proto-v1/EXP-E2/` et `EXP-E3/`. Les prévisions extraites pèsent environ 235 Mo et ne sont pas ignorées par Git : **ne pas les commiter**.
+La seconde commande **réécrit** les fichiers de `data/evaluation/proto-v1/EXP-E2/` et `EXP-E3/`. Les prévisions extraites (environ 235 Mo) et le fichier `EXP-E2/errors.csv` produit (environ 240 Mo) ne sont pas ignorés par Git : **ne pas les commiter**.
 
 ## Développement
 
