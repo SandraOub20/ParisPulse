@@ -1,5 +1,6 @@
 # Journal individuel - Lynda Khazem
 Auteur : Lynda Khazem
+
 Date de dernière mise à jour : 26/11/2026
 
 ## 17/11/2026
