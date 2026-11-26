@@ -230,7 +230,6 @@ data/processed/*
 data/manifests/*
 !data/manifests/README.md
 !data/prediction_results/README.md
-data/evaluation/*
 !data/evaluation/README.md
 # artifacts/models/*
 !artifacts/models/README.md
