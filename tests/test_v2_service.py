@@ -201,6 +201,36 @@ def test_default_known_day_stays_out_of_the_reserved_test():
     assert service.default_known_day(day("2026-09-10"), day("2026-11-14")) == day("2026-09-10")
 
 
+class FakeChronos2:
+    """Remplace les poids publics : une médiane constante sur l'horizon demandé."""
+
+    def predict_df(self, context, *, prediction_length, timestamp_column, **_):
+        start = context[timestamp_column].max() + pd.Timedelta(hours=1)
+        hours = pd.date_range(start, periods=prediction_length, freq="h")
+        return pd.DataFrame({timestamp_column: hours, "0.5": 7.0})
+
+
+def new_site_study_inputs(monkeypatch, budget: int = 24):
+    monkeypatch.setattr(service.new_predict.manager, "load_model", lambda name: FakeChronos2())
+    counter = pd.Series({"counter_id": "001", "site_group_id": "01", "site_role": "S_dev_new"})
+    day = pd.Timestamp("2026-07-15").date()
+    case = service.technical_new_case(counter, day, "test", budget, 24)
+    return case, known_history(case)
+
+
+def test_live_chronos_calls_the_current_e3_interface(monkeypatch):
+    case, history = new_site_study_inputs(monkeypatch)
+
+    (study,) = service.run_studies(case, service.CHRONOS_LIVE, None, history, None, 24)
+    reference, chronos = service.run_studies(case, service.COMPARE_CHRONOS, None, history, None, 24)
+
+    assert study.forecast["y_pred"].tolist() == [7.0] * HORIZON_HOURS
+    assert study.forecast["method_run_id"].eq("e3-chronos-2-frozen-v1-live").all()
+    assert service.method_label(study) == "Chronos-2 gelé"
+    assert reference.forecast["method_run_id"].eq("local-weekly-reference").all()
+    assert chronos.forecast["y_pred"].tolist() == [7.0] * HORIZON_HOURS
+
+
 def forecast_case(contents: str) -> Case:
     reader = DictReader(io.StringIO(contents))
     assert tuple(reader.fieldnames) == CASE_COLUMNS

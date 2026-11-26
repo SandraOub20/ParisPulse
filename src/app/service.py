@@ -269,11 +269,10 @@ def calculate_local_reference(case: Case, history: pd.DataFrame, lag: int) -> St
 
 def calculate_chronos(case: Case, history: pd.DataFrame, lag: int) -> Study:
     result = new_predict.predict_24h(
-        case,
-        published_history(case, history, lag),
-        publication_lag_hours=lag,
-        method_run_id=f"{new_predict.METHOD_RUN_ID}-live",
+        case, published_history(case, history, lag), publication_lag_hours=lag
     )
+    # Le suffixe distingue ce calcul de l'archive qui porte le même identifiant E3.
+    result.method_run_id = f"{result.method_run_id}-live"
     return study_from_result(result, "Chronos-2 E3 gelé calculé à la demande", lag)
 
 
