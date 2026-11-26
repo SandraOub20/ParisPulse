@@ -1,0 +1,262 @@
+{
+  "model_run_id": "e2-mlp-ctx-20260701-s1-02bb",
+  "snapshot_id": "hist-20261117",
+  "load_seconds": 12.9,
+  "train_fit_seconds": 47.6,
+  "total_seconds": 100.7,
+  "peak_memory_mb": 1715.0,
+  "donor_site_groups": 49,
+  "excluded_site_groups": [
+    "100042374",
+    "100049407",
+    "100056035",
+    "100056330",
+    "100056331",
+    "300030139",
+    "300030163",
+    "300030250",
+    "300030922"
+  ],
+  "label_interval": [
+    "2023-11-14T23:00:00+00:00",
+    "2026-06-29T22:00:00+00:00"
+  ],
+  "training_report": {
+    "method": "mlp",
+    "file_format": 2,
+    "input_version": "mlp-in1",
+    "seed": 1,
+    "hyperparameters": {
+      "hidden": 128,
+      "layers": 2,
+      "dropout": 0.1,
+      "lr": 0.001,
+      "weight_decay": 0.0001,
+      "batch_size": 256,
+      "max_epochs": 100,
+      "patience": 8,
+      "holdout_weeks": 4,
+      "loss_weighting": "scale",
+      "min_observed_hours": 24,
+      "mask_prob": 0.25,
+      "mask_min_hours": 24,
+      "mask_max_hours": 144
+    },
+    "use_context": true,
+    "publication_lag_hours": 24,
+    "fit_cutoff": "2026-06-30T22:00:00+00:00",
+    "holdout_start": "2026-06-02T22:00:00+00:00",
+    "examples": {
+      "total": 90736,
+      "excluded_not_usable": 1879,
+      "excluded_context_missing": 0,
+      "excluded_no_target": 212,
+      "train": 86085,
+      "holdout": 2560,
+      "train_target_cells": 2062641,
+      "holdout_target_cells": 61370,
+      "counters": 97
+    },
+    "origins": {
+      "train": [
+        "2023-11-14T23:00:00+00:00",
+        "2026-06-01T22:00:00+00:00"
+      ],
+      "holdout": [
+        "2026-06-02T22:00:00+00:00",
+        "2026-06-28T22:00:00+00:00"
+      ]
+    },
+    "extreme_targets": {
+      "ratio_threshold": 10.0,
+      "examples_share": 0.007411585537819392,
+      "max_normalized_target": 471.1439208984375
+    },
+    "epochs_run": 30,
+    "best_epoch": 22,
+    "stopped_early": true,
+    "history": [
+      {
+        "epoch": 1,
+        "train_loss": 0.3058098917958047,
+        "holdout_loss": 0.21536565539502908
+      },
+      {
+        "epoch": 2,
+        "train_loss": 0.22898169448434413,
+        "holdout_loss": 0.21118144423694524
+      },
+      {
+        "epoch": 3,
+        "train_loss": 0.21561450912367133,
+        "holdout_loss": 0.2183093715781956
+      },
+      {
+        "epoch": 4,
+        "train_loss": 0.2091191519467976,
+        "holdout_loss": 0.1935786077452121
+      },
+      {
+        "epoch": 5,
+        "train_loss": 0.20570400192282923,
+        "holdout_loss": 0.18968203081981788
+      },
+      {
+        "epoch": 6,
+        "train_loss": 0.20081483077127055,
+        "holdout_loss": 0.1953978018161084
+      },
+      {
+        "epoch": 7,
+        "train_loss": 0.19774306895979687,
+        "holdout_loss": 0.1845772185315837
+      },
+      {
+        "epoch": 8,
+        "train_loss": 0.19452903275472594,
+        "holdout_loss": 0.1948674847402848
+      },
+      {
+        "epoch": 9,
+        "train_loss": 0.19263125283265248,
+        "holdout_loss": 0.1878691054157697
+      },
+      {
+        "epoch": 10,
+        "train_loss": 0.19093806100706878,
+        "holdout_loss": 0.18158529777315227
+      },
+      {
+        "epoch": 11,
+        "train_loss": 0.18779321911409297,
+        "holdout_loss": 0.1831725156664839
+      },
+      {
+        "epoch": 12,
+        "train_loss": 0.1876364344498704,
+        "holdout_loss": 0.18042481683512876
+      },
+      {
+        "epoch": 13,
+        "train_loss": 0.18659437823071406,
+        "holdout_loss": 0.1777061406906454
+      },
+      {
+        "epoch": 14,
+        "train_loss": 0.18476627205909038,
+        "holdout_loss": 0.17511029037169565
+      },
+      {
+        "epoch": 15,
+        "train_loss": 0.18455217587352463,
+        "holdout_loss": 0.18324914445625967
+      },
+      {
+        "epoch": 16,
+        "train_loss": 0.18363904245827975,
+        "holdout_loss": 0.18284760238391615
+      },
+      {
+        "epoch": 17,
+        "train_loss": 0.18226719486687465,
+        "holdout_loss": 0.17008863612485473
+      },
+      {
+        "epoch": 18,
+        "train_loss": 0.18204804031633823,
+        "holdout_loss": 0.16887701427888147
+      },
+      {
+        "epoch": 19,
+        "train_loss": 0.18095545637070395,
+        "holdout_loss": 0.17421297066262265
+      },
+      {
+        "epoch": 20,
+        "train_loss": 0.18056079885523807,
+        "holdout_loss": 0.16958671109532236
+      },
+      {
+        "epoch": 21,
+        "train_loss": 0.17841618873409418,
+        "holdout_loss": 0.1760666657577325
+      },
+      {
+        "epoch": 22,
+        "train_loss": 0.17850552463787306,
+        "holdout_loss": 0.16620601994913556
+      },
+      {
+        "epoch": 23,
+        "train_loss": 0.17858342225448054,
+        "holdout_loss": 0.17856151857591804
+      },
+      {
+        "epoch": 24,
+        "train_loss": 0.17722186442469653,
+        "holdout_loss": 0.17111675608895124
+      },
+      {
+        "epoch": 25,
+        "train_loss": 0.17712522654356816,
+        "holdout_loss": 0.17473571093052112
+      },
+      {
+        "epoch": 26,
+        "train_loss": 0.17572064486086872,
+        "holdout_loss": 0.17443122863737168
+      },
+      {
+        "epoch": 27,
+        "train_loss": 0.17564983284769978,
+        "holdout_loss": 0.17203164808413163
+      },
+      {
+        "epoch": 28,
+        "train_loss": 0.17536307464371614,
+        "holdout_loss": 0.16812564531770474
+      },
+      {
+        "epoch": 29,
+        "train_loss": 0.17449636593257212,
+        "holdout_loss": 0.16991031803984485
+      },
+      {
+        "epoch": 30,
+        "train_loss": 0.17458773430797814,
+        "holdout_loss": 0.16977209422182993
+      }
+    ],
+    "holdout_metrics": {
+      "mlp": {
+        "mae_micro": 17.987990465457077,
+        "mae_macro": 18.000333705495837,
+        "cells": 61370,
+        "counters": 95
+      },
+      "compared_cells": 61313,
+      "mlp_on_compared": {
+        "mae_micro": 17.99337625500894,
+        "mae_macro": 17.998755696654104,
+        "cells": 61313,
+        "counters": 95
+      },
+      "weekly_naive_on_compared": {
+        "mae_micro": 24.498687081187256,
+        "mae_macro": 24.504558117792705,
+        "cells": 61313,
+        "counters": 95
+      }
+    },
+    "n_parameters": 73368,
+    "torch_version": "2.15.0+cpu",
+    "torch_threads": 2,
+    "masking": {
+      "train_examples": 86085,
+      "masked_per_epoch_mean": 21479.5,
+      "masked_share_mean": 0.2495
+    },
+    "fit_seconds": 47.638
+  },
+  "model_dir": "/home/requiem/Desktop/ParisPulse/artifacts/models/e2-mlp-ctx-20260701-s1-02bb"
+}
