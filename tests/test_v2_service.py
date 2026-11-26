@@ -127,6 +127,53 @@ def test_one_case_trial_files_are_not_listed_twice(tmp_path):
     assert catalog["archive"].unique().tolist() == [str(paths[0])]
 
 
+def test_live_comparison_before_and_after_adaptation(monkeypatch):
+    case, history = new_site_study_inputs(monkeypatch)
+
+    frozen, adapted = service.run_studies(case, service.COMPARE_ADAPTATION, None, history, None, 24)
+
+    assert service.method_label(frozen) == "Chronos-2 gelé"
+    assert service.method_label(adapted) == "Chronos-2 adapté v2 (mélange)"
+    assert frozen.forecast["y_pred"].eq(7).all()
+    # Mélange de la prévision gelée (7) et du profil local mesuré (10).
+    assert adapted.forecast["y_pred"].between(7, 10, inclusive="neither").all()
+    service.verify_same_support(frozen, adapted)
+
+
+def test_archived_comparison_reads_both_files_in_order(tmp_path):
+    origin = pd.Timestamp("2026-06-30T22:00Z")
+    counter = pd.Series({"counter_id": "001", "site_group_id": "01", "site_role": "S_dev_new"})
+    paths = []
+    for run_id, value in zip(service.ADAPTATION_PAIR, (1.0, 2.0), strict=True):
+        path = tmp_path / f"{run_id}.pred.csv"
+        target_timestamps(origin).assign(
+            case_id="001_20260630T22_new_site_b24",
+            counter_id="001",
+            snapshot_id="test",
+            protocol_id="proto-v1",
+            scenario="new_site",
+            origin=origin.isoformat(),
+            method_run_id=run_id,
+            model_run_id="chronos",
+            support_id="same",
+            y_pred=value,
+            prediction_status="ok",
+        ).reindex(columns=FORECAST_COLUMNS).to_csv(path, index=False)
+        paths.append(path)
+    catalog = service.archived_forecasts(tuple(paths), "test")
+    (case,) = service.archived_cases(catalog, counter, pd.DataFrame())
+
+    before, after = service.run_studies(
+        case, service.COMPARE_ADAPTATION_ARCHIVE, paths[1], pd.DataFrame(), catalog, 24
+    )
+
+    assert before.forecast["y_pred"].eq(1).all()
+    assert after.forecast["y_pred"].eq(2).all()
+    only_frozen = catalog.loc[catalog["method_run_id"].eq(service.ADAPTATION_PAIR[0])]
+    with pytest.raises(ValueError, match="absente"):
+        service.open_adaptation_archives(case, only_frozen)
+
+
 def test_e3_methods_have_readable_names():
     label = service.e3_method_label
 

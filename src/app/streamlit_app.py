@@ -340,6 +340,14 @@ def show_study(studies: tuple[service.Study, ...], evaluations: tuple[dict, ...]
                 f"Le HGB n’a pas prévu ce cas : {reason}. "
                 "Les valeurs affichées viennent de la référence hebdomadaire."
             )
+    adapted_run_id = service.ADAPTATION_PAIR[1]
+    if case.spatial_role == "S_dev_new" and any(
+        str(item.forecast["method_run_id"].iloc[0]).startswith(adapted_run_id) for item in studies
+    ):
+        st.info(
+            "Adaptation v2 : E3 a appris les poids du mélange sur les cas de validation de ces "
+            "sites. Un gain mesuré ici est probablement optimiste."
+        )
     if n_valid != HORIZON_HOURS:
         st.warning(
             "La prévision est incomplète. Le tableau horaire détaille les heures et les raisons."
@@ -578,6 +586,12 @@ def configure_new(
         if find_spec("chronos") is not None and find_spec("torch") is not None:
             labels[(None, service.CHRONOS_LIVE)] = "Chronos-2 gelé · calcul à la demande"
             labels[(None, service.COMPARE_CHRONOS)] = "Comparer la référence locale et Chronos-2"
+            labels[(None, service.CHRONOS_ADAPTED_LIVE)] = (
+                "Chronos-2 adapté v2 · calcul à la demande"
+            )
+            labels[(None, service.COMPARE_ADAPTATION)] = (
+                "Comparer Chronos-2 avant et après adaptation"
+            )
         else:
             st.caption("Chronos-2 à la demande nécessite le groupe de dépendances `dl`.")
         labels[(None, service.LOCAL_REFERENCE)] = "Référence locale E3 · calcul à la demande"
@@ -589,6 +603,11 @@ def configure_new(
         if can_run:
             comparison = f"{service.COMPARE_ARCHIVE_PREFIX}{row.method_run_id}"
             labels[(row.archive, comparison)] = f"Comparer la référence locale à {title} (archive)"
+    if set(service.ADAPTATION_PAIR) <= set(sources["method_run_id"].dropna()):
+        adapted = sources.loc[sources["method_run_id"].eq(service.ADAPTATION_PAIR[1]), "archive"]
+        labels[(adapted.iloc[0], service.COMPARE_ADAPTATION_ARCHIVE)] = (
+            "Comparer Chronos-2 avant et après adaptation (archives)"
+        )
     if not labels:
         st.info("Ce cas n’a pas de méthode disponible avec le budget renseigné.")
         return None, None, None
@@ -800,16 +819,21 @@ def main() -> None:
                 engine = forecasting_team(case)
                 archive_version = ()
                 if archive:
-                    archive_version = (
-                        signature(archive),
-                        signature(
-                            archive.with_name(archive.name.removesuffix(".pred.csv") + ".runs.csv")
-                        ),
+                    # Toutes les archives du cas : une comparaison peut en lire plusieurs.
+                    files = sorted(set(catalog.loc[catalog["case_id"].eq(case.case_id), "archive"]))
+                    archive_version = tuple(
+                        signature(path)
+                        for file in map(Path, files)
+                        for path in (
+                            file,
+                            file.with_name(file.name.removesuffix(".pred.csv") + ".runs.csv"),
+                        )
                     )
                 context_version = signature(snapshot / "context.csv")
                 run_key = (
                     case,
                     method,
+                    archive,
                     archive_version,
                     counts_version,
                     context_version,

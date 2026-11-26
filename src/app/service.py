@@ -39,6 +39,11 @@ CHRONOS_LIVE = "chronos_live"
 COMPARE_REFERENCES = "compare_references"
 COMPARE_CHRONOS = "compare_chronos"
 COMPARE_ARCHIVE_PREFIX = "compare_archive:"
+CHRONOS_ADAPTED_LIVE = "chronos_adapted_live"
+COMPARE_ADAPTATION = "compare_adaptation"
+COMPARE_ADAPTATION_ARCHIVE = "compare_adaptation_archive"
+# Avant puis après adaptation : la version gelée et celle qu'E3 retient.
+ADAPTATION_PAIR = ("e3-chronos-2-frozen-v1", "e3-chronos-2-adapted-v2")
 # Noms affichés des méthodes d'E3, d'après le method_run_id de ses fichiers.
 E3_METHOD_LABELS = {
     "e3-chronos-2-frozen-v1": "Chronos-2 gelé",
@@ -282,13 +287,19 @@ def calculate_local_reference(case: Case, history: pd.DataFrame, lag: int) -> St
     return study_from_result(result, "Référence locale E3 calculée à la demande", lag)
 
 
-def calculate_chronos(case: Case, history: pd.DataFrame, lag: int) -> Study:
+def calculate_chronos(
+    case: Case, history: pd.DataFrame, lag: int, variant: str = "frozen"
+) -> Study:
     result = new_predict.predict_24h(
-        case, published_history(case, history, lag), publication_lag_hours=lag
+        case,
+        published_history(case, history, lag),
+        variant=variant,
+        publication_lag_hours=lag,
     )
     # Le suffixe distingue ce calcul de l'archive qui porte le même identifiant E3.
     result.method_run_id = f"{result.method_run_id}-live"
-    return study_from_result(result, "Chronos-2 E3 gelé calculé à la demande", lag)
+    mode = "adapté" if variant == "adapted" else "gelé"
+    return study_from_result(result, f"Chronos-2 E3 {mode} calculé à la demande", lag)
 
 
 def published_history(case: Case, history: pd.DataFrame, lag: int) -> pd.DataFrame:
@@ -333,6 +344,23 @@ def open_archive(case: Case, catalog: pd.DataFrame, file: Path, method_run_id: s
     return Study(case, forecast, runs, f"{file.parent.name}/{file.name}", None)
 
 
+def open_adaptation_archives(case: Case, catalog: pd.DataFrame) -> tuple[Study, ...]:
+    """Ouvrir les prévisions archivées avant et après adaptation d'un même cas."""
+    studies = []
+    for run_id in ADAPTATION_PAIR:
+        rows = catalog.loc[
+            catalog["case_id"].eq(case.case_id) & catalog["method_run_id"].eq(run_id)
+        ]
+        files = rows["archive"].unique()
+        if len(files) != 1:
+            raise ValueError(
+                f"Archive « {e3_method_label(run_id)} » absente ou en double pour ce cas."
+            )
+        studies.append(open_archive(case, catalog, Path(files[0]), run_id))
+    verify_same_support(*studies)
+    return tuple(studies)
+
+
 def run_studies(
     case: Case,
     method: str,
@@ -358,6 +386,8 @@ def run_studies(
     if archive is not None:
         if catalog is None:
             raise ValueError("Le catalogue des prévisions archivées est indisponible.")
+        if method == COMPARE_ADAPTATION_ARCHIVE:
+            return open_adaptation_archives(case, catalog)
         archived_id = method.removeprefix(COMPARE_ARCHIVE_PREFIX)
         stored = open_archive(case, catalog, archive, archived_id)
         if method == archived_id:
@@ -374,6 +404,13 @@ def run_studies(
         chronos = calculate_chronos(case, history, lag)
         verify_same_support(reference, chronos)
         return reference, chronos
+    if method == CHRONOS_ADAPTED_LIVE:
+        return (calculate_chronos(case, history, lag, "adapted"),)
+    if method == COMPARE_ADAPTATION:
+        frozen = calculate_chronos(case, history, lag)
+        adapted = calculate_chronos(case, history, lag, "adapted")
+        verify_same_support(frozen, adapted)
+        return frozen, adapted
     raise ValueError("La méthode sélectionnée est incompatible avec un cas E3.")
 
 
