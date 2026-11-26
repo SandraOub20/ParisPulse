@@ -13,6 +13,8 @@ from src.app import service
 from src.app.dashboard.forecast_case import model_forecast_plot
 from src.app.export import study_zip
 from src.eval.cases import CASE_COLUMNS, case_csv, forecasting_team
+from src.models.known.baseline import weekly_reference
+from src.models.known.predict import build_inputs
 from src.models.schemas import FORECAST_COLUMNS, HORIZON_HOURS, Case, target_timestamps
 
 
@@ -131,6 +133,72 @@ def test_local_calculation_and_comparison_respect_bounded_support():
     with ZipFile(io.BytesIO(study_zip(study, alternatives=((study, None),)))) as archive:
         assert "observations.csv" not in archive.namelist()
         assert len(pd.read_csv(archive.open("forecasts.csv"))) == 48
+
+
+def known_history(case: Case) -> pd.DataFrame:
+    hours = pd.date_range(
+        case.origin - pd.Timedelta(days=7),
+        case.origin + pd.Timedelta(hours=HORIZON_HOURS),
+        freq="h",
+        inclusive="left",
+    )
+    return pd.DataFrame(
+        {
+            "counter_id": case.counter_id,
+            "timestamp": hours,
+            "interval_end": hours + pd.Timedelta(hours=1),
+            "count_raw": 10.0,
+            "count": 10.0,
+            "is_observed": True,
+            "is_scoreable": True,
+        }
+    )
+
+
+def test_hgb_is_default_and_receives_context_and_measures_only(monkeypatch):
+    counter = pd.Series({"counter_id": "001", "site_group_id": "01", "site_role": "S_train"})
+    case = service.technical_case(counter, pd.Timestamp("2026-07-15").date(), "test")
+    history = known_history(case)
+    history.loc[0, "is_observed"] = False
+    context = pd.DataFrame({"variable": ["is_holiday"]})
+    calls = {}
+
+    def fake_predict(called_case, past, **kwargs):
+        calls.update(kwargs, past=past)
+        return weekly_reference(build_inputs(called_case, past, None, 24), "reference")
+
+    monkeypatch.setattr(service, "load_context", lambda snapshot_id: context)
+    monkeypatch.setattr(service, "predict_24h", fake_predict)
+    service.run_studies(case, service.HGB, None, history, None, 24)
+
+    assert next(iter(service.KNOWN_SITE_LABELS)) == service.HGB
+    assert calls["variant"] == "hgb"
+    assert calls["context"] is context
+    assert calls["past"]["interval_end"].max() <= case.origin - pd.Timedelta(hours=24)
+    assert pd.isna(calls["past"]["count"].iloc[0])
+
+
+def test_hgb_refusal_is_shown_as_a_reference_fallback():
+    counter = pd.Series({"counter_id": "001", "site_group_id": "01", "site_role": "S_train"})
+    case = service.technical_case(counter, pd.Timestamp("2026-06-15").date(), "hist-20261117")
+
+    (study,) = service.run_studies(
+        case, service.HGB, None, known_history(case), None, 24, context=pd.DataFrame()
+    )
+
+    assert study.forecast["y_pred"].tolist() == [10] * HORIZON_HOURS
+    assert study.forecast["method_used"].eq("weekly_naive").all()
+    assert study.forecast["status_reason"].eq("hgb_origin_before_fit_cutoff").all()
+    assert service.method_label(study) == "Repli du HGB sur la référence"
+    assert "refus du HGB" in study.source
+
+
+def test_default_known_day_stays_out_of_the_reserved_test():
+    day = lambda text: pd.Timestamp(text).date()  # noqa: E731
+
+    assert service.default_known_day(day("2023-10-18"), day("2026-11-14")) == day("2026-08-31")
+    assert service.default_known_day(day("2023-10-18"), day("2026-05-02")) == day("2026-05-02")
+    assert service.default_known_day(day("2026-09-10"), day("2026-11-14")) == day("2026-09-10")
 
 
 def forecast_case(contents: str) -> Case:

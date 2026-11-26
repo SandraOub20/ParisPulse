@@ -48,6 +48,14 @@ STATUS_REASONS = {
     "lag168_missing;no_fallback_history": "Aucune mesure historique à cette heure",
     "profile_weeks_missing": "Mesures de référence manquantes sur quatre semaines",
     "profile_weeks_missing;no_fallback_history": "Aucune mesure historique à cette heure",
+    "hgb_origin_before_fit_cutoff": "Date antérieure à la fin de l’apprentissage du HGB",
+    "hgb_origin_not_midnight": "Le HGB prévoit uniquement à partir de minuit",
+    "hgb_context_missing": "Contexte E1 (calendrier, grèves, météo) indisponible",
+    "hgb_context_incompatible": "Version du contexte différente de l’apprentissage",
+    "hgb_snapshot_incompatible": "Instantané différent de celui de l’apprentissage",
+    "hgb_site_not_in_training": "Site absent de l’apprentissage du HGB",
+    "hgb_no_history": "Aucune mesure publiée pour ce compteur",
+    "hgb_non_finite_output": "Sortie du HGB inexploitable",
 }
 
 
@@ -324,6 +332,14 @@ def show_study(studies: tuple[service.Study, ...], evaluations: tuple[dict, ...]
     metrics[3].metric(
         "Temps de calcul", f"{elapsed:.3f} s" if elapsed is not None else "—", border=True
     )
+    if forecast["variant"].iloc[0] == service.HGB:
+        refused = forecast.loc[~forecast["method_used"].eq(service.HGB), "status_reason"].dropna()
+        if not refused.empty:
+            reason = STATUS_REASONS.get(refused.iloc[0], refused.iloc[0])
+            st.warning(
+                f"Le HGB n’a pas prévu ce cas : {reason}. "
+                "Les valeurs affichées viennent de la référence hebdomadaire."
+            )
     if n_valid != HORIZON_HOURS:
         st.warning(
             "La prévision est incomplète. Le tableau horaire détaille les heures et les raisons."
@@ -456,17 +472,16 @@ def configure_known(
     if first_day > last_day:
         st.info("Historique publié trop court pour constituer un cas.")
         return None, None, None
-    default_day = max(first_day, (pd.Timestamp(last_day) - pd.Timedelta(days=1)).date())
     day = st.date_input(
         "Date de départ (minuit à Paris)",
-        value=default_day,
+        value=service.default_known_day(first_day, last_day),
         min_value=first_day,
         max_value=last_day,
         format="DD/MM/YYYY",
         key=f"date-{widget_key}",
     )
     methods = {
-        **service.REFERENCE_LABELS,
+        **service.KNOWN_SITE_LABELS,
         service.COMPARE_REFERENCES: "Comparer les deux références",
     }
     method = st.selectbox(
@@ -795,7 +810,16 @@ def main() -> None:
                             archive.with_name(archive.name.removesuffix(".pred.csv") + ".runs.csv")
                         ),
                     )
-                run_key = (case, method, archive_version, counts_version, inventory_version, lag)
+                context_version = signature(snapshot / "context.csv")
+                run_key = (
+                    case,
+                    method,
+                    archive_version,
+                    counts_version,
+                    context_version,
+                    inventory_version,
+                    lag,
+                )
                 if st.session_state.get("scope") != run_key:
                     st.session_state["scope"] = run_key
                     st.session_state.pop("forecast-result", None)

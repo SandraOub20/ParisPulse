@@ -11,6 +11,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
     PYTHONPATH=/workspace
 
+# Git : la dépendance timesfm du groupe dl est récupérée depuis son dépôt.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN useradd --create-home --uid 1000 developer \
     && mkdir -p /workspace /opt/venv \
     && chown developer:developer /workspace /opt/venv
@@ -18,7 +23,7 @@ WORKDIR /workspace
 USER developer
 
 COPY --chown=developer:developer pyproject.toml uv.lock ./
-RUN uv sync --locked
+RUN uv sync --locked --group dl
 
 COPY --chown=developer:developer . .
 

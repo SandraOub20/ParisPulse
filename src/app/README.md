@@ -1,14 +1,16 @@
 # ParisPulse V2
 
 Lancer `./run.sh demo` depuis la racine du dépôt pour préparer les ressources et démarrer.
+La commande installe aussi le groupe `dl` (PyTorch), nécessaire au démarrage.
 Pour les lancements suivants, utiliser `./run.sh app`. Sous Windows, après avoir extrait
 `livraison/hist-20261117.zip` à la racine, utiliser
-`uv run --locked python -m streamlit run src/app/streamlit_app.py`.
+`uv run --locked --group dl python -m streamlit run src/app/streamlit_app.py`.
 
 1. Choisir un point sur la carte ou utiliser **Compteur et sens**. **Tout le réseau** est affiché
    au départ. Les filtres **Sites connus** et **Nouveaux sites** réduisent la liste. Le menu permet
    aussi de sélectionner les compteurs sans coordonnées et de distinguer les sens superposés.
-2. Choisir la date et la méthode. Pour un nouveau site, choisir aussi le budget d’historique
+2. Choisir la date et la méthode. Pour un site connu, la date proposée est la fin de la
+   validation (31 août 2026), hors du test final réservé. Pour un nouveau site, choisir aussi le budget d’historique
    local. Le passé publié et les dates de la fenêtre cible sont disponibles avant le calcul.
    **Télécharger cases.csv** fournit une ligne avec le compteur, la date, le scénario, le
    protocole et, pour E3, le budget et les bornes d’historique.
@@ -16,7 +18,9 @@ Pour les lancements suivants, utiliser `./run.sh app`. Sous Windows, après avoi
    24 lignes horaires.
    Pour consulter une archive Chronos-2, activer **Proposer les prévisions archivées**, choisir
    l’archive et cliquer sur **Ouvrir la prévision**.
-3. Consulter les 24 horizons, les replis et les raisons d’indisponibilité. L’option
+3. Consulter les 24 horizons, les replis et les raisons d’indisponibilité. Sur un site connu,
+   le **HGB** d’E2 est proposé par défaut, avec le contexte E1. Il se replie sur la référence
+   hebdomadaire pour une date antérieure au 1er juillet 2026 ; l’écran l’indique. L’option
    **Comparer les deux références** calcule les deux références E2 pour la même date et affiche
    leur couverture, leurs replis et leur durée de calcul. Les onglets donnent
    accès à l’historique admissible au départ et au contexte E1 connu à cette date.
@@ -33,8 +37,8 @@ Le routage suit le rôle spatial E1 et le scénario du cas. **E4 → E2** pour u
 (`S_train`). **E4 → E3** pour un nouveau site réservé (`S_dev_new` ou `S_test_new`).
 Les deux moteurs sont appelés dans l’application sur l’historique publié autorisé.
 Sur un site réservé E3, la référence locale et Chronos-2 utilisent la même règle de support.
-L’option Chronos-2 en direct apparaît avec `./run.sh setup --group dl` et charge les poids publics
-lors du premier calcul. Sans ces dépendances, la référence locale E3 reste calculable.
+L’option Chronos-2 en direct utilise le groupe `dl` et charge les poids publics
+lors du premier calcul.
 Les archives Chronos-2 gelé restent accessibles sur leurs cas enregistrés. La comparaison E3
 vérifie l’empreinte du support avant d’afficher deux méthodes ensemble. Le fichier
 `data/evaluation/<protocole>/cases.csv`, s’il est présent, fournit les dates et bornes exactes du

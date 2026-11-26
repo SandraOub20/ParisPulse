@@ -11,9 +11,10 @@ import numpy as np
 import pandas as pd
 
 from src.app import v1_service
+from src.common.config import load_config
 from src.eval.cases import E3_ROLES, forecasting_team, interactive_case
 from src.models.known.baseline import weekly_reference
-from src.models.known.predict import predict_24h
+from src.models.known.predict import load_context, predict_24h
 from src.models.new import predict as new_predict
 from src.models.schemas import (
     CASE_RUNS_COLUMNS,
@@ -30,6 +31,9 @@ REFERENCE_LABELS = {
     "reference": "Même heure la semaine précédente",
     "reference_profile": "Médiane des quatre semaines précédentes",
 }
+HGB = "hgb"
+# Méthodes d'un site connu. La première est proposée par défaut : EXP-E2-03 retient le HGB.
+KNOWN_SITE_LABELS = {HGB: "HGB (modèle entraîné)", **REFERENCE_LABELS}
 LOCAL_REFERENCE = "local_reference"
 CHRONOS_LIVE = "chronos_live"
 COMPARE_REFERENCES = "compare_references"
@@ -61,7 +65,9 @@ def method_label(study: Study) -> str:
         return "Référence locale"
     if variant == "frozen" and "chronos" in run_id:
         return "Chronos-2 gelé"
-    return REFERENCE_LABELS.get(variant, run_id)
+    if variant == HGB and not study.forecast["method_used"].eq(HGB).any():
+        return "Repli du HGB sur la référence"
+    return KNOWN_SITE_LABELS.get(variant, run_id)
 
 
 def verify_same_support(first: Study, second: Study) -> None:
@@ -161,6 +167,19 @@ def counter_role(counter: pd.Series) -> str | None:
     return role if role == "S_train" or role in E3_ROLES else None
 
 
+def default_known_day(first_day: date, last_day: date) -> date:
+    """Date proposée pour un site connu : la fin de la validation, jamais le test réservé.
+
+    Sans date de validation dans la configuration, l'avant-dernier jour mesuré est proposé.
+    """
+    validation_end = (load_config().get("protocol") or {}).get("validation_until")
+    if validation_end is None:
+        wanted = (pd.Timestamp(last_day) - pd.Timedelta(days=1)).date()
+    else:
+        wanted = pd.Timestamp(validation_end).date()
+    return min(max(first_day, wanted), last_day)
+
+
 def technical_case(counter: pd.Series, day: date, snapshot_id: str) -> Case:
     return interactive_case(
         str(counter["counter_id"]),
@@ -198,10 +217,42 @@ def study_from_result(result: ForecastResult, source: str, lag: int) -> Study:
 def calculate_reference(
     case: Case, history: pd.DataFrame, variant: str, publication_lag_hours: int
 ) -> Study:
-    past = published_history(case, history, publication_lag_hours).copy()
-    past["count"] = past["count_raw"].where(past["is_observed"])
+    past = measured_history(case, history, publication_lag_hours)
     result = predict_24h(case, past, variant=variant, publication_lag_hours=publication_lag_hours)
     return study_from_result(result, "Référence E2 calculée à la demande", publication_lag_hours)
+
+
+def calculate_hgb(
+    case: Case,
+    history: pd.DataFrame,
+    publication_lag_hours: int,
+    context: pd.DataFrame | None = None,
+) -> Study:
+    """Appeler le HGB d'E2 avec le contexte E1 ; s'il refuse le cas, E2 sert la référence."""
+    if context is None:
+        # Sans contexte, le modèle se replie toujours sur la référence.
+        context = load_context(case.snapshot_id)
+    result = predict_24h(
+        case,
+        measured_history(case, history, publication_lag_hours),
+        variant=HGB,
+        context=context,
+        publication_lag_hours=publication_lag_hours,
+    )
+    used = result.predictions["method_used"].eq(HGB).any()
+    source = (
+        "HGB E2 calculé à la demande"
+        if used
+        else "Référence calculée à la demande après refus du HGB"
+    )
+    return study_from_result(result, source, publication_lag_hours)
+
+
+def measured_history(case: Case, history: pd.DataFrame, publication_lag_hours: int) -> pd.DataFrame:
+    """Historique publié du cas où `count` ne contient que les mesures réelles."""
+    past = published_history(case, history, publication_lag_hours).copy()
+    past["count"] = past["count_raw"].where(past["is_observed"])
+    return past
 
 
 def calculate_local_reference(case: Case, history: pd.DataFrame, lag: int) -> Study:
@@ -275,13 +326,20 @@ def run_studies(
     history: pd.DataFrame,
     catalog: pd.DataFrame | None,
     lag: int,
+    *,
+    context: pd.DataFrame | None = None,
 ) -> tuple[Study, ...]:
     """Exécuter le moteur désigné par le cas E4, ou ouvrir une archive explicite."""
     if forecasting_team(case) == "E2":
         variants = tuple(REFERENCE_LABELS) if method == COMPARE_REFERENCES else (method,)
-        if archive is not None or any(variant not in REFERENCE_LABELS for variant in variants):
+        if archive is not None or any(variant not in KNOWN_SITE_LABELS for variant in variants):
             raise ValueError("La méthode sélectionnée est incompatible avec un cas E2.")
-        return tuple(calculate_reference(case, history, variant, lag) for variant in variants)
+        return tuple(
+            calculate_hgb(case, history, lag, context)
+            if variant == HGB
+            else calculate_reference(case, history, variant, lag)
+            for variant in variants
+        )
 
     if archive is not None:
         if catalog is None:
