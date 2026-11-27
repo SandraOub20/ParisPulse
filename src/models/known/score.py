@@ -137,6 +137,13 @@ def as_raw(forecasts: pd.DataFrame) -> pd.DataFrame:
 
 
 def score(cases: pd.DataFrame, forecasts: pd.DataFrame, observations: pd.DataFrame) -> pd.DataFrame:
+    """Une ligne par méthode : voir score_detail (sans le détail par compteur)."""
+    return score_detail(cases, forecasts, observations)[0]
+
+
+def score_detail(
+    cases: pd.DataFrame, forecasts: pd.DataFrame, observations: pd.DataFrame
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Une ligne par méthode, sur les cas complets communs : le calcul de make_common_scores d'E4.
 
     Mêmes fonctions d'E4 (src/eval/metrics.py), dans le même ordre que leur backtest :
@@ -145,6 +152,8 @@ def score(cases: pd.DataFrame, forecasts: pd.DataFrame, observations: pd.DataFra
     - n_counters, n_compared_cases : compteurs et cas qui ont au moins une heure évaluable ;
     - coverage_24h : part des cas complets pour la méthode, sur tous les cas donnés ;
     - n_fallback_cases : cas dont au moins une heure vient du repli.
+    Rend aussi le détail par compteur (counter_id, method_run_id, MAE, bias...), celui qui
+    sert à compter les compteurs améliorés ou dégradés.
     """
     forecasts = forecasts[forecasts["case_id"].isin(set(cases["case_id"]))]
     c, p, o = metrics._prepare_inputs(cases.copy(), forecasts.copy(), observations.copy())
@@ -152,8 +161,10 @@ def score(cases: pd.DataFrame, forecasts: pd.DataFrame, observations: pd.DataFra
     coverage = metrics.calculate_coverage(evaluation)
     comparable = metrics.filter_common_complete_cases(evaluation, coverage)
     rows = {}
+    counters = []
     for method, group in comparable.groupby("method_run_id"):
         by_counter = metrics.calculate_by_counter(group)
+        counters.append(by_counter)
         pooled = metrics.calculate_metrics(group["count"], group["y_pred"])
         rows[method] = {
             "variant": group["variant"].iloc[0],
@@ -168,11 +179,36 @@ def score(cases: pd.DataFrame, forecasts: pd.DataFrame, observations: pd.DataFra
     table["coverage_24h"] = by_method["is_complete_24h"].mean()
     table["n_fallback_cases"] = by_method["n_fallback_hours"].apply(lambda s: int((s > 0).sum()))
     table.index.name = "method_run_id"
-    return table.sort_values("mae_macro")
+    per_counter = pd.concat(counters, ignore_index=True) if counters else pd.DataFrame()
+    return table.sort_values("mae_macro"), per_counter
+
+
+def score_by_group(
+    cases: pd.DataFrame,
+    forecasts: pd.DataFrame,
+    observations: pd.DataFrame,
+    groups: pd.Series,
+) -> pd.DataFrame:
+    """score sur chaque groupe de cas : une table par groupe, mises bout à bout.
+
+    groups : une étiquette par case_id (index = case_id), par exemple « férié » / « autre
+    jour » (EXP-E2-04) ou la tranche d'heures mesurées de la semaine visible (EXP-E2-05).
+    Chaque groupe a sa propre intersection des cas complets, comme une petite expérience.
+    Un cas sans étiquette n'est dans aucun groupe.
+    """
+    labels = cases["case_id"].map(groups)
+    tables = []
+    for label in sorted(labels.dropna().unique(), key=str):
+        chosen = cases[labels == label]
+        table = score(chosen, forecasts, observations)
+        tables.append(table.reset_index().assign(group=label))
+    if not tables:
+        raise ValueError("aucun cas étiqueté par groups")
+    return pd.concat(tables, ignore_index=True).set_index(["group", "method_run_id"])
 
 
 def score_experiment(
-    experiment_dir: Path,
+    experiment_dir: Path | list[Path],
     *,
     protocol_id: str = "proto-v1",
     scenario: str = "known_site",
@@ -180,19 +216,34 @@ def score_experiment(
     methods: list[str] | None = None,
     cases_root: Path | None = None,
     processed_root: Path | None = None,
+    counters: dict[str, pd.DataFrame] | None = None,
 ) -> dict[str, pd.DataFrame]:
-    """Les deux lectures d'un dossier d'expérience : {"système": table, "brut": table}."""
+    """Les deux lectures d'un dossier d'expérience : {"système": table, "brut": table}.
+
+    experiment_dir peut être une liste de dossiers : par exemple EXP-E2-04 (sans contexte)
+    avec EXP-E2 (avec contexte, déjà calculé), sans recopier les prévisions.
+    counters : si un dictionnaire est donné, il reçoit le détail par compteur des deux
+    lectures (mêmes clés).
+    """
     cases = load_cases(protocol_id, scenario=scenario, split=split, root=cases_root)
-    forecasts = load_forecasts(experiment_dir, methods)
+    folders = experiment_dir if isinstance(experiment_dir, list) else [experiment_dir]
+    forecasts = pd.concat([load_forecasts(f) for f in folders], ignore_index=True)
+    if methods:
+        unknown = set(methods) - set(forecasts["method_run_id"])
+        if unknown:
+            raise ValueError(f"méthodes absentes des dossiers : {sorted(unknown)}")
+        forecasts = forecasts[forecasts["method_run_id"].isin(methods)]
     forecasts = forecasts[forecasts["case_id"].isin(set(cases["case_id"]))]
     if forecasts.empty:
         raise ValueError(f"aucune prévision de {experiment_dir} sur les cas {scenario} / {split}")
     cases = cases[cases["case_id"].isin(set(forecasts["case_id"]))]
     observations = load_observations(cases, root=processed_root)
-    return {
-        "système": score(cases, forecasts, observations),
-        "brut": score(cases, as_raw(forecasts), observations),
-    }
+    tables = {}
+    for name, frame in (("système", forecasts), ("brut", as_raw(forecasts))):
+        tables[name], per_counter = score_detail(cases, frame, observations)
+        if counters is not None:
+            counters[name] = per_counter
+    return tables
 
 
 def to_json(tables: dict[str, pd.DataFrame]) -> dict:
@@ -212,18 +263,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scenario", default="known_site")
     parser.add_argument("--protocol", default="proto-v1")
     parser.add_argument("--methods", nargs="+", help="method_run_id à garder (défaut : tous)")
+    parser.add_argument(
+        "--also", nargs="+", default=[], help="autres expériences à lire avec (ex. EXP-E2)"
+    )
     parser.add_argument("--out", type=Path, help="fichier JSON (défaut : scores.json du dossier)")
     args = parser.parse_args(argv)
 
     folder = data_path("predictions") / args.experiment
     if args.level:
         folder = folder / args.level
+    others = [data_path("predictions") / name for name in args.also]
+    counters: dict[str, pd.DataFrame] = {}
     tables = score_experiment(
-        folder,
+        [folder, *others],
         protocol_id=args.protocol,
         scenario=args.scenario,
         split=args.split,
         methods=args.methods,
+        counters=counters,
     )
     with pd.option_context("display.width", 140, "display.max_columns", 20):
         for name, table in tables.items():
@@ -239,7 +296,11 @@ def main(argv: list[str] | None = None) -> int:
         "scores": to_json(tables),
     }
     Path(out).write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(f"\nécrit : {out}")
+    by_counter = Path(out).with_name(Path(out).stem + "_by_counter.csv")
+    pd.concat([f.assign(lecture=k) for k, f in counters.items()], ignore_index=True).to_csv(
+        by_counter, index=False
+    )
+    print(f"\nécrit : {out} et {by_counter.name}")
     return 0
 
 

@@ -40,19 +40,18 @@ Documents de référence : [sujet](../../ParisPulse_Sujet_etudiants.pdf), [archi
 
 ## 2. État d'avancement
 
-_Dernière mise à jour : 2026-11-27 - MOD-019._
+_Dernière mise à jour : 2026-11-27 - MOD-020._
 
 | Étape (README E2) | État | Renvoi |
 | --- | --- | --- |
-| 0. Revue de cohérence sujet / architecture / contrats / `src/models` | 🟡 Revue faite, incohérences en partie traitées (§10) | MOD-001, MOD-002 |
-| 0. Squelette de code `src/models` (signatures, types, docstrings) | ✅ Fait | MOD-001 |
-| 1. Série réelle E1 + origine et données autorisées E4 | 🟡 `hist-20261117` d'E1 reçu et vérifié ; `proto-v1` d'E4 (branche `Team4`) corrige les 3 écarts de `proto-v0`, protocole toujours « proposed » (§8) | MOD-005, MOD-007 |
-| 2. Référence 168 h + repli causal (`baseline.py`) | ✅ Codée et testée sur cas synthétique ; repli N = 4 provisoire (D-03) ; seconde référence médiane 4 semaines | MOD-003, MOD-004 |
-| 3. Vérification manuelle + raccord E4/E5 | 🟡 Vérifié à la main sur cas synthétique et sur 11 valeurs réelles ; consommation par E4/E5 à obtenir | MOD-003, MOD-005 |
-| 4. Variables communes (`features.py`) | 🟡 `f1.0` codée, testée, jeu d'apprentissage réel construit (E2-TECH-002) ; à présenter à E3 et E1 | MOD-006 |
-| 5. Méthode justifiée + variante explicative (`train.py`) | 🟡 Socle commun `train.py` fait et testé (`fit`, sauvegarde, chargement) ; MLP : apprentissage (`fit_mlp`) et prévision (`predict_mlp`) faits et testés, premier apprentissage réel (E2-TECH-003) ; HGB (`tabular.py`) fait et testé, premier apprentissage réel (E2-TECH-004), loss à fixer par E4 ; 3 graines du MLP et versions sans contexte apprises ; fiches [EXP-E2-03](../experiments/EXP-E2-03.md) (méthodes) et [EXP-E2-04](../experiments/EXP-E2-04.md) (contexte) en brouillon, à figer avant les scores | MOD-007, MOD-008, MOD-010, MOD-012, MOD-013 |
-| 6. Calcul exécutable et exports, recalcul autre origine (`predict.py`) | 🟡 Chaîne complète et commande `python -m src.models.known.predict` ; 10 858 cas de validation calculés (E2-TECH-001) ; recalcul par E5 à faire ; variantes `mlp` et `hgb` branchées avec repli sur la référence, vérifiées sur 25 cas réels (calcul complet après la fiche EXP-E2-03) ; contrôles d'éligibilité et modèles par défaut (D-24) ; `Team2` reconstruite sur le `dev` propre après son retour arrière ; fusion vers `dev` à faire avec E5 | MOD-003, MOD-005, MOD-008, MOD-011, MOD-014 |
-| 7. Cas difficile, extension, test final après gel | 🔲 | - |
+| 0. Revue de cohérence, squelette `src/models` | ✅ Fait ; incohérences closes ou gardées comme limites (§10) | MOD-001, MOD-002 |
+| 1. Série réelle E1 + cas d'E4 | ✅ `hist-20261117` d'E1, cas `proto-v1` d'E4 (protocole non validé par le professeur) | MOD-005, MOD-007 |
+| 2. Références et repli (`baseline.py`) | ✅ `reference` et `reference_profile`, repli N = 4 (D-03) | MOD-003, MOD-004 |
+| 3. Vérification manuelle + raccord E4/E5 | ✅ Valeurs vérifiées à la main ; prévisions notées par E4 (scores identiques aux nôtres) ; `predict_24h` utilisé par E3 et E5 | MOD-003, MOD-005, MOD-018 |
+| 4. Variables communes (`features.py`) | ✅ `f1.0`, sans fuite, utilisées par le HGB et le MLP | MOD-006 |
+| 5. Méthode justifiée + variante explicative | ✅ MLP et HGB appris et comparés ([EXP-E2-03](../experiments/EXP-E2-03.md), HGB retenu) ; ablation du contexte ([EXP-E2-04](../experiments/EXP-E2-04.md)) ; robustesse du MLP ([EXP-E2-05](../experiments/EXP-E2-05.md)) | MOD-007 à MOD-019 |
+| 6. Calcul exécutable et exports (`predict.py`, `batch.py`, `score.py`) | ✅ Cas par cas (application) et en bloc (expériences), mêmes fichiers ; score recalculable ; notebooks de présentation | MOD-011, MOD-014, MOD-017 à MOD-019 |
+| 7. Cas difficile, test final après gel | 🟡 Cas difficiles étudiés (pannes, EXP-E2-05 ; décalage de 2 h dans les données d'E1) ; test final après le gel D-07 | MOD-019 |
 
 Légende : ✅ fait et vérifié · 🟡 en cours · ⏳ bloqué/en attente · 🔲 non commencé.
 
@@ -126,6 +125,25 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
 - **Vérifications effectuées** : commandes lancées, résultats observés (ou "aucune").
 - **Points ouverts** : ce qui reste incertain ou à valider.
 ```
+
+### MOD-020 - 2026-11-27 - Notebooks de présentation (`demo.py`), score par compteur et par groupe ; suivi remis à jour
+
+- **Auteur** : Idir.
+- **Branche / commit** : `Team2-idir` (commit indiqué dans l'historique de ce fichier).
+- **Quoi** :
+  - [demo.py](../../src/models/known/demo.py) : `find_case`, `forecast_case` (par `predict_24h`), `case_view`, `plot_case`, `rainy_days` et `observed_hours_band`. Ce sont les seules fonctions appelées par les notebooks, en plus de `predict` et `score`.
+  - [score.py](../../src/models/known/score.py) :
+    - `score_detail` donne aussi la MAE par compteur ; la commande l'écrit dans `*_by_counter.csv` ;
+    - `score_by_group` refait le score sur des groupes de cas (type de jour, tranche d'heures mesurées) ;
+    - l'option `--also` lit plusieurs dossiers d'expérience.
+  - Notebooks `notebooks/E2_EXP-03_choix_methode.ipynb`, `E2_EXP-04_contexte.ipynb` et `E2_EXP-05_masquage.ipynb` : un cas en direct, les scores, la règle appliquée et les cas d'échec.
+  - `baseline.MIN_HISTORY_HOURS`, une constante inutilisée, est retiré (I4).
+  - Suivi : §2, §5, §6 (décisions closes), §8 et §10 (incohérences closes ou gardées comme limites).
+- **Pourquoi** : présenter les expériences et pouvoir les refaire devant le professeur, sans logique cachée dans les notebooks.
+- **Vérifications effectuées** :
+  - tests de `demo.py` et `score.py` (petits exemples calculés à la main) ;
+  - notebook 03 exécuté du début à la fin : il retrouve les scores d'E4 et la décision HGB.
+- **Constat en passant** : un décalage de 2 h dans les mesures d'E1, sur 4 jours de juillet (§8).
 
 ### MOD-019 - 2026-11-27 - Dégradation de la semaine visible pour EXP-E2-05 (`batch.py`, `--degrade`)
 
@@ -649,55 +667,21 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
 
 ## 5. Reste à faire
 
-Prioriser dans l'ordre. Cocher avec le renvoi `MOD-NNN` uniquement une fois vérifié.
+_Mis à jour le 2026-11-27. Ce qui est fait se trouve au journal (§4) et dans les fiches._
 
-### Immédiat (première matinée)
+- [x] Prévisions notées par E4 (EXP-E2-03, `scores.csv` sur `dev`), identiques à notre score. MOD-018
+- [x] Modèle de l'application désigné : HGB `e2-hgb-ctx-20260701-s0-b357` (D-24 définitive).
+- [x] Score recalculable par un tiers (`score.py`), chemins personnels retirés, README du dossier réécrit. MOD-018
+- [x] `Team2` fusionnée dans `dev` sans le commit retiré (MOD-014, MOD-017).
+- [x] `max_iter=2000` retenu pour le HGB sans contexte ; modèles écartés `409c` et `8b7a` retirés du dossier des modèles (non commités).
+- [ ] EXP-E2-04 : étape 2 (un groupe de contexte retiré à la fois, HGB), déclenchée par la règle du gel.
+- [ ] EXP-E2-05 : prévisions (5 niveaux × 10 calculs), scores et décision.
+- [ ] Gel final D-07, puis test final (octobre-novembre, 4 365 cas) lu une seule fois ; livraison à E4.
+- [ ] Signaler à E1 le décalage de 2 h des mesures des 9, 10, 13 et 15 juillet 2026 (environ 90 compteurs sur 97), et à E4 son effet sur les scores de validation.
+- [ ] Installation croisée par une autre équipe (copie neuve, README, `score.py`) et recalcul d'un autre cas avec E5 (SUIVI_ET_REMISE §6).
+- [ ] Rapport d'équipe ([E2_RAPPORT.md](E2_RAPPORT.md)) complété avec 04, 05 et le test.
 
-- [ ] Mettre `uv` à jour, lancer `./run.sh check` et `ruff` sur `src/models`.
-- [ ] Faire adopter (ou amender) `schemas.py` par E1/E3/E4/E5 puis le migrer dans `src/common/contracts.py`.
-- [x] Obtenir d'E1 un premier `counts.csv` réel et d'E4 un premier `cases.csv`. MOD-005 (`cases.csv` provisoire, `proto-v0`)
-- [x] Implémenter `lookup_lagged` (jointure par timestamp, pas par position). MOD-003
-- [x] Implémenter `fallback_value` (règle provisoire N = 4, à figer, cf. D-03) et `weekly_reference`. MOD-003
-- [x] Implémenter `ForecastResult.is_complete`, `to_forecast_frame`, `to_run_row`. MOD-003
-- [x] Implémenter `build_inputs`, `assert_causal`, `predict_24h` (variantes `reference`, `reference_profile`). MOD-005
-- [x] Vérifier 3 à 5 valeurs à la main sur un petit cas construit (zéro observé, heure absente, changement d'heure). MOD-003
-- [x] Formater [registry.py](../../src/models/registry.py) (`ruff format`), seul fichier qui fait encore échouer `./run.sh check`. MOD-006
-- [x] Produire un premier `.pred.csv` / `.runs.csv` sur données réelles. MOD-005 (E2-TECH-001)
-- [ ] Le faire consommer par E4 (score) et E5 (affichage) : preuve d'usage à consigner au §8.
-- [ ] Transmettre à E4 les 3 écarts de `proto-v0` (§8) et recalculer sur la version corrigée.
-
-### Étude principale
-
-- [x] `features.py` : calendrier de base (heure locale, jour), contexte (fériés, vacances, météo admissible), lags, profils, masques de manque ; `FEATURE_VERSION` incrémentée à chaque changement. MOD-006 (`f1.0`, E2-TECH-002)
-- [ ] Présenter les variables `f1.0` et les nouvelles signatures à E3 (bibliothèque partagée) et à E1 (lecture de `context.csv`) ; consigner leur retour au §8.
-- [ ] Tester Prophet hors intégration (viabilité, coût par cas) avant toute discussion d'ajout au projet (D-10).
-- [ ] Traiter les incohérences restantes du §10 (C3 après version finale des données, C4 avec E5, I1–I5, M1–M3).
-- [ ] Choisir une méthode justifiée par la bibliographie (statistique, tabulaire, réseau compact, modèle partagé...). Comparaison préparée : [EXP-E2-03](../experiments/EXP-E2-03.md) (brouillon, MOD-012).
-- [ ] Ablation : même modèle avec / sans calendrier ou météo, réglages figés avant le test. Modèles sans contexte appris et fiche [EXP-E2-04](../experiments/EXP-E2-04.md) en brouillon (MOD-013) ; par groupe : HGB seulement (D-12).
-- [x] `train.py` : `exclude_reserved_sites` (par `site_group_id`), `fit`, `save_model` avec `metadata.json` + SHA-256. MOD-007
-- [x] Brancher le HGB sur `train.fit` (`register_backend("hgb", …)`). MOD-009 (squelette), MOD-010 (implémentation, premier apprentissage réel)
-- [x] MLP : `fit_mlp` (perte MAE sur les cibles mesurées, arrêt anticipé sur les 4 semaines avant `fit_cutoff`, cibles extrêmes) et `predict_mlp` (proposés à Esther). MOD-008 (E2-TECH-003)
-- [x] `predict.py` : variantes `mlp` et `hgb` (modèle chargé une fois, repli sur la référence). MOD-011
-- [ ] Désigner le `model_run_id` utilisé par l'application (avec E5). Provisoire : modèles par défaut (D-24, MOD-014), à revoir selon EXP-E2-03.
-- [ ] Fusionner `Team2` dans `dev` avec E5 (PR) : sans conflit depuis la reconstruction (MOD-014).
-- [ ] Confirmer avec Ania le plafond `max_iter=2000` du HGB, puis supprimer les modèles écartés `e2-hgb-noctx-20260701-s0-409c` et `e2-hgb-ctx-20260701-s0-8b7a` (MOD-013).
-- [x] Fiche EXP-E2-05 (Idir) figée pour le code ; code, tests et modèles B appris, contrôle sur juin fait. MOD-015, MOD-016.
-- [ ] EXP-E2-05 : prévisions (5 niveaux × 4 bras) et scores, après le gel d'EXP-E2-03.
-- [ ] Présenter MOD-008 à Idir et Ania (contrôle de latence dans `train.fit`, format 2), à E3 (réseau réutilisable), à E4/E5 (codes `mlp_*`, couverture) ; consigner leur retour au §8.
-- [x] MLP : apprendre 3 graines pour mesurer la variabilité (contrôle de juin : étendue 0,29 vélo/h). MOD-013 ; la variabilité sur la validation sera lue avec EXP-E2-03.
-- [x] Fiche EXP-E2-03 (MLP contre HGB contre références) avec les décisions figées avant les scores. MOD-012, gel validé par l'équipe le 2026-11-24 (D-26).
-- [x] EXP-E2-03 : calculer les prévisions des 6 modèles (MOD-017), score provisoire : HGB retenu.
-- [x] EXP-E2-03 : livrer les prévisions à E4 (zip commité, MOD-017).
-- [ ] EXP-E2-03 : obtenir le score officiel d'E4 (`scores.csv`) et le comparer au score provisoire.
-- [ ] Enregistrer la référence et les modèles dans le registre (`register_defaults`).
-- [ ] Recalcul de la référence sur une autre origine avec E5 (`use_cache=False`).
-
-### Approfondissement et extension
-
-- [ ] Étudier un cas difficile (faibles volumes, météo manquante, rupture, historique incomplet) et une modification ciblée avec son coût.
-- [ ] Étendre aux compteurs admissibles ; reporter prévisions non produites et coûts.
-- [ ] Mesurer le test final **après gel** des choix.
-- [ ] Fiches d'expérience dans `reports/experiments/`, rapport d'équipe final.
+Abandonnés, avec leur raison : Prophet (D-04, D-10) ; migration de `schemas.py` vers `src/common/contracts.py` (I1, fichier commun) ; registre `registry.py` (C4, à retirer avec E5).
 
 ---
 
@@ -754,6 +738,9 @@ Chaque expérience a sa fiche dans `reports/experiments/` (gabarit [experiment.m
 
 | Date | Équipe | Objet | Résultat / preuve d'usage |
 | --- | --- | --- | --- |
+| 2026-11-27 | E1, E4 | **Décalage de 2 h dans les mesures** : les 9, 10, 13 et 15 juillet 2026, environ 90 compteurs sur 97 ont un profil horaire avancé de 2 h (le pic du matin à 7 h au lieu de 9 h), et environ la moitié le 16 juillet. Détecté par corrélation avec le profil médian des jours ouvrés | **À transmettre** à E1 (source ou extraction : 2 h, c'est le décalage UTC/Paris en été) et à E4 (effet sur toutes les méthodes, y compris les références). Ce n'est pas corrigé côté E2 : ce sont les vraies données de l'instantané. |
+| 2026-11-25 | E4 | Notation des prévisions d'EXP-E2-03 (zip livré) | **Preuve d'usage** : `data/evaluation/proto-v1/EXP-E2/scores.csv`, `scores_by_counter.csv` et `coverage.csv` sur `dev`. Les valeurs sont identiques à notre score (MOD-018). |
+| 2026-11-25 | E3, E4, E5 | Message commun : `Team2` saine sur `dev`, prévisions d'EXP-E2-03 livrées, HGB retenu, `predict_24h` avec `hgb` / `mlp` et contexte | E4 a noté les prévisions ; E5 : HGB par défaut (`DEFAULT_MODEL_RUN_IDS`). |
 | 2026-11-24 | Toutes | Retour arrière de `dev` sur `31252da` (commit E5 `fdc06c1` retiré), règle de propriété des dossiers (D-25) | `Team2` reconstruite sans `fdc06c1` (MOD-014) ; les contrôles d'éligibilité proposés par E5 sont réécrits dans `predict.py`. Fusion `Team2` → `dev` à faire avec E5. |
 | 2026-11-24 | E4 | Lecture de `src/eval/Metric.py` (branche `Team4`, `7a5c3e0`) pour EXP-E2-03 | Même masque, intersection commune et MAE macro présents. **À demander** : version de référence et arrivée sur `dev` ; biais dans la moyenne globale ; accord sur une version « brute » des prévisions (heures `fallback` marquées `unavailable`). |
 | 2026-11-24 | E3 | Chargement du MLP E2 dans `src/models/new/` | Sur `Team3` : `train.load_model` appelé sans importer `neural` (`KeyError` vérifié) et `manager` non importé dans `adapt.py` ; toujours présents sur le `dev` propre (`8e46f63`), ainsi que le test `test_new_predict.py::test_unimplemented_model_variants_load_then_raise[team2-adapted]` en échec. **À transmettre** (leur dossier, D-25) ; conditions du MLP (84 h sur 168 h, budgets 24 et 72 h refusés) ; versions sans contexte disponibles. |
@@ -800,27 +787,27 @@ Statuts : ✅ corrigé · ⏸️ reporté (décision prise) · 🔲 à traiter.
 | --- | --- | --- | --- | --- |
 | C1 | « y_pred nul » et « cibles nulles » : confusion possible entre zéro et manquant. Un 0 rendrait le cas complet et fausserait la MAE ; exclure les zéros contredit le sujet. | Sujet p. 3 ; CONTRATS §7 | Appliquer la correction : manquant = NaN, zéro observé conservé. | ✅ MOD-002 |
 | C2 | L'ablation calendrier n'est pas isolée : fériés et vacances dans `calendar_features`, alors que `use_context` ne coupe que `context_features`. | Sujet p. 6 ; plan §5 | Appliquer la correction : fériés et vacances déplacés dans `context_features`. | ✅ MOD-002 |
-| C3 | `counts.csv` n'a ni `available_at` ni `site_group_id` : `build_inputs` et `exclude_reserved_sites` ne peuvent pas être codées telles quelles ; latence fixée à 24 h en dur au lieu de `config/project.yaml`. | CONTRATS §3, §5 ; gabarit `counts.csv` | Attendre la version finale des données avant de choisir (D-08). | ⏸️ En partie levée (MOD-006) : `site_group_id` lu dans `inventory_quality.csv` par `training_counters`, latence lue dans la configuration ; `available_at` toujours absent |
-| C4 | Deux points d'entrée (`predict_24h(case, history, …)` et `ForecastMethod(inputs, variant)`), ambiguïté sur qui filtre l'historique, routage en double (`predict_24h` et `select_method`), alors que le sujet confie l'implémentation du routage à E5. | Sujet p. 9 ; CONTRATS §9 | Signature exigée par E5 ; la cohérence sera traitée plus tard (D-09). MOD-011 / MOD-014 : `predict_24h` choisit le modèle et le repli (`trained_forecast`, `eligibility_reason`) ; `registry.py` reste non implémenté et inutilisé. À trancher avec E5 : registre comme couche de routage au-dessus de `predict_24h`, ou suppression. | ⏸️ |
-| C5 | Prophet non déclaré dans `pyproject.toml` (calcul non reproductible par l'enseignant), absent de la bibliographie, placé dans `baseline.py`, et ne compte pas comme expérience DL. | Sujet p. 2, 4, 10 | Tester d'abord sa viabilité ; intégration discutée ensuite (D-10). | ⏸️ |
+| C3 | `counts.csv` n'a ni `available_at` ni `site_group_id` : `build_inputs` et `exclude_reserved_sites` ne peuvent pas être codées telles quelles ; latence fixée à 24 h en dur au lieu de `config/project.yaml`. | CONTRATS §3, §5 ; gabarit `counts.csv` | Attendre la version finale des données avant de choisir (D-08). | ⏸️ **Limite gardée** (2026-11-27) : `available_at` toujours absent ; latence fixe de 24 h lue dans la configuration, appliquée partout (`interval_end <= origin − 24 h`). Écrit dans les limites du rapport. |
+| C4 | Deux points d'entrée (`predict_24h(case, history, …)` et `ForecastMethod(inputs, variant)`), ambiguïté sur qui filtre l'historique, routage en double (`predict_24h` et `select_method`), alors que le sujet confie l'implémentation du routage à E5. | Sujet p. 9 ; CONTRATS §9 | Signature exigée par E5 ; la cohérence sera traitée plus tard (D-09). MOD-011 / MOD-014 : `predict_24h` choisit le modèle et le repli (`trained_forecast`, `eligibility_reason`) ; `registry.py` reste non implémenté et inutilisé. À trancher avec E5 : registre comme couche de routage au-dessus de `predict_24h`, ou suppression. | ✅ **Clos** (2026-11-27) : `predict_24h` est le seul point d'entrée utilisé (E3, E5) ; le choix du modèle et le repli sont dans `trained_forecast` / `eligibility_reason`. `registry.py` (fichier commun) n'est pas utilisé : proposition à E5 de le retirer. |
+| C5 | Prophet non déclaré dans `pyproject.toml` (calcul non reproductible par l'enseignant), absent de la bibliographie, placé dans `baseline.py`, et ne compte pas comme expérience DL. | Sujet p. 2, 4, 10 | Tester d'abord sa viabilité ; intégration discutée ensuite (D-10). | ✅ **Clos** (2026-11-27) : Prophet abandonné, `prophet_reference` retiré (MOD-018). |
 
 ### Importantes
 
 | ID | Incohérence | Référence | Statut |
 | --- | --- | --- | --- |
-| I1 | `schemas.py` est dans `src/models/` alors que le contrat commun relève de `src/common/contracts.py` ; risque de divergence si E4 ou E5 définissent leur propre `Case`. | ARCHITECTURE §5 ; D-01 | 🔲 |
+| I1 | `schemas.py` est dans `src/models/` alors que le contrat commun relève de `src/common/contracts.py` ; risque de divergence si E4 ou E5 définissent leur propre `Case`. | ARCHITECTURE §5 ; D-01 | ⏸️ **Limite gardée** (2026-11-27) : `schemas.py` sert de contrat de fait à E2, E3 et E5 ; le déplacer casserait leurs imports (fichier commun, D-25). |
 | I2 | `TrainedModel` ne suit pas `model_metadata.example.json` : noms différents (`donor_site_groups`, `label_interval`, `train_seconds`) ; il manque `excluded_site_groups` (preuve attendue par E3), `weights_sha256`, `minimum_history_hours`, `supported_scenarios`, `fallback`. | CONTRATS §6 ; gabarit métadonnées | ✅ MOD-007 : `TrainedModel` complété, `metadata.json` écrit avec tous les champs du gabarit (vérifié par un test) |
-| I3 | Référence décalée de 168 h UTC, mais repli en heure locale, et le plan dit « même heure une semaine avant » : décalage d'une heure en semaine de changement d'heure. Règle à choisir, documenter et tester. | Plan §7 ; PROTOCOLE §2 | 🔲 Écart rendu visible par le test de MOD-003 (repli à 11Z, valeur principale à 10Z) ; règle non tranchée. Les variables `f1.0` suivent l'UTC (D-14) |
-| I4 | `MIN_HISTORY_HOURS = 168` est ambigu : avec 24 h de latence, il faut la fenêtre [origin − 168 h, origin − 145 h], pas « 168 h d'historique ». Utilisée par `check_eligibility`, elle refuserait la référence alors que son repli peut répondre. | Sujet p. 2 (méthode simple toujours utilisable) | 🔲 |
+| I3 | Référence décalée de 168 h UTC, mais repli en heure locale, et le plan dit « même heure une semaine avant » : décalage d'une heure en semaine de changement d'heure. Règle à choisir, documenter et tester. | Plan §7 ; PROTOCOLE §2 | ⏸️ **Limite gardée** (2026-11-27) : décalages en UTC (D-14) ; les semaines de changement d'heure (fin mars, fin octobre) décalent la référence d'une heure. Hors validation (juillet-août) ; le test (octobre-novembre) contient le 25/10 : écrit dans les limites. |
+| I4 | `MIN_HISTORY_HOURS = 168` est ambigu : avec 24 h de latence, il faut la fenêtre [origin − 168 h, origin − 145 h], pas « 168 h d'historique ». Utilisée par `check_eligibility`, elle refuserait la référence alors que son repli peut répondre. | Sujet p. 2 (méthode simple toujours utilisable) | ✅ **Clos** (2026-11-27) : constante inutilisée retirée de `baseline.py` ; la fenêtre réelle est celle de `build_inputs` / `visible_week` (168 h finissant à origin − 24 h). |
 | I5 | MOD-001 concluait « aucune incohérence critique » et a été vérifiée avec Python 3.13 au lieu de 3.11 ; ruff non exécuté. | Règles de ce fichier | ✅ Conclusion corrigée par MOD-002 ; Python 3.11 et ruff utilisés depuis MOD-003, `ruff format --check` sans problème depuis MOD-006 |
 
 ### Mineures
 
 | ID | Incohérence | Statut |
 | --- | --- | --- |
-| M1 | `check_eligibility` exige `fit_cutoff < origin`, le protocole admet `<=` (un modèle gelé au 01/09 00:00 serait refusé pour l'origine du 01/09 00:00) ; `MethodSpec.fit_cutoff` est une chaîne au lieu d'un `Timestamp`. Le §9 de ce fichier reprend aussi `<`. | 🔲 MOD-008 : `predict_mlp` applique la règle du protocole (refus si `origin < fit_cutoff`, donc `origin = fit_cutoff` admis) ; `check_eligibility` reste à corriger |
-| M2 | `ForecastInputs.information_cutoff` mal défini : comparé à `available_at` (= `origin`) ou à `interval_end` (= `origin − latence`) selon les docstrings. Lié à C3. | 🟡 MOD-003 : `weekly_reference` compare `interval_end` à `information_cutoff` = `origin − latence` (provisoire, à confirmer avec D-08) |
-| M3 | Expérience deep learning non planifiée concrètement dans le squelette (D-05 ouvert), alors qu'elle est obligatoire. | 🟡 MOD-007 : `neural.py` créé (données, réseau, sauvegarde) ; apprentissage à écrire. MOD-008 : apprentissage et prévision écrits et testés, premier apprentissage réel (E2-TECH-003) ; la comparaison (EXP-E2-03) reste à faire après validation du protocole, et D-05 à confirmer avec E3. MOD-011 à MOD-014 : MLP branché dans `predict.py` et utilisé par l'application et par E3 (« MLP E2 transféré ») ; 3 graines apprises ; EXP-E2-03 et EXP-E2-04 en brouillon |
+| M1 | `check_eligibility` exige `fit_cutoff < origin`, le protocole admet `<=` (un modèle gelé au 01/09 00:00 serait refusé pour l'origine du 01/09 00:00) ; `MethodSpec.fit_cutoff` est une chaîne au lieu d'un `Timestamp`. Le §9 de ce fichier reprend aussi `<`. | ✅ **Clos** (2026-11-27) : la règle appliquée est celle du protocole (`eligibility_reason` et `predict_mlp` refusent seulement `origin < fit_cutoff`). `check_eligibility` n'existe plus que dans `registry.py`, non utilisé (C4). |
+| M2 | `ForecastInputs.information_cutoff` mal défini : comparé à `available_at` (= `origin`) ou à `interval_end` (= `origin − latence`) selon les docstrings. Lié à C3. | ⏸️ **Limite gardée** (2026-11-27) : `information_cutoff = origin − latence`, comparé à `interval_end`, appliqué partout ; à revoir si E1 ajoute `available_at` (C3). |
+| M3 | Expérience deep learning non planifiée concrètement dans le squelette (D-05 ouvert), alors qu'elle est obligatoire. | ✅ **Clos** (2026-11-27) : expérience de deep learning faite : MLP comparé dans EXP-E2-03 (noté par E4) et EXP-E2-05. |
 
 ### Points vérifiés cohérents
 

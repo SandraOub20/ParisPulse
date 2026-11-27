@@ -136,3 +136,41 @@ def test_erreurs_claires(tmp_path):
     _forecasts().to_csv(tmp_path / "all.pred.csv", index=False)
     with pytest.raises(ValueError, match="absentes"):
         S.load_forecasts(tmp_path, methods=["inconnue"])
+
+
+def test_score_experiment_plusieurs_dossiers(tmp_path):
+    """EXP-E2-04 : les prévisions sans contexte d'un dossier, avec contexte d'un autre."""
+    one, two = tmp_path / "pred" / "EXP-A", tmp_path / "pred" / "EXP-B"
+    one.mkdir(parents=True)
+    two.mkdir(parents=True)
+    forecasts = _forecasts()
+    forecasts[forecasts.method_run_id == "ref"].to_csv(one / "ref.pred.csv", index=False)
+    forecasts[forecasts.method_run_id == "hgb"].to_csv(two / "hgb.pred.csv", index=False)
+    (tmp_path / "eval" / "proto").mkdir(parents=True)
+    _cases().to_csv(tmp_path / "eval" / "proto" / "cases.csv", index=False)
+    (tmp_path / "processed" / "snap").mkdir(parents=True)
+    _observations().to_csv(tmp_path / "processed" / "snap" / "counts.csv", index=False)
+    kw = {"protocol_id": "proto", "cases_root": tmp_path / "eval"}
+    tables = S.score_experiment([one, two], processed_root=tmp_path / "processed", **kw)
+    assert set(tables["système"].index) == {"ref", "hgb"}
+    with pytest.raises(ValueError, match="absentes"):
+        S.score_experiment([one], methods=["hgb"], processed_root=tmp_path / "processed", **kw)
+
+
+def test_score_detail_par_compteur():
+    table, per_counter = S.score_detail(_cases(), _forecasts(), _observations())
+    mae = per_counter.set_index(["method_run_id", "counter_id"])["MAE"]
+    assert mae[("ref", "A")] == pytest.approx(2.0) and mae[("ref", "B")] == pytest.approx(0.0)
+    assert mae[("hgb", "B")] == pytest.approx(3.0)
+    # la MAE macro est la moyenne simple des MAE par compteur
+    assert table.loc["hgb", "mae_macro"] == pytest.approx(mae["hgb"].mean())
+
+
+def test_score_par_groupe():
+    groups = pd.Series({"A_case": "a", "B_case": "b"})
+    table = S.score_by_group(_cases(), _forecasts(), _observations(), groups)
+    assert table.loc[("a", "ref"), "mae_macro"] == pytest.approx(2.0)
+    assert table.loc[("b", "hgb"), "mae_macro"] == pytest.approx(3.0)
+    assert table.loc[("a", "hgb"), "n_compared_cases"] == 1
+    with pytest.raises(ValueError, match="aucun cas"):
+        S.score_by_group(_cases(), _forecasts(), _observations(), pd.Series(dtype=str))

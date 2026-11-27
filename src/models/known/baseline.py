@@ -49,7 +49,6 @@ from src.models.schemas import (
 METHOD_NAME = "weekly_naive"
 METHOD_VERSION = "0.1.0"
 SEASONAL_LAG = pd.Timedelta(hours=168)
-MIN_HISTORY_HOURS = 168
 LOCAL_TZ = "Europe/Paris"
 FALLBACK_WEEKS = 4
 
