@@ -345,8 +345,9 @@ def show_study(studies: tuple[service.Study, ...], evaluations: tuple[dict, ...]
         str(item.forecast["method_run_id"].iloc[0]).startswith(adapted_run_id) for item in studies
     ):
         st.info(
-            "Adaptation v2 : E3 a appris les poids du mélange sur les cas de validation de ces "
-            "sites. Un gain mesuré ici est probablement optimiste."
+            "Les paramètres de l’adaptation de Chronos-2 ont été choisis "
+            "sur les données de validation, sans réentraîner le modèle. "
+            "Ses performances doivent être confirmées sur des données de test indépendantes."
         )
     if n_valid != HORIZON_HOURS:
         st.warning(
@@ -528,6 +529,18 @@ def configure_new(
     lag: int,
 ) -> tuple:
     counter_id = counter["counter_id"]
+
+    try:
+        budget = service.fixed_e3_budget(counter)
+    except (OSError, ValueError, KeyError) as error:
+        st.warning(f"Budget E3 indisponible : {error}")
+        return None, None, None
+
+    st.metric(
+        "Budget d'historique local attribué",
+        f"{budget} h ({budget // 24} jour(s))",
+    )
+
     rows = catalog.loc[catalog["counter_id"].eq(counter_id)]
     evaluation = protocol_cases(snapshot.name, counter, "new_site")
     try:
@@ -545,18 +558,14 @@ def configure_new(
     except (OSError, ValueError, KeyError, TypeError) as error:
         st.warning(f"Cas des archives E3 indisponibles · {error}")
 
+    # Ne conserver que les cas correspondant au budget fixe
+    by_id = {case_id: case for case_id, case in by_id.items() if case.local_budget_hours == budget}
+
     use_free_date = not by_id or st.toggle(
         "Choisir une date libre",
         key=f"free-date-{widget_key}",
     )
     if not use_free_date:
-        budgets = sorted({case.local_budget_hours or 0 for case in by_id.values()})
-        budget = st.selectbox(
-            "Budget d’historique local",
-            budgets,
-            format_func=lambda value: f"{value} heures" if value else "Budget non renseigné",
-            key=f"budget-{widget_key}",
-        )
         choices = {
             case.case_id: case
             for case in sorted(by_id.values(), key=lambda case: (case.origin, case.protocol_id))
@@ -575,7 +584,8 @@ def configure_new(
         if service.counter_role(counter) not in E3_ROLES:
             st.info("Le rôle réservé à E3 de ce compteur doit être renseigné dans l’inventaire.")
             return None, None, None
-        case = configure_new_date(counter, history, snapshot, widget_key, lag)
+        # case = configure_new_date(counter, history, snapshot, widget_key, lag)
+        case = configure_new_date(counter, history, snapshot, widget_key, lag, budget)
         if case is None:
             return None, None, None
 
@@ -626,6 +636,7 @@ def configure_new_date(
     snapshot: Path,
     widget_key: str,
     lag: int,
+    budget: int,
 ) -> Case | None:
     if history.empty:
         st.info("Aucun comptage enregistré pour ce compteur.")
@@ -637,19 +648,21 @@ def configure_new_date(
     latest = measured.max().tz_convert(service.LOCAL_TZ).date()
     first = measured.min() + pd.Timedelta(hours=lag)
     eligible = {
-        budget: (first + pd.Timedelta(hours=budget)).tz_convert(service.LOCAL_TZ).ceil("D").date()
-        for budget in (24, 72, 168)
+        budget: (first + pd.Timedelta(hours=budget + 1))
+        .tz_convert(service.LOCAL_TZ)
+        .ceil("D")
+        .date()
     }
+
+    if eligible[budget] > latest:
+        st.info(f"Historique insuffisant pour le budget fixe de {budget} heures.")
+        return None
+
     eligible = {budget: day for budget, day in eligible.items() if day <= latest}
     if not eligible:
         st.info("Historique trop court pour constituer un support local de 24 heures.")
         return None
-    budget = st.selectbox(
-        "Budget d’historique local",
-        list(eligible),
-        format_func=lambda value: f"{value} heures",
-        key=f"technical-budget-{widget_key}",
-    )
+
     day = st.date_input(
         "Départ des 24 heures à prévoir (minuit à Paris)",
         value=eligible[budget],

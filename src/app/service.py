@@ -169,6 +169,42 @@ def optional_text(value: object) -> str:
     return "" if pd.isna(value) else str(value)
 
 
+def fixed_e3_budget(counter: pd.Series) -> int:
+    """Récupérer le budget fixe attribué à un couple compteur-site."""
+
+    path = Path(__file__).resolve().parent / "cases-app.csv"
+
+    cases = pd.read_csv(
+        path,
+        dtype=str,
+        keep_default_na=False,
+    )
+
+    counter_id = str(counter["counter_id"])
+    site_id = optional_text(counter["site_group_id"])
+
+    rows = cases.loc[
+        cases["counter_id"].eq(counter_id)
+        & cases["site_group_id"].eq(site_id)
+        & cases["scenario"].eq("new_site")
+    ]
+
+    budgets = pd.to_numeric(
+        rows["local_budget_hours"],
+        errors="raise",
+    ).unique()
+
+    if len(budgets) != 1:
+        raise ValueError("Aucun budget unique attribué à ce compteur-site.")
+
+    budget = int(budgets[0])
+
+    if budget not in (24, 72, 168):
+        raise ValueError("Budget E3 invalide.")
+
+    return budget
+
+
 def counter_role(counter: pd.Series) -> str | None:
     """Identifier le rôle du compteur à partir de l'inventaire E1."""
     status = optional_text(counter.get("selection_status"))
