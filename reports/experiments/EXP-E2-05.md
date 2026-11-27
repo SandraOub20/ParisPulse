@@ -139,7 +139,7 @@
   - les 3 graines de B sont apprises sur la même machine, et A en partie sur une autre (D-23) ;
   - les jours décalés de 2 h dans les données d'E1 touchent tous les bras de la même façon.
 
-- **Lien vers données de résultats et figures** : `data/prediction_results/EXP-E2-05/`, un dossier par niveau de dégradation.
+- **Lien vers données de résultats et figures** : `data/prediction_results/EXP-E2-05/<niveau>/`, un dossier par niveau de dégradation. Chacun contient ses scores (`scores_known_site_validation.json` et le détail par compteur), et la livraison à E4 `EXP-E2-05-<niveau>-predictions.zip` (de 20 à 24 Mo, 10 méthodes : `.pred.csv`, `.runs.csv`, `.cases_used.csv`).
 
 - **Retour d'un partenaire et preuve d'utilisation** : prévisions à livrer à E4 pour leur score officiel ; E5 : rien ne change (A et son repli restent servis). La combinaison A / B serait à proposer à E5 et E3 après une fiche dédiée.
 
