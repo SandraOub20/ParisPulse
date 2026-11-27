@@ -166,10 +166,38 @@ def predict_24h(
                 "google-TimesFM-2.5",
             )
         elif variant == "adapted":
-            method_run_id = "e3-google-TimesFM_2.5-adapted-v1"
-            model_run_id= "google-TimesFM_2.5"
-            manager.load_model(model_name)
-            raise NotImplementedError(f"adapted n'est pas encore implémenté pour {model_name}.")
+            method_run_id = "e3-google-TimesFM_2.5-adapted-v2"
+            model_run_id = "google-TimesFM_2.5"
+            adaptation_started = time.perf_counter()
+            adapted_model = adapt(
+                model_name,
+                inputs.history,
+                local_budget_hours=inputs.case.local_budget_hours,
+            )
+            adaptation_seconds = time.perf_counter() - adaptation_started
+
+            inference_started = time.perf_counter()
+            if hasattr(adapted_model.model, "compile"):
+                google_output = adapted_model.model.forecast(
+                    horizon=forecast_length,
+                    inputs=[context_df["target"].to_numpy(dtype=float)],
+                )
+            else:
+                google_output = adapted_model.model.forecast(
+                    [context_df["target"].to_numpy(dtype=float)],
+                    forecast_context_len=1024,
+                    normalize=True,
+                )
+            inference_seconds = time.perf_counter() - inference_started
+
+            predictions = _extract_timesfm_predictions(
+                google_output,
+                inputs.case.origin,
+                inputs.case.support_end,
+                forecast_length,
+                "google-TimesFM-2.5-adapted-v2",
+            )
+            predictions = adapted_model.correct(predictions)
     elif model_name == TEAM2_MODEL_NAME:
         if variant == "frozen":
             method_run_id = "e3-team2-mlp-frozen-v1"
