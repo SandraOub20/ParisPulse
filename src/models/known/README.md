@@ -13,7 +13,10 @@ Prévoir les 24 heures qui suivent une origine (minuit, heure de Paris) pour un 
 | `tabular.py` | Gradient boosting par histogrammes (HGB), le modèle retenu pour l'application (D-24) |
 | `predict.py` | `predict_24h(case, history, variant=...)`, utilisé par E3 et E5 : contrôles d'éligibilité, repli sur la référence, fichiers de résultats |
 | `batch.py` | Le même calcul en bloc, pour une expérience entière : les fichiers sont identiques à ceux du calcul cas par cas |
-| `score.py` | Score recalculable d'une expérience, avec la fonction d'E4 (`src/eval/metrics.py`) |
+| `score.py` | Score recalculable d'une expérience, avec la fonction d'E4 (`src/eval/metrics.py`) : lectures « système » et « brut », détail par compteur, score par groupe de cas |
+| `robustness.py` | Solidité d'un gain : tranches horaires, WAPE, mois, intervalle de confiance par bootstrap sur les jours |
+| `demo.py` | Un cas en direct pour les notebooks : retrouver un cas, le prévoir avec plusieurs méthodes, le tracer |
+| `final_test.py` | Lecture du test final, déclarée au gel D-07 avant le calcul du test : gain par période (normale, transition, vacances) |
 
 Modèles par défaut (`predict.DEFAULT_MODEL_RUN_IDS`) : HGB `e2-hgb-ctx-20260701-s0-b357` et MLP `e2-mlp-ctx-20260701-s0-9ce9`, appris jusqu'au 01/07/2026 et rangés dans `artifacts/models/`.
 
@@ -24,8 +27,9 @@ Modèles par défaut (`predict.DEFAULT_MODEL_RUN_IDS`) : HGB `e2-hgb-ctx-2026070
 | [EXP-E2-03](../../../reports/experiments/EXP-E2-03.md) | Quelle méthode pour l'application : MLP, HGB ou référence ? | `data/prediction_results/EXP-E2/` |
 | [EXP-E2-04](../../../reports/experiments/EXP-E2-04.md) | Le contexte (météo, grèves, vacances) améliore-t-il la prévision ? | `data/prediction_results/EXP-E2-04/` |
 | [EXP-E2-05](../../../reports/experiments/EXP-E2-05.md) | Apprendre avec des fenêtres masquées rend-il le MLP robuste aux pannes ? | `data/prediction_results/EXP-E2-05/<niveau>/` |
+| [EXP-E2-TEST](../../../reports/experiments/EXP-E2-TEST.md) | Les choix tiennent-ils hors période (octobre-novembre) ? Lu une seule fois, après le gel | `data/prediction_results/EXP-E2-TEST/` |
 
-Chaque fiche est figée avant le calcul des scores. Les cas viennent d'E4 (`data/evaluation/proto-v1/cases.csv`) : 6 014 cas de validation, soit 97 compteurs sur 62 jours de juillet-août 2026. Le test (octobre-novembre) n'est lu qu'une seule fois, après le gel.
+Chaque fiche est figée avant le calcul des scores. Notebooks de présentation : `notebooks/E2_EXP-03_choix_methode.ipynb`, `E2_EXP-04_contexte.ipynb` et `E2_EXP-05_masquage.ipynb`. Ils sont exécutés et commités avec leurs sorties, et n'ont pas de logique propre. Les cas viennent d'E4 (`data/evaluation/proto-v1/cases.csv`) : 6 014 cas de validation, soit 97 compteurs sur 62 jours de juillet-août 2026. Le test (octobre-novembre) n'est lu qu'une seule fois, après le gel.
 
 ## Refaire les expériences
 
@@ -59,7 +63,9 @@ Prérequis : l'environnement du projet (`doc/ENVIRONNEMENT.md`) et l'instantané
 
    `--root` écrit dans un dossier à part, car un modèle existant n'est jamais écrasé. Les réglages sont ceux de `e2-mlp-ctx-20260701-s0-9ce9`. Seule différence : l'empreinte compte aussi les 4 réglages de masquage ajoutés pour EXP-E2-05, neutres par défaut, si bien que l'identifiant n'est pas le même. Le score de contrôle de juin est très proche de celui du modèle d'origine, sans être identique au bit près d'une machine à l'autre (D-23).
 
-Le bloc test est refusé par `predict` sauf avec `--allow-test`, à n'utiliser qu'une seule fois, après le gel des choix.
+Le bloc test est refusé par `predict` sauf avec `--allow-test`, à n'utiliser qu'une seule fois, après le gel des choix. Il a été calculé le 2026-11-27, après le gel D-07 : son score se refait avec `python -m src.models.known.score --experiment EXP-E2-TEST --split test`, et sa lecture par période avec `python -m src.models.known.final_test`.
+
+Pour une expérience en panne simulée (EXP-E2-05), ajouter `--batch --degrade <niveau>` à la commande `predict`, puis `score --experiment EXP-E2-05 --level <niveau>`.
 
 ## Livraisons
 

@@ -1,6 +1,6 @@
 # Rapport de l'équipe 2 : prévision à 24 h sur les sites connus
 
-Équipe : Idir, Esther, Ania, Emmanuelle. Version du 2026-11-27. Le détail est dans le [suivi](E2_SUIVI.md), les fiches d'expérience dans [reports/experiments/](../experiments/), et la prise en main dans [E2_PRISE_EN_MAIN.md](E2_PRISE_EN_MAIN.md).
+Équipe : Idir, Esther, Ania, Emmanuelle. Version du 2026-11-28. Le détail est dans le [suivi](E2_SUIVI.md), les fiches d'expérience dans [reports/experiments/](../experiments/), et la prise en main dans [E2_PRISE_EN_MAIN.md](E2_PRISE_EN_MAIN.md).
 
 ## 1. Question étudiée
 

@@ -49,7 +49,17 @@ Format : [doc/SUIVI_ET_REMISE.md §4](../../doc/SUIVI_ET_REMISE.md). Entrées le
 ### Prochaine étape
 
 - **Test final fait, une seule fois**, après le gel. MLP A 17,41, HGB 19,86, J−7 25,16, médiane 27,64. Les choix tiennent. Le gain est fort pendant la Toussaint et les transitions (+35 à +57 %) et faible en semaines normales, comme en été. Hors période, le MLP bat le HGB : on le rapporte sans changer le choix, puisque le test n'est pas un jeu de réglage.
-- Reste à faire : livrer les prévisions à E4, fusionner `dev`, puis le message aux équipes et le push après validation.
+- **Livraisons à E4** : zips d'EXP-E2-04 (13 Mo), du test (7 Mo) et d'EXP-E2-05 (5 × 20 à 24 Mo). `check_forecasts.py` d'E4 passe sur toutes les livraisons, avec seulement l'alerte attendue (`fit_cutoff` vide des références).
+- **`dev` fusionné en local** : 460 tests passent ; le commit retiré de Sandra reste absent.
+
+## 2026-11-28 - Relecture avant remise
+
+- **Notebooks** : les cas en direct étaient mal choisis. Le « jour ordinaire » (Sébastopol, 16/07) lisait la semaine décalée d'E1, et le HGB y paraissait mauvais à tort. Je l'ai remplacé par Magenta le 28/07 (HGB 23,7, MLP 20,0, médiane 36,8, pour 290 vélos/h) et j'ai ajouté un cas où les modèles perdent : la reprise du 25/08. Le trafic du jour est affiché, pour lire les MAE de plus de 100 d'un gros compteur.
+- **Semaine visible vide** (100007049, 13/08) : 0 heure mesurée, le HGB prévoit le niveau d'avant la panne. Ce n'est pas propre au HGB : sur les 320 cas de repli du MLP, toutes les méthodes sont à environ 29-30 et surestiment de +23 à +31.
+- **Pourquoi pas un MLP plus gros** : non testé, mais deux familles finissent au même niveau, l'erreur sur juin plafonne dès l'époque 20 à 24, et régulariser a aidé. La limite vient de l'information, pas de la capacité. C'est écrit dans le rapport.
+- **Ton des documents rendus** : j'ai retiré les tournures qui s'adressaient au lecteur, et corrigé les affirmations périmées du rapport (nombre de tests, « 300 fois plus vite », preuve d'usage d'E4).
+- **Choix final** : le HGB avec contexte reste servi (règle d'EXP-E2-03) ; le test, qui favorise le MLP, ne sert pas à choisir. Recommandation : refaire ce choix sur une validation qui contienne des ruptures.
+- **Prochaine étape** : relecture par l'équipe, message aux équipes, puis push sur `Team2` après validation.
 
 ---
 
