@@ -105,7 +105,7 @@ Dans [data/evaluation/proto-v1/cases.csv](/data/evaluation/proto-v1/cases.csv), 
 - `b_72` : 72 heures, soit 3 jours ;
 - `b_168` : 168 heures, soit 7 jours.
 
-**L’équipe 5 doit retenir un budget fixe pour chaque couple compteur–site (et non pas 3) dans l’application ou dans son fichier de cas. Le choix présenté à l’utilisateur doit correspondre au budget réellement chargé pour le cas.**
+**L’équipe 5 doit retenir un budget fixe pour chaque couple compteur–site (et non pas 3) dans l’application ou dans son fichier de cas. Le choix présenté à l’utilisateur doit correspondre au budget réellement chargé pour le cas.** Concrètement pour chaque couple compteur-site, vous devez définir un seul budget fixe parmi les 3 possibilités suivantes : 24 h, 72 h ou 168 h. Ce budget devra rester identique tout au long de l’application. L’objectif est de diversifier les budgets attribués aux différents couples compteur-site, en répartissant les cas entre ces trois possibilités. Un exemple pour faire cela, vous pouvez partir du fichier **proto-v1/cases.csv** et générer un fichier **cases-app.csv**, que vous enregistrerez à l’emplacement de votre choix, puis ce nouveau fichier devra associer à chaque couple compteur-site (de new_site) son budget fixé. L’application utilisera ensuite directement cette correspondance pour charger chaque cas avec le budget qui lui a été attribué.
 
 ### Passage d’un cas à  `src.models.new.predict.predict_24h`
 
