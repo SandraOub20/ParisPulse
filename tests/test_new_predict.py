@@ -208,6 +208,26 @@ def test_google_timesfm_negative_median_is_clipped(monkeypatch):
     assert result.predictions.loc[0, "status_reason"] == "negative_quantile_clipped_to_zero"
 
 
+def test_google_timesfm_adapted_uses_blend_v2(monkeypatch):
+    case = new_site_case()
+    model = FakeGoogleTimesFM()
+    monkeypatch.setattr(new_predict.manager, "load_model", lambda name: model)
+
+    result = new_predict.predict_24h(
+        case,
+        history_for_case(case),
+        variant="adapted",
+        model_name="google_TimesFM_2.5",
+        publication_lag_hours=LAG_HOURS,
+    )
+
+    assert model.horizon == LAG_HOURS + 24
+    assert result.method_run_id == "e3-google-TimesFM_2.5-adapted-v2"
+    assert result.model_run_id == "google-TimesFM_2.5"
+    assert result.predictions["method_used"].eq("google-TimesFM-2.5-adapted-v2").all()
+    assert result.predictions["y_pred"].iloc[0] == pytest.approx(0.9 * 24 + 0.1)
+
+
 def test_adapted_prediction_uses_blend_v2_and_refuses_known_site(monkeypatch):
     case = new_site_case()
     loaded_models = []
@@ -239,7 +259,6 @@ def test_adapted_prediction_uses_blend_v2_and_refuses_known_site(monkeypatch):
 @pytest.mark.parametrize(
     ("model_name", "variant"),
     [
-        ("google_TimesFM_2.5", "adapted"),
         ("team2", "adapted"),
     ],
 )

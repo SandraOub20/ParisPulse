@@ -29,6 +29,14 @@ _BLEND_WEIGHTS_PATH = (
     / "blend_weights.json"
 )
 
+_TIMESFM_BLEND_WEIGHTS_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "artifacts"
+    / "models"
+    / "e3-timesfm2.5-adapted-v2"
+    / "blend_weights.json"
+)
+
 # Adapted-v1
 @dataclass
 class Chronos2Calibrator:
@@ -136,6 +144,28 @@ class Chronos2BlendAdapter:
         return corrected
 
 
+@dataclass
+class TimesFM2BlendAdapter:
+    """TimesFM gelé mélangé au profil horaire du support local."""
+
+    model: Any
+    local_budget_hours: int
+    weight: float
+    profile: dict[int, float]
+
+    def correct(self, predictions: pd.DataFrame) -> pd.DataFrame:
+        required = {"target_timestamp", "y_pred"}
+        if not required.issubset(predictions.columns):
+            raise ValueError("Il faut target_timestamp et y_pred.")
+        corrected = predictions.copy()
+        forecast = pd.to_numeric(corrected["y_pred"], errors="coerce").to_numpy(dtype=float)
+        if not np.isfinite(forecast).all():
+            raise ValueError("Les prévisions TimesFM à mélanger doivent être finies.")
+        profile = profile_values(self.profile, corrected["target_timestamp"])
+        corrected["y_pred"] = blend_forecast(forecast, profile, self.weight)
+        return corrected
+
+
 def adapt(
     model_name: str,
     history: pd.DataFrame,
@@ -157,7 +187,16 @@ def adapt(
         )
 
     elif model_name == "google_TimesFM_2.5":
-        raise NotImplementedError(f"adapt() n'est pas implémenté pour {model_name}.")
+        budget = _resolve_timesfm_budget(history, local_budget_hours)
+        weight = _load_timesfm_blend_weight(budget)
+        model = manager.load_model(model_name)
+
+        return TimesFM2BlendAdapter(
+            model=model,
+            local_budget_hours=budget,
+            weight=weight,
+            profile=hourly_profile(history),
+        )
 
     elif model_name == "team2":
         raise NotImplementedError(f"adapt() n'est pas implémenté pour {model_name}.")
@@ -181,6 +220,38 @@ def _resolve_budget_v1(history: pd.DataFrame, local_budget_hours: int | None) ->
             "L'adaptation de Chronos-2 est limitée aux budgets locaux de 24 h, 72 h et 168 h."
         )
     return budget
+
+
+def _resolve_timesfm_budget(history: pd.DataFrame, local_budget_hours: int | None) -> int:
+    """Valider les budgets locaux pris en charge par l'adaptation TimesFM."""
+    if local_budget_hours is not None:
+        budget = int(local_budget_hours)
+    else:
+        if "timestamp" not in history or history.empty:
+            raise ValueError("L'historique TimesFM doit contenir au moins un timestamp.")
+        timestamps = pd.to_datetime(history["timestamp"], utc=True)
+        budget = int((timestamps.max() - timestamps.min()) / pd.Timedelta(hours=1)) + 1
+
+    if budget not in _ALLOWED_BUDGETS:
+        raise ValueError(
+            "L'adaptation de TimesFM est limitée aux budgets locaux de 24 h, 72 h et 168 h."
+        )
+    return budget
+
+
+def _load_timesfm_blend_weight(budget: int, path: Path | None = None) -> float:
+    """Charger le poids TimesFM appris pour le budget local."""
+    weights_path = _TIMESFM_BLEND_WEIGHTS_PATH if path is None else path
+    if not weights_path.exists():
+        raise FileNotFoundError(f"Fichier de poids TimesFM introuvable : {weights_path}")
+    data = json.loads(weights_path.read_text(encoding="utf-8"))
+    weights = data.get("weights")
+    if not isinstance(weights, dict) or str(budget) not in weights:
+        raise KeyError(f"Pas de poids TimesFM appris pour le budget {budget} h dans {weights_path}.")
+    weight = float(weights[str(budget)])
+    if not 0.0 <= weight <= 1.0:
+        raise ValueError(f"Poids de mélange TimesFM invalide : {weight}")
+    return weight
 
 
 def _fit_chronos_calibrator_v1(
