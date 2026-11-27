@@ -12,7 +12,8 @@ import plotly.graph_objects as go
 import streamlit as st
 from streamlit_folium import st_folium
 
-from src.app import service, v1_service
+from src.app import evaluation_service, service, v1_service
+from src.app.dashboard.comparison import show_official_evaluation
 from src.app.dashboard.coverage import hourly_window, show_coverage
 from src.app.dashboard.forecast_case import model_forecast_plot
 from src.app.export import study_zip
@@ -107,6 +108,38 @@ def cases_cached(version: tuple, snapshot_id: str) -> pd.DataFrame:
 def context_cached(version: tuple) -> pd.DataFrame:
     path, _, _ = version
     return pd.read_csv(path, dtype="string") if path.is_file() else pd.DataFrame()
+
+
+E4_FILES = (
+    evaluation_service.SCORES_FILE,
+    evaluation_service.COVERAGE_FILE,
+    evaluation_service.MANIFEST_FILE,
+)
+
+
+def e4_version(root: Path) -> tuple:
+    """Signature des fichiers officiels E4 : toute republication invalide le cache."""
+    return tuple(
+        signature(evaluation_service.experiment_dir(team, root) / name)
+        for team in evaluation_service.TEAMS
+        for name in E4_FILES
+    )
+
+
+@st.cache_data(show_spinner="Chargement des évaluations officielles E4…", max_entries=4)
+def official_results_cached(root: Path, version: tuple) -> evaluation_service.OfficialResults:
+    return evaluation_service.load_official_results(root)
+
+
+def show_e4_evaluation() -> None:
+    """Scores globaux E4, indépendants du compteur sélectionné."""
+    try:
+        root = data_path("evaluation") / evaluation_service.PROTOCOL_ID
+        results = official_results_cached(root, e4_version(root))
+    except (OSError, ValueError, KeyError) as error:
+        st.error(f"Évaluations officielles E4 indisponibles · {error}")
+        return
+    show_official_evaluation(results)
 
 
 def render_map(counters: pd.DataFrame, map_key: str, selection_key: str) -> None:
@@ -329,7 +362,7 @@ def show_study(studies: tuple[service.Study, ...], evaluations: tuple[dict, ...]
     metrics = st.columns(4)
     metrics[0].metric("Heures prédites", f"{n_valid} / {HORIZON_HOURS}", border=True)
     metrics[1].metric("Heures avec repli", n_fallback, border=True)
-    metrics[2].metric("Erreur moyenne absolue", score, border=True)
+    metrics[2].metric("MAE sur ce cas (indicatif)", score, border=True)
     metrics[3].metric(
         "Temps de calcul", f"{elapsed:.3f} s" if elapsed is not None else "—", border=True
     )
@@ -412,6 +445,10 @@ def show_comparison(
     studies: tuple[service.Study, ...], evaluations: tuple[dict, ...] | None
 ) -> None:
     st.subheader("Comparaison des méthodes sur ce cas")
+    st.caption(
+        "Scores indicatifs calculés sur les 24 heures de ce seul cas. Les scores globaux "
+        "des méthodes figurent dans l’onglet « Évaluation officielle E4 »."
+    )
     coverage = [
         int(item.forecast["prediction_status"].isin(service.VALID_STATUSES).sum())
         for item in studies
@@ -705,7 +742,16 @@ def main() -> None:
             <p>Observatoire des comptages vélo à Paris</p>
         </header>
     """)
+    # Onglets toujours exécutés : l'état du compteur et de la prévision est conservé.
+    explorer_tab, evaluation_tab = st.tabs(["Prévision par compteur", "Évaluation officielle E4"])
+    with explorer_tab:
+        show_counter_explorer()
+    with evaluation_tab:
+        show_e4_evaluation()
 
+
+def show_counter_explorer() -> None:
+    """Carte, prévision sur 24 h et étude d'un cas pour le compteur sélectionné."""
     directories = sorted(
         (path.parent for path in data_path("processed").glob("*/counters.csv")), reverse=True
     )
