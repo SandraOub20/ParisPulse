@@ -1,0 +1,213 @@
+{
+  "experiment": "EXP-E2-05",
+  "level": "trous-50",
+  "protocol_id": "proto-v1",
+  "scenario": "known_site",
+  "split": "validation",
+  "scores": {
+    "système": {
+      "e2-mlp-ctx-20260701-s2-f26e_trous-50": {
+        "variant": "mlp",
+        "mae_macro": 25.5848,
+        "bias": -8.9247,
+        "rmse": 52.8849,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 286
+      },
+      "e2-mlp-ctx-20260701-s0-37f5_trous-50": {
+        "variant": "mlp",
+        "mae_macro": 25.6012,
+        "bias": -10.1034,
+        "rmse": 53.324,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 286
+      },
+      "e2-mlp-ctx-20260701-s1-bd12_trous-50": {
+        "variant": "mlp",
+        "mae_macro": 25.8745,
+        "bias": -9.0458,
+        "rmse": 52.9651,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 286
+      },
+      "e2-mlp-ctx-20260701-s2-6278_trous-50": {
+        "variant": "mlp",
+        "mae_macro": 27.0446,
+        "bias": -8.1599,
+        "rmse": 57.4415,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 1918
+      },
+      "e2-mlp-ctx-20260701-s1-9318_trous-50": {
+        "variant": "mlp",
+        "mae_macro": 27.0664,
+        "bias": -7.209,
+        "rmse": 57.5422,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 1918
+      },
+      "e2-mlp-ctx-20260701-s1-9318-seuil24_trous-50": {
+        "variant": "mlp",
+        "mae_macro": 27.3461,
+        "bias": -12.7349,
+        "rmse": 56.0298,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 286
+      },
+      "e2-mlp-ctx-20260701-s2-6278-seuil24_trous-50": {
+        "variant": "mlp",
+        "mae_macro": 27.5315,
+        "bias": -13.7414,
+        "rmse": 56.1443,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 286
+      },
+      "e2-mlp-ctx-20260701-s0-9ce9_trous-50": {
+        "variant": "mlp",
+        "mae_macro": 27.9582,
+        "bias": -10.3583,
+        "rmse": 58.6451,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 1918
+      },
+      "e2-mlp-ctx-20260701-s0-9ce9-seuil24_trous-50": {
+        "variant": "mlp",
+        "mae_macro": 28.3329,
+        "bias": -16.5183,
+        "rmse": 57.1503,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 286
+      },
+      "e2-reference_profile-measured_trous-50": {
+        "variant": "reference_profile",
+        "mae_macro": 28.6361,
+        "bias": 10.0162,
+        "rmse": 59.5801,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 230
+      }
+    },
+    "brut": {
+      "e2-mlp-ctx-20260701-s2-f26e_trous-50": {
+        "variant": "mlp",
+        "mae_macro": 23.3065,
+        "bias": -8.4156,
+        "rmse": 48.8188,
+        "n_counters": 95,
+        "n_compared_cases": 4003,
+        "coverage_24h": 0.9524,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s0-37f5_trous-50": {
+        "variant": "mlp",
+        "mae_macro": 23.3371,
+        "bias": -9.4694,
+        "rmse": 48.9019,
+        "n_counters": 95,
+        "n_compared_cases": 4003,
+        "coverage_24h": 0.9524,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s1-bd12_trous-50": {
+        "variant": "mlp",
+        "mae_macro": 23.3404,
+        "bias": -8.4793,
+        "rmse": 48.5448,
+        "n_counters": 95,
+        "n_compared_cases": 4003,
+        "coverage_24h": 0.9524,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s2-6278-seuil24_trous-50": {
+        "variant": "mlp",
+        "mae_macro": 24.8773,
+        "bias": -13.0828,
+        "rmse": 51.4815,
+        "n_counters": 95,
+        "n_compared_cases": 4003,
+        "coverage_24h": 0.9524,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s2-6278_trous-50": {
+        "variant": "mlp",
+        "mae_macro": 24.8773,
+        "bias": -13.0828,
+        "rmse": 51.4815,
+        "n_counters": 95,
+        "n_compared_cases": 4003,
+        "coverage_24h": 0.6811,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s1-9318-seuil24_trous-50": {
+        "variant": "mlp",
+        "mae_macro": 24.8975,
+        "bias": -11.7548,
+        "rmse": 51.6383,
+        "n_counters": 95,
+        "n_compared_cases": 4003,
+        "coverage_24h": 0.9524,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s1-9318_trous-50": {
+        "variant": "mlp",
+        "mae_macro": 24.8975,
+        "bias": -11.7548,
+        "rmse": 51.6383,
+        "n_counters": 95,
+        "n_compared_cases": 4003,
+        "coverage_24h": 0.6811,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s0-9ce9_trous-50": {
+        "variant": "mlp",
+        "mae_macro": 26.1581,
+        "bias": -16.153,
+        "rmse": 53.343,
+        "n_counters": 95,
+        "n_compared_cases": 4003,
+        "coverage_24h": 0.6811,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s0-9ce9-seuil24_trous-50": {
+        "variant": "mlp",
+        "mae_macro": 26.1581,
+        "bias": -16.153,
+        "rmse": 53.343,
+        "n_counters": 95,
+        "n_compared_cases": 4003,
+        "coverage_24h": 0.9524,
+        "n_fallback_cases": 0
+      },
+      "e2-reference_profile-measured_trous-50": {
+        "variant": "reference_profile",
+        "mae_macro": 27.4673,
+        "bias": 12.6162,
+        "rmse": 56.3799,
+        "n_counters": 95,
+        "n_compared_cases": 4003,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 230
+      }
+    }
+  }
+}

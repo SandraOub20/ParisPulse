@@ -1,0 +1,213 @@
+{
+  "experiment": "EXP-E2-05",
+  "level": "d0",
+  "protocol_id": "proto-v1",
+  "scenario": "known_site",
+  "split": "validation",
+  "scores": {
+    "système": {
+      "e2-mlp-ctx-20260701-s0-9ce9-seuil24_d0": {
+        "variant": "mlp",
+        "mae_macro": 22.2115,
+        "bias": -0.9108,
+        "rmse": 47.0467,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 274
+      },
+      "e2-mlp-ctx-20260701-s0-9ce9_d0": {
+        "variant": "mlp",
+        "mae_macro": 22.2322,
+        "bias": -0.8145,
+        "rmse": 47.0501,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 320
+      },
+      "e2-mlp-ctx-20260701-s1-9318-seuil24_d0": {
+        "variant": "mlp",
+        "mae_macro": 22.3244,
+        "bias": 0.6047,
+        "rmse": 48.1059,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 274
+      },
+      "e2-mlp-ctx-20260701-s1-9318_d0": {
+        "variant": "mlp",
+        "mae_macro": 22.3469,
+        "bias": 0.6931,
+        "rmse": 48.101,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 320
+      },
+      "e2-mlp-ctx-20260701-s2-f26e_d0": {
+        "variant": "mlp",
+        "mae_macro": 22.4887,
+        "bias": -3.7274,
+        "rmse": 47.7651,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 274
+      },
+      "e2-mlp-ctx-20260701-s2-6278-seuil24_d0": {
+        "variant": "mlp",
+        "mae_macro": 22.5682,
+        "bias": -0.3407,
+        "rmse": 48.0799,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 274
+      },
+      "e2-mlp-ctx-20260701-s2-6278_d0": {
+        "variant": "mlp",
+        "mae_macro": 22.5892,
+        "bias": -0.2656,
+        "rmse": 48.0756,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 320
+      },
+      "e2-mlp-ctx-20260701-s1-bd12_d0": {
+        "variant": "mlp",
+        "mae_macro": 22.6768,
+        "bias": -1.9438,
+        "rmse": 48.1045,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 274
+      },
+      "e2-mlp-ctx-20260701-s0-37f5_d0": {
+        "variant": "mlp",
+        "mae_macro": 23.0215,
+        "bias": -0.9916,
+        "rmse": 49.5648,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 274
+      },
+      "e2-reference_profile-measured_d0": {
+        "variant": "reference_profile",
+        "mae_macro": 27.0117,
+        "bias": 8.471,
+        "rmse": 56.5744,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 204
+      }
+    },
+    "brut": {
+      "e2-mlp-ctx-20260701-s0-9ce9-seuil24_d0": {
+        "variant": "mlp",
+        "mae_macro": 22.1973,
+        "bias": -0.9517,
+        "rmse": 47.019,
+        "n_counters": 95,
+        "n_compared_cases": 5577,
+        "coverage_24h": 0.9544,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s0-9ce9_d0": {
+        "variant": "mlp",
+        "mae_macro": 22.1973,
+        "bias": -0.9517,
+        "rmse": 47.019,
+        "n_counters": 95,
+        "n_compared_cases": 5577,
+        "coverage_24h": 0.9468,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s1-9318-seuil24_d0": {
+        "variant": "mlp",
+        "mae_macro": 22.3121,
+        "bias": 0.5624,
+        "rmse": 48.0751,
+        "n_counters": 95,
+        "n_compared_cases": 5577,
+        "coverage_24h": 0.9544,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s1-9318_d0": {
+        "variant": "mlp",
+        "mae_macro": 22.3121,
+        "bias": 0.5624,
+        "rmse": 48.0751,
+        "n_counters": 95,
+        "n_compared_cases": 5577,
+        "coverage_24h": 0.9468,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s2-f26e_d0": {
+        "variant": "mlp",
+        "mae_macro": 22.4923,
+        "bias": -3.793,
+        "rmse": 47.7469,
+        "n_counters": 95,
+        "n_compared_cases": 5577,
+        "coverage_24h": 0.9544,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s2-6278_d0": {
+        "variant": "mlp",
+        "mae_macro": 22.5614,
+        "bias": -0.4004,
+        "rmse": 48.0496,
+        "n_counters": 95,
+        "n_compared_cases": 5577,
+        "coverage_24h": 0.9468,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s2-6278-seuil24_d0": {
+        "variant": "mlp",
+        "mae_macro": 22.5614,
+        "bias": -0.4004,
+        "rmse": 48.0496,
+        "n_counters": 95,
+        "n_compared_cases": 5577,
+        "coverage_24h": 0.9544,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s1-bd12_d0": {
+        "variant": "mlp",
+        "mae_macro": 22.6803,
+        "bias": -2.0192,
+        "rmse": 48.0835,
+        "n_counters": 95,
+        "n_compared_cases": 5577,
+        "coverage_24h": 0.9544,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s0-37f5_d0": {
+        "variant": "mlp",
+        "mae_macro": 23.0284,
+        "bias": -1.0544,
+        "rmse": 49.5521,
+        "n_counters": 95,
+        "n_compared_cases": 5577,
+        "coverage_24h": 0.9544,
+        "n_fallback_cases": 0
+      },
+      "e2-reference_profile-measured_d0": {
+        "variant": "reference_profile",
+        "mae_macro": 26.9956,
+        "bias": 8.3718,
+        "rmse": 56.5683,
+        "n_counters": 95,
+        "n_compared_cases": 5577,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 204
+      }
+    }
+  }
+}

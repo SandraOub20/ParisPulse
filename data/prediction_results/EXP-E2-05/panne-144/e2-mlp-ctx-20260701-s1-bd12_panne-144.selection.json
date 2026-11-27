@@ -1,0 +1,13 @@
+{
+  "input": 12659,
+  "not_known_site": 2280,
+  "other_split": 4365,
+  "counter_not_S_train": 0,
+  "snapshot_replaced": 0,
+  "selected": 6014,
+  "model_run_id": "e2-mlp-ctx-20260701-s1-bd12",
+  "min_observed_hours": null,
+  "degrade": "panne-144",
+  "mode": "batch",
+  "total_seconds": 241.1
+}

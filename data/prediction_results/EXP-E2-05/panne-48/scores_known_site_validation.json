@@ -1,0 +1,213 @@
+{
+  "experiment": "EXP-E2-05",
+  "level": "panne-48",
+  "protocol_id": "proto-v1",
+  "scenario": "known_site",
+  "split": "validation",
+  "scores": {
+    "système": {
+      "e2-mlp-ctx-20260701-s0-37f5_panne-48": {
+        "variant": "mlp",
+        "mae_macro": 24.9413,
+        "bias": -9.3357,
+        "rmse": 50.9836,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 282
+      },
+      "e2-mlp-ctx-20260701-s1-bd12_panne-48": {
+        "variant": "mlp",
+        "mae_macro": 25.0268,
+        "bias": -7.6057,
+        "rmse": 51.1031,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 282
+      },
+      "e2-mlp-ctx-20260701-s2-f26e_panne-48": {
+        "variant": "mlp",
+        "mae_macro": 25.5416,
+        "bias": 2.1102,
+        "rmse": 52.3656,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 282
+      },
+      "e2-mlp-ctx-20260701-s0-9ce9-seuil24_panne-48": {
+        "variant": "mlp",
+        "mae_macro": 25.6542,
+        "bias": -13.5998,
+        "rmse": 52.3877,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 282
+      },
+      "e2-mlp-ctx-20260701-s0-9ce9_panne-48": {
+        "variant": "mlp",
+        "mae_macro": 25.6774,
+        "bias": -13.4658,
+        "rmse": 52.4046,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 334
+      },
+      "e2-reference_profile-measured_panne-48": {
+        "variant": "reference_profile",
+        "mae_macro": 27.0117,
+        "bias": 8.471,
+        "rmse": 56.5744,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 204
+      },
+      "e2-mlp-ctx-20260701-s2-6278-seuil24_panne-48": {
+        "variant": "mlp",
+        "mae_macro": 28.0066,
+        "bias": -18.5876,
+        "rmse": 56.1604,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 282
+      },
+      "e2-mlp-ctx-20260701-s2-6278_panne-48": {
+        "variant": "mlp",
+        "mae_macro": 28.0214,
+        "bias": -18.4339,
+        "rmse": 56.1599,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 334
+      },
+      "e2-mlp-ctx-20260701-s1-9318_panne-48": {
+        "variant": "mlp",
+        "mae_macro": 30.0815,
+        "bias": -21.8612,
+        "rmse": 59.7168,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 334
+      },
+      "e2-mlp-ctx-20260701-s1-9318-seuil24_panne-48": {
+        "variant": "mlp",
+        "mae_macro": 30.0837,
+        "bias": -22.0331,
+        "rmse": 59.7384,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 282
+      }
+    },
+    "brut": {
+      "e2-mlp-ctx-20260701-s0-37f5_panne-48": {
+        "variant": "mlp",
+        "mae_macro": 24.9681,
+        "bias": -9.474,
+        "rmse": 50.9881,
+        "n_counters": 95,
+        "n_compared_cases": 5563,
+        "coverage_24h": 0.9531,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s1-bd12_panne-48": {
+        "variant": "mlp",
+        "mae_macro": 25.0448,
+        "bias": -7.7319,
+        "rmse": 51.1113,
+        "n_counters": 95,
+        "n_compared_cases": 5563,
+        "coverage_24h": 0.9531,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s2-f26e_panne-48": {
+        "variant": "mlp",
+        "mae_macro": 25.5424,
+        "bias": 2.0655,
+        "rmse": 52.3724,
+        "n_counters": 95,
+        "n_compared_cases": 5563,
+        "coverage_24h": 0.9531,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s0-9ce9_panne-48": {
+        "variant": "mlp",
+        "mae_macro": 25.655,
+        "bias": -13.7187,
+        "rmse": 52.3971,
+        "n_counters": 95,
+        "n_compared_cases": 5563,
+        "coverage_24h": 0.9445,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s0-9ce9-seuil24_panne-48": {
+        "variant": "mlp",
+        "mae_macro": 25.655,
+        "bias": -13.7187,
+        "rmse": 52.3971,
+        "n_counters": 95,
+        "n_compared_cases": 5563,
+        "coverage_24h": 0.9531,
+        "n_fallback_cases": 0
+      },
+      "e2-reference_profile-measured_panne-48": {
+        "variant": "reference_profile",
+        "mae_macro": 26.9809,
+        "bias": 8.3466,
+        "rmse": 56.5661,
+        "n_counters": 95,
+        "n_compared_cases": 5563,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 204
+      },
+      "e2-mlp-ctx-20260701-s2-6278_panne-48": {
+        "variant": "mlp",
+        "mae_macro": 28.0249,
+        "bias": -18.7201,
+        "rmse": 56.1772,
+        "n_counters": 95,
+        "n_compared_cases": 5563,
+        "coverage_24h": 0.9445,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s2-6278-seuil24_panne-48": {
+        "variant": "mlp",
+        "mae_macro": 28.0249,
+        "bias": -18.7201,
+        "rmse": 56.1772,
+        "n_counters": 95,
+        "n_compared_cases": 5563,
+        "coverage_24h": 0.9531,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s1-9318_panne-48": {
+        "variant": "mlp",
+        "mae_macro": 30.0861,
+        "bias": -22.1703,
+        "rmse": 59.7561,
+        "n_counters": 95,
+        "n_compared_cases": 5563,
+        "coverage_24h": 0.9445,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s1-9318-seuil24_panne-48": {
+        "variant": "mlp",
+        "mae_macro": 30.0861,
+        "bias": -22.1703,
+        "rmse": 59.7561,
+        "n_counters": 95,
+        "n_compared_cases": 5563,
+        "coverage_24h": 0.9531,
+        "n_fallback_cases": 0
+      }
+    }
+  }
+}
