@@ -15,6 +15,7 @@ import streamlit as st
 from streamlit_folium import st_folium
 
 from src.app import service, v1_service
+from src.app.dashboard.comparison import show_model_comparison
 from src.app.dashboard.coverage import hourly_window, show_coverage
 from src.app.dashboard.forecast_case import model_forecast_plot
 from src.app.export import study_zip
@@ -108,6 +109,138 @@ def cases_cached(version: tuple, snapshot_id: str) -> pd.DataFrame:
 def context_cached(version: tuple) -> pd.DataFrame:
     path, _, _ = version
     return pd.read_csv(path, dtype="string") if path.is_file() else pd.DataFrame()
+
+
+@st.cache_data(show_spinner=False, max_entries=4)
+def evaluation_cached(
+    snapshot_id: str,
+    versions: tuple,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    # versions fait partie de la clé de cache pour recharger les fichiers modifiés.
+    return service.load_team4_evaluation(snapshot_id)
+
+
+def show_team4_evaluation(snapshot_id: str, versions: tuple) -> None:
+    st.subheader("Scores d’évaluation fournis par l’équipe 4")
+
+    try:
+        scores, scores_by_counter = evaluation_cached(snapshot_id, versions)
+    except (OSError, ValueError, KeyError, pd.errors.ParserError) as error:
+        st.warning(f"Scores d’évaluation indisponibles · {error}")
+        return
+
+    if scores.empty:
+        st.info("Aucun score E4 disponible pour cet instantané.")
+        return
+
+    st.caption(
+        "Résultats de validation du protocole proto-v1 · "
+        "le champ validated_at de la configuration est vide : "
+        "ces résultats ne doivent pas être présentés comme une validation approuvée."
+    )
+
+    show_model_comparison(scores)
+
+    if scores_by_counter.empty:
+        st.info("Aucun score détaillé par compteur n’est disponible.")
+        return
+
+    # Réutiliser exactement les conditions sélectionnées dans le comparateur E4.
+    details = scores_by_counter.copy()
+    filter_columns = (
+        "scenario",
+        "temporal_split",
+        "comparison_population_id",
+        "protocol_id",
+        "snapshot_id",
+    )
+    for column in filter_columns:
+        selected = st.session_state.get(f"model_comparison_{column}")
+        if selected is not None:
+            details = details.loc[
+                details[column].astype("string").eq(str(selected))
+            ].copy()
+
+    if details.empty:
+        st.info(
+            "Les scores par compteur ne sont pas disponibles pour cette population "
+            "de comparaison. Les MAE macro ci-dessus restent les résultats E4."
+        )
+        return
+
+    method_ids = sorted(
+        details["method_run_id"].dropna().astype(str).unique().tolist()
+    )
+    if not method_ids:
+        st.info("Aucune méthode n’est disponible pour le détail par compteur.")
+        return
+
+    selected_method = st.selectbox(
+        "Méthode pour le détail par compteur",
+        method_ids,
+        key=f"team4-counter-method-{snapshot_id}",
+    )
+    details = details.loc[
+        details["method_run_id"].astype(str).eq(selected_method)
+    ].copy()
+
+    if details.duplicated(["counter_id", "method_run_id"]).any():
+        st.warning(
+            "Plusieurs lignes existent pour un même compteur et une même méthode. "
+            "Le tableau brut est affiché sans agréger ces résultats."
+        )
+    else:
+        details["MAE"] = pd.to_numeric(details["MAE"], errors="coerce")
+        details = details.loc[
+            details["MAE"].notna() & np.isfinite(details["MAE"])
+        ].sort_values("MAE", ascending=True)
+
+        if not details.empty:
+            figure = go.Figure(
+                go.Bar(
+                    x=details["MAE"],
+                    y=details["counter_id"].astype(str),
+                    orientation="h",
+                    hovertemplate=(
+                        "Compteur : %{y}"
+                        "<br>MAE : %{x:.2f} vélos/h"
+                        "<extra></extra>"
+                    ),
+                )
+            )
+            figure.update_layout(
+                height=min(850, max(360, 24 * len(details))),
+                margin={"l": 8, "r": 12, "t": 16, "b": 8},
+                xaxis_title="MAE (vélos/heure)",
+                yaxis_title="Compteur",
+            )
+            figure.update_yaxes(autorange="reversed")
+            st.plotly_chart(
+                figure,
+                use_container_width=True,
+                config={"displaylogo": False},
+            )
+
+    display_columns = [
+        column
+        for column in (
+            "counter_id",
+            "n_predictions",
+            "n_mape_predictions",
+            "MAE",
+            "MAPE",
+            "RMSE",
+            "R2",
+            "bias",
+            "local_budget_hours",
+        )
+        if column in details.columns
+    ]
+    st.dataframe(
+        details[display_columns],
+        hide_index=True,
+        use_container_width=True,
+    )
 
 
 def render_map(counters: pd.DataFrame, map_key: str, selection_key: str) -> None:
@@ -943,6 +1076,19 @@ def main() -> None:
     snapshots = {directory.name: directory for directory in directories}
     snapshot_id = st.sidebar.selectbox("Instantané des données", list(snapshots))
     snapshot = snapshots[snapshot_id]
+
+    evaluation_root = data_path("evaluation") / "proto-v1"
+    evaluation_versions = tuple(
+        signature(evaluation_root / experiment / filename)
+        for experiment in ("EXP-E2", "EXP-E3")
+        for filename in ("scores.csv", "scores_by_counter.csv")
+    )
+    with st.expander(
+        "Résultats d’évaluation E2 et E3 — équipe 4",
+        expanded=False,
+    ):
+        show_team4_evaluation(snapshot_id, evaluation_versions)
+
     scenario = st.sidebar.radio("Périmètre", SCENARIOS, index=2)
     inventory_version = tuple(
         signature(snapshot / name) for name in ("counters.csv", "inventory_quality.csv")

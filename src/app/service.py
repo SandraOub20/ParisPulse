@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from src.app import v1_service
-from src.common.config import load_config
+from src.common.config import data_path, load_config
 from src.eval.cases import E3_ROLES, forecasting_team, interactive_case
 from src.models.known.baseline import weekly_reference
 from src.models.known.predict import load_context, predict_24h
@@ -517,3 +517,70 @@ def context_for_case(context: pd.DataFrame, case: Case) -> pd.DataFrame:
         & (calendar | weather)
         & (available.le(case.origin) | (calendar & available.isna()))
     ].copy()
+
+
+def load_team4_evaluation(
+    snapshot_id: str,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Charger les scores E4 pour le protocole proto-v1 et un instantané."""
+    root = data_path("evaluation") / "proto-v1"
+    score_tables: list[pd.DataFrame] = []
+    counter_tables: list[pd.DataFrame] = []
+
+    dtype = {
+        "counter_id": "string",
+        "method_run_id": "string",
+        "scenario": "string",
+        "temporal_split": "string",
+        "comparison_population_id": "string",
+        "protocol_id": "string",
+        "snapshot_id": "string",
+    }
+
+    for experiment_id in ("EXP-E2", "EXP-E3"):
+        experiment_dir = root / experiment_id
+
+        for filename, destination in (
+            ("scores.csv", score_tables),
+            ("scores_by_counter.csv", counter_tables),
+        ):
+            path = experiment_dir / filename
+            if not path.is_file():
+                continue
+
+            try:
+                table = pd.read_csv(
+                    path,
+                    dtype=dtype,
+                    low_memory=False,
+                )
+            except pd.errors.EmptyDataError:
+                continue
+
+            required = {"protocol_id", "snapshot_id"}
+            missing = required - set(table.columns)
+            if missing:
+                raise ValueError(
+                    f"Colonnes absentes dans {path}: "
+                    f"{', '.join(sorted(missing))}"
+                )
+
+            selected = table.loc[
+                table["protocol_id"].eq("proto-v1")
+                & table["snapshot_id"].eq(snapshot_id)
+            ].copy()
+
+            if not selected.empty:
+                destination.append(selected)
+
+    scores = (
+        pd.concat(score_tables, ignore_index=True)
+        if score_tables
+        else pd.DataFrame()
+    )
+    scores_by_counter = (
+        pd.concat(counter_tables, ignore_index=True)
+        if counter_tables
+        else pd.DataFrame()
+    )
+    return scores, scores_by_counter
