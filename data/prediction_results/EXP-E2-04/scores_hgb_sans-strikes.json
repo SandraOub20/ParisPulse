@@ -1,0 +1,53 @@
+{
+  "experiment": "EXP-E2-04",
+  "level": null,
+  "protocol_id": "proto-v1",
+  "scenario": "known_site",
+  "split": "validation",
+  "scores": {
+    "système": {
+      "e2-hgb-ctx-20260701-s0-55d2": {
+        "variant": "hgb",
+        "mae_macro": 22.1482,
+        "bias": -1.1027,
+        "rmse": 48.8424,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 0
+      },
+      "e2-hgb-ctx-20260701-s0-b357": {
+        "variant": "hgb",
+        "mae_macro": 22.2544,
+        "bias": -1.1258,
+        "rmse": 49.0646,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 0
+      }
+    },
+    "brut": {
+      "e2-hgb-ctx-20260701-s0-55d2": {
+        "variant": "hgb",
+        "mae_macro": 22.1482,
+        "bias": -1.1027,
+        "rmse": 48.8424,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 0
+      },
+      "e2-hgb-ctx-20260701-s0-b357": {
+        "variant": "hgb",
+        "mae_macro": 22.2544,
+        "bias": -1.1258,
+        "rmse": 49.0646,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 0
+      }
+    }
+  }
+}
