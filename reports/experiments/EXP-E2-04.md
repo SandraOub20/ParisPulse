@@ -1,10 +1,10 @@
 # EXP-E2-04 - Le contexte (calendrier, grèves, météo prévue) aide-t-il nos modèles ?
 
-> **Statut : brouillon, à figer avant tout score.** Les points marqués « à valider » sont des propositions. Les résultats restent vides jusqu'au gel. Même population et même calcul du score que [EXP-E2-03](EXP-E2-03.md).
+> **Statut : figée le 2026-11-27, avant tout score** (commit indiqué dans l'historique de cette fiche). Les choix ci-dessous ne changent plus : voir « Décisions du gel » en bas. Même population et même calcul du score que [EXP-E2-03](EXP-E2-03.md).
 
 - **Date, équipe, responsables et partenaires** :
-  - Brouillon le 2026-11-24, E2.
-  - Responsable proposée (à valider) : Ania, qui a construit les groupes de contexte (D-12) ; elle pourrait en faire sa comparaison individuelle. Idir : apprentissage des modèles sans contexte et calcul des prévisions.
+  - Brouillon le 2026-11-24, figée le 2026-11-27, E2.
+  - Responsable : Ania, qui a construit les groupes de contexte (D-12). Idir a appris les modèles sans contexte, calculé les prévisions et figé la fiche avec les choix par défaut ci-dessous, pour tenir le calendrier de remise ; Ania est prévenue.
   - Partenaires : E4 (scores), E1 (sources du contexte, `e1-context/0.3.0`).
 
 - **Question et hypothèse** :
@@ -39,14 +39,15 @@
   - Score : par E4, avec `evaluate_all` de `Metric.py`, comme dans EXP-E2-03. Résultats « modèle brut » et « système ».
   - **Diagnostics prévus, fixés d'avance** :
     - MAE sur les 2 jours fériés (14/07 et 15/08) contre les autres jours ;
-    - MAE selon la pluie prévue, jours avec ou sans pluie (seuil à fixer avant les scores, à valider) ;
-    - jours de grève éventuels de la période (effectif à compter avant les scores).
+    - MAE selon la pluie prévue : jour « pluvieux » si la pluie prévue (`rain_prev`, somme sur la journée locale) atteint **1 mm**. Cela donne 5 jours sur 62, comptés avant les scores ;
+    - jours de grève : **aucun** en juillet-août 2026 (`is_strike`, compté avant les scores). Le groupe `strikes` ne peut donc pas montrer d'effet sur cette période, et c'est une limite.
 
     Ils servent à expliquer le résultat, pas à décider.
-  - **Lecture du résultat** (à valider) :
-    - Pour le MLP, un écart entre avec et sans contexte n'est interprété que s'il dépasse l'étendue entre les 3 graines mesurée dans EXP-E2-03.
-    - Le HGB est déterministe : son écart est rapporté tel quel, avec le nombre de compteurs améliorés et dégradés.
-  - **Conséquence pour l'application** (à valider) : la version avec contexte n'est gardée que si elle fait mieux que la version sans contexte, selon la lecture ci-dessus. Sinon, on préfère la version sans contexte, qui ne dépend pas de la livraison du contexte et ne se replie jamais pour `context_missing`.
+  - **Lecture du résultat** :
+    - Seuil de bruit : l'étendue entre les 3 graines du MLP mesurée dans EXP-E2-03, soit **0,357** vélo/h (22,589 − 22,232, MAE macro système). Un écart plus petit se lit « pas d'effet mesurable ».
+    - Pour le MLP, l'écart avec / sans contexte n'est interprété que s'il dépasse ce seuil.
+    - Le HGB est déterministe pour une graine donnée. Son écart est rapporté tel quel, avec le nombre de compteurs améliorés et dégradés. Il n'est interprété que s'il dépasse le même seuil, faute d'une autre mesure du bruit.
+  - **Conséquence pour l'application** : le modèle de l'application reste le HGB avec contexte (`b357`, D-24), **sauf** si la version sans contexte fait mieux d'au moins le seuil. Dans ce cas, on passerait à la version sans contexte, qui ne dépend pas de la livraison du contexte. Sur EXP-E2-03, le HGB avec contexte ne se replie jamais, si bien que la dépendance au contexte ne coûte rien de mesurable aujourd'hui.
 
 - **Contrôles réalisés** :
   - Code de l'ablation déjà testé (E2-TECH-002, MOD-006 à MOD-010) : sans contexte, aucune colonne de contexte n'est lue.
@@ -78,11 +79,14 @@
 
 - **Retour d'un partenaire et preuve d'utilisation** : à obtenir (E4 : scores ; E5 : version retenue).
 
-## Points à trancher avant le gel
+## Décisions du gel (2026-11-27)
 
-0. ~~Plafond d'arbres du HGB sans contexte~~ : traité le 2026-11-24, `max_iter=2000` (voir le tableau des modèles). À confirmer par Ania comme réglage figé.
-
-1. Responsable de la fiche (proposition : Ania).
-2. Seuil de pluie pour le diagnostic, et décompte des jours de grève de la période.
-3. Faire l'étape 2 (par groupe, HGB) seulement si l'étape 1 montre un effet, ou dans tous les cas.
-4. Règle « sans contexte si pas mieux » pour l'application.
+0. Plafond d'arbres du HGB : `max_iter=2000` pour les deux versions. Celle avec contexte s'arrête d'elle-même à 342 arbres, avec des prévisions identiques à `b357`.
+1. Responsable : Ania.
+2. Diagnostics :
+   - pluie prévue d'au moins 1 mm par jour (5 jours) ;
+   - grèves : aucune dans la période ;
+   - fériés : 14/07 et 15/08.
+3. Étape 2 (retirer un groupe à la fois, HGB) : seulement si l'étape 1 montre, pour le HGB, un écart supérieur au seuil de 0,357.
+4. Application : le HGB avec contexte reste, sauf si la version sans contexte fait mieux d'au moins le seuil.
+5. Score calculé par E2 avec les fonctions d'E4 (`python -m src.models.known.score --experiment EXP-E2-04`), qui redonnent exactement les scores officiels d'EXP-E2-03 (MOD-018). Les fichiers sont livrés à E4 pour confirmation.
