@@ -51,15 +51,15 @@ Prophet a été envisagé comme référence, puis abandonné : il n'est pas déc
 | `reference` | Même heure 7 jours avant ; repli sur la médiane des semaines précédentes (D-03) | Sans apprentissage |
 | `reference_profile` | Médiane des 4 mêmes heures des semaines précédentes | Sans apprentissage |
 | **MLP** (deep learning) | 73 368 paramètres. Entrées : la semaine visible normalisée par son niveau, avec le masque des heures manquantes, le calendrier et la météo prévue. Les 24 heures sont prévues d'un coup. Perte L1 pondérée par le niveau, arrêt anticipé sur juin. Refus (puis repli) si moins de 84 h mesurées | 30 à 45 s d'apprentissage sur CPU par graine ; 3 graines |
-| **HGB** | Gradient boosting par histogrammes, perte L1. Variables : décalages, niveaux récents, calendrier, contexte. Pas d'identifiant de compteur : le modèle est partagé | Environ 2 min d'apprentissage ; 342 arbres |
+| **HGB** | Gradient boosting par histogrammes, perte L1. Variables : décalages, niveaux récents, calendrier, contexte. Pas d'identifiant de compteur : le modèle est partagé | Quelques minutes d'apprentissage sur CPU ; 342 arbres |
 
 Les deux modèles passent par `predict_24h`, le même point d'entrée que l'application et E3. Ses contrôles d'éligibilité portent sur l'instantané, la coupure, le site présent à l'apprentissage et la version du contexte. En cas de refus, le repli sur la référence se fait avec un code exact.
 
 ## 5. Vérifications
 
-- Chaque fonction est testée sur de petits exemples calculés à la main. La suite `pytest` passe (environ 440 tests).
-- Le calcul en bloc d'une expérience donne **les mêmes fichiers** que le calcul cas par cas, à 1e-3 près (MLP, arrondi `float32`), et 300 fois plus vite.
-- Les fichiers de prévision sont conformes au contrat d'E4 (`check_forecasts.py`) : 24 lignes par cas, aucun doublon, vide plutôt que 0.
+- Chaque fonction est testée sur de petits exemples calculés à la main. La suite `pytest` complète passe (460 tests).
+- Le calcul en bloc d'une expérience donne **les mêmes fichiers** que le calcul cas par cas, à 1e-3 près (MLP, arrondi `float32`), en 2 à 3 min au lieu d'environ 45.
+- Les fichiers de prévision ont le format du contrat d'E4 : 24 lignes par cas, aucun doublon, vide plutôt que 0. C'est vérifié avec `check_forecasts.py` d'E4 sur toutes les livraisons (03, 04, les 5 niveaux de 05 et le test). La seule alerte est le `fit_cutoff` vide des références, qui n'apprennent rien.
 - Le score d'EXP-E2-03 recalculé par E2 est identique au `scores.csv` officiel d'E4.
 - Les contrôles sur juin (dans la période d'apprentissage) ne servent qu'à l'arrêt anticipé et aux règles écrites d'avance, jamais comme score.
 
@@ -97,7 +97,7 @@ Les deux modèles passent par `predict_24h`, le même point d'entrée que l'appl
 | MLP | 22,23 | 23,38 | **+1,15** | 88 / 95 |
 
 - **Le gain vient surtout du calendrier.** Les jours fériés, le contexte évite une erreur de 6 à 10 vélos/h. Retirer le calendrier coûte 0,48 au HGB, retirer la météo 0,17 (sous le seuil), et retirer les grèves rien du tout (il n'y en a aucune en été).
-- **Les jours de pluie prévue, le contexte dégrade**, de −0,6 pour le HGB et −3,2 pour le MLP, sur 5 jours seulement : c'est une limite à surveiller.
+- **Les jours de pluie prévue, le contexte dégrade**, de −0,6 pour le HGB et −3,2 pour le MLP, sur 5 jours seulement. Le test le confirme pour le MLP : 21,1 contre 19,4 pour le HGB sur 14 jours de pluie prévue.
 - Décision : le HGB avec contexte reste servi.
 
 **EXP-E2-05, robustesse du MLP aux pannes** ([fiche](../experiments/EXP-E2-05.md), comparaison individuelle d'Idir). On compare 4 bras :
@@ -118,7 +118,7 @@ On efface ensuite une partie de la semaine visible des 6 014 cas. MAE en lecture
 
 - **Le masquage aide nettement dès que la semaine est trouée.** Sur les vraies semaines de 83 à 24 h mesurées, B fait 15,7 contre 24,1 pour le repli de A. B est aussi beaucoup plus stable entre graines.
 - Sans masquage, le MLP forcé à prévoir s'effondre (46,0).
-- **Mais B perd 0,39 sur les semaines complètes**, juste au-delà du bruit entre graines (0,36). La règle figée demandait de ne rien perdre : **A reste le MLP servi.**
+- **Mais B perd 0,39 sur les semaines complètes**, juste au-delà du bruit entre graines (0,36). La règle figée demandait que B ne perde pas plus que ce bruit : **A reste le MLP servi.**
 - Piste chiffrée, à mesurer dans une nouvelle fiche : servir A sur les semaines complètes et B entre 24 et 83 h, au lieu du repli.
 
 **Test final** ([fiche](../experiments/EXP-E2-TEST.md)) : octobre-novembre 2026, lu une seule fois après le gel D-07. 3 966 cas comparés sur 43 jours, période qui contient la Toussaint, 2 jours fériés et 3 jours de grève.
@@ -133,6 +133,7 @@ On efface ensuite une partie de la semaine visible des 6 014 cas. MAE en lecture
 - **Les choix tiennent hors période** : les deux modèles battent nettement les références, aux heures de pointe comme au total.
 - **La nuance de la validation se confirme.** En semaines normales, le gain sur la médiane n'est pas significatif : +8 % [−14 ; +25] pour le HGB. Pendant les transitions et les vacances, il va de +35 à +57 %.
 - **Hors période, le MLP bat le HGB** (−2,45 vélos/h), surtout pendant les ruptures et les jours fériés ou de grève. Le HGB reste meilleur en semaines normales et les jours de pluie.
+- Le MLP B, masqué et calculé pour information, fait 16,86 : sur des semaines réelles d'automne, le masquage ne coûte rien.
 - Aucun choix n'est changé d'après le test (D-07).
 
 ## 7. Cas d'échec
@@ -140,20 +141,20 @@ On efface ensuite une partie de la semaine visible des 6 014 cas. MAE en lecture
 - **Sites en panne pendant l'été.** C'est le cas de la face 104 rue d'Aubervilliers et de 3 autres sites : leur semaine visible a moins de 84 h mesurées. Le MLP refuse alors ces cas (`mlp_window_too_sparse`, 320 cas) et la référence prend le relais. Le refus est visible dans `status_reason`, jamais caché.
 - **La médiane sur 4 semaines surestime l'été (+8,5 vélos/h).** Elle copie des semaines plus chargées que le mois d'août : une méthode simple « stable » n'est pas forcément sans biais.
 - **Les mesures d'E1 sont décalées de 2 h** les 9, 10, 13, 15 et 16 juillet sur la plupart des compteurs : le pic du matin tombe à 7 h au lieu de 9 h. Toutes les méthodes se trompent ces jours-là, et sans eux, la MAE du HGB passe de 22,25 à 19,25. Le défaut est consigné dans le suivi (§8) pour E1.
-- **L'été est plus difficile que juin.** L'erreur passe d'environ 17,5 vélos/h sur juin à environ 22 en validation (vacances, 14 juillet, 15 août).
+- **L'été est la période la plus difficile** : environ 22 vélos/h en validation, contre 17 à 20 sur le test d'automne. Les vacances, le 14 juillet, le 15 août et les jours décalés y pèsent. Le contrôle de juin (environ 17,5) est dans la période d'apprentissage et ne se compare pas directement.
 
 ## 8. Contribution et utilisation des partenaires
 
 | Partenaire | Ce qu'on a reçu | Ce qu'ils utilisent de nous |
 | --- | --- | --- |
-| E1 | L'instantané, les mesures publiées, le contexte (`e1-context/0.3.0`) et la date de début des données | Retours sur les zéros et les valeurs remplies (D-11) |
-| E4 | Les cas `proto-v1` et le code de score | Nos prévisions (zips livrés), notées par leur `backtest.py` ; scores identiques aux nôtres |
-| E3 | La liste des sites réservés | Le MLP E2 transféré aux nouveaux sites (« MLP E2 transféré »), et `predict_24h`, `write_predictions` et `train.load_model` |
+| E1 | L'instantané, les mesures publiées, le contexte (`e1-context/0.3.0`) et la date de début des données | Nos retours : zéros et valeurs remplies (D-11), décalage de 2 h de juillet |
+| E4 | Les cas `proto-v1` et le code de score | Les prévisions d'EXP-E2-03, notées par leur `backtest.py`, avec des scores identiques aux nôtres ; celles d'EXP-E2-04, 05 et du test sont livrées en zip, et leur score officiel reste à confirmer |
+| E3 | La liste des sites réservés | Notre MLP, transféré aux nouveaux sites, ainsi que `predict_24h`, `write_predictions` et `train.load_model` |
 | E5 | La signature `predict_24h(case, history, variant)` | `predict_24h` avec `reference`, `reference_profile`, `hgb` (par défaut) et `mlp` ; codes de refus et repli |
 
 ## 9. Recommandation et limites
 
-**Recommandation** : servir le **HGB avec contexte** (`e2-hgb-ctx-20260701-s0-b357`) dans l'application, avec repli sur la référence. Le MLP reste disponible : il est aussi bon en moyenne, mais il dépend du nombre d'heures mesurées.
+**Recommandation** : servir le **HGB avec contexte** (`e2-hgb-ctx-20260701-s0-b357`) dans l'application, avec repli sur la référence. Le MLP reste disponible : à égalité en validation, meilleur sur le test, mais il dépend du nombre d'heures mesurées et se replie sur les semaines trouées.
 - **Garder le contexte**, surtout pour le calendrier : il apporte beaucoup les jours fériés.
 - **Garder le MLP A et son repli** (EXP-E2-05). Pour une suite, mesurer la combinaison A / B, avec B en remplacement du repli sur les semaines trouées.
 - Le modèle bat nettement la référence simple « même heure J−7 » (+25 % en validation, +21 à +31 % sur le test). Face à la médiane des 4 semaines, il apporte surtout lors des changements de régime ; en régime stable, il fait à peu près comme elle. Ce constat est confirmé sur le test.
@@ -170,7 +171,7 @@ Les erreurs restantes viennent surtout de ce que les entrées ne contiennent pas
 
 **Limites** :
 - protocole `proto-v1` non validé par le professeur ;
-- validation sur l'été seulement : 2 jours fériés et aucune grève dans la période ;
+- une seule période de validation, l'été : 2 jours fériés et aucune grève. Le choix entre MLP et HGB s'est fait sans rupture d'automne ;
 - modèles figés au 01/07, sans réapprentissage ;
 - reproductibilité exacte seulement sur la même machine (D-23).
 
