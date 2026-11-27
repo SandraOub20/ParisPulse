@@ -1,4 +1,4 @@
-# Comparaison de Google TimesFM 2.5 frozen et adapted-v2
+# Google TimesFM 2.5 adapted-v2
 
 **Protocole :** `proto-v1` · `S_dev_new` · Données : validation · snapshot `hist-20261117`
 
