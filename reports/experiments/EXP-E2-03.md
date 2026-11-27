@@ -146,7 +146,18 @@
   - **Biais** : les modèles sont presque sans biais (entre −1,1 et +0,7 vélo/h). La médiane des 4 semaines surestime de +8,5 vélos/h : elle ne voit pas la baisse de l'été, qu'elle copie des semaines précédentes plus chargées. Le gain des modèles vient en partie de là.
   - L'erreur de validation (environ 22 vélos/h) est plus élevée que le contrôle sur juin (environ 17,5) : l'été est plus difficile (vacances, 14 juillet, 15 août). Mais le gain sur les références est plus grand (environ 17 % contre 12 à 14 %).
 
+  - **Solidité du gain** (analyse du 2026-11-27, faite après coup ; elle ne change pas la décision). Calcul : `robustness.py`, sur les 133 624 heures communes ; intervalles de confiance à 95 % par bootstrap sur **les jours** (2 000 tirages), car les heures d'un même jour sont corrélées.
+    - **Heures de pointe.** Le gain ne vient pas des heures faciles : face à la médiane, le HGB gagne +20 % à la pointe du matin (7-9 h), +24 % à celle du soir (17-19 h), et seulement +7 % la nuit. WAPE sur toutes les heures : 26 % pour le HGB comme pour le MLP, 32 % pour la médiane et 35 % pour J−7.
+    - **Face à « même heure J−7 »**, le gain est stable : +25 % [+20 ; +31], +27 % en juillet et +22 % en août.
+    - **Face à la médiane des 4 semaines**, +18 % [+10 ; +25] sur l'ensemble. Mais ce gain **dépend du mois** :
+      - juillet : +6 % [−3 ; +14], non significatif ;
+      - août : +36 % [+26 ; +44]. En août, la médiane reprend les semaines plus chargées de juillet et surestime de +10,5 vélos/h, alors que le HGB suit la baisse (biais de −0,7).
+
+      Le modèle apporte donc surtout quand le régime change. En régime stable, il fait à peu près comme la médiane. Le test d'octobre-novembre (la rentrée) servira de contrôle.
+    - **Sans les 5 jours décalés d'E1** (§8 du suivi : 9, 10, 13, 15 et 16 juillet), la MAE du HGB passe de 22,25 à 19,25 et celle de la médiane de 27,01 à 24,15 ; les conclusions restent les mêmes.
+
   Limites connues dès maintenant :
+  - le décalage de 2 h dans les mesures d'E1 sur 5 jours de juillet pèse sur toutes les méthodes ;
   - protocole non validé ;
   - été seulement ;
   - modèles figés au 01/07, sans réapprentissage au 01/08 ;

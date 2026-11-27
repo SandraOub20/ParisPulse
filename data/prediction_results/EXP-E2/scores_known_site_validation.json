@@ -1,0 +1,133 @@
+{
+  "experiment": "EXP-E2",
+  "level": null,
+  "protocol_id": "proto-v1",
+  "scenario": "known_site",
+  "split": "validation",
+  "scores": {
+    "système": {
+      "e2-mlp-ctx-20260701-s0-9ce9": {
+        "variant": "mlp",
+        "mae_macro": 22.2322,
+        "bias": -0.8145,
+        "rmse": 47.0501,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 320
+      },
+      "e2-hgb-ctx-20260701-s0-b357": {
+        "variant": "hgb",
+        "mae_macro": 22.2544,
+        "bias": -1.1258,
+        "rmse": 49.0646,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s1-9318": {
+        "variant": "mlp",
+        "mae_macro": 22.3469,
+        "bias": 0.6931,
+        "rmse": 48.101,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 320
+      },
+      "e2-mlp-ctx-20260701-s2-6278": {
+        "variant": "mlp",
+        "mae_macro": 22.5892,
+        "bias": -0.2656,
+        "rmse": 48.0756,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 320
+      },
+      "e2-reference_profile-measured": {
+        "variant": "reference_profile",
+        "mae_macro": 27.0117,
+        "bias": 8.471,
+        "rmse": 56.5744,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 204
+      },
+      "e2-reference-measured": {
+        "variant": "reference",
+        "mae_macro": 29.7458,
+        "bias": 2.385,
+        "rmse": 64.1632,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 628
+      }
+    },
+    "brut": {
+      "e2-mlp-ctx-20260701-s0-9ce9": {
+        "variant": "mlp",
+        "mae_macro": 22.1973,
+        "bias": -0.9517,
+        "rmse": 47.019,
+        "n_counters": 95,
+        "n_compared_cases": 5577,
+        "coverage_24h": 0.9468,
+        "n_fallback_cases": 0
+      },
+      "e2-hgb-ctx-20260701-s0-b357": {
+        "variant": "hgb",
+        "mae_macro": 22.2419,
+        "bias": -1.2305,
+        "rmse": 49.0727,
+        "n_counters": 95,
+        "n_compared_cases": 5577,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s1-9318": {
+        "variant": "mlp",
+        "mae_macro": 22.3121,
+        "bias": 0.5624,
+        "rmse": 48.0751,
+        "n_counters": 95,
+        "n_compared_cases": 5577,
+        "coverage_24h": 0.9468,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s2-6278": {
+        "variant": "mlp",
+        "mae_macro": 22.5614,
+        "bias": -0.4004,
+        "rmse": 48.0496,
+        "n_counters": 95,
+        "n_compared_cases": 5577,
+        "coverage_24h": 0.9468,
+        "n_fallback_cases": 0
+      },
+      "e2-reference_profile-measured": {
+        "variant": "reference_profile",
+        "mae_macro": 26.9956,
+        "bias": 8.3718,
+        "rmse": 56.5683,
+        "n_counters": 95,
+        "n_compared_cases": 5577,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 204
+      },
+      "e2-reference-measured": {
+        "variant": "reference",
+        "mae_macro": 29.7824,
+        "bias": 2.2617,
+        "rmse": 64.2046,
+        "n_counters": 95,
+        "n_compared_cases": 5577,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 628
+      }
+    }
+  }
+}
