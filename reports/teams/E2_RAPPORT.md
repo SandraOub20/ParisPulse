@@ -89,9 +89,37 @@ Les deux modèles passent par `predict_24h`, le même point d'entrée que l'appl
   - **En régime stable, le modèle vaut une médiane ; il apporte surtout lors des changements de régime.** Semaine par semaine, le gain sur la médiane va de +32 à +54 % pendant la baisse des vacances (27/07 → 17/08), et reste proche de 0 les semaines stables. À la reprise de fin août, aucune méthode n'anticipe la remontée.
   - La semaine du 20/07, le HGB perd face à la médiane (−28 %) : ses entrées lisent la semaine du 13/07, décalée de 2 h dans les données d'E1.
 
-**EXP-E2-04, intérêt du contexte** ([fiche](../experiments/EXP-E2-04.md)) : _résultats à compléter._
+**EXP-E2-04, intérêt du contexte** ([fiche](../experiments/EXP-E2-04.md)) : chaque modèle est comparé avec et sans contexte, à méthode, graine et réglages égaux. Le seuil de bruit est de 0,357, fixé au gel.
 
-**EXP-E2-05, robustesse du MLP aux pannes** ([fiche](../experiments/EXP-E2-05.md)) : _résultats à compléter._
+| | Avec contexte | Sans contexte | Gain | Compteurs améliorés |
+| --- | --- | --- | --- | --- |
+| HGB | 22,25 | 22,90 | **+0,64** | 86 / 95 |
+| MLP | 22,23 | 23,38 | **+1,15** | 88 / 95 |
+
+- **Le gain vient surtout du calendrier.** Les jours fériés, le contexte évite une erreur de 6 à 10 vélos/h. Retirer le calendrier coûte 0,48 au HGB, retirer la météo 0,17 (sous le seuil), et retirer les grèves rien du tout (il n'y en a aucune en été).
+- **Les jours de pluie prévue, le contexte dégrade**, de −0,6 pour le HGB et −3,2 pour le MLP, sur 5 jours seulement : c'est une limite à surveiller.
+- Décision : le HGB avec contexte reste servi.
+
+**EXP-E2-05, robustesse du MLP aux pannes** ([fiche](../experiments/EXP-E2-05.md), comparaison individuelle d'Idir). On compare 4 bras :
+- A, le MLP actuel, qui refuse sous 84 h mesurées puis se replie ;
+- A′, les mêmes poids, forcés à prévoir dès 24 h ;
+- B, un MLP appris en masquant au hasard des blocs de 24 à 144 h sur 10 % des exemples, avec un seuil de 24 h ;
+- R, la médiane.
+
+On efface ensuite une partie de la semaine visible des 6 014 cas. MAE en lecture système, moyenne des 3 graines :
+
+| Niveau | A | A′ | B | R |
+| --- | --- | --- | --- | --- |
+| rien effacé | 22,39 | 22,37 | 22,73 | 27,01 |
+| 48 dernières heures | 27,93 | 27,91 | **25,17** | 27,01 |
+| 96 dernières heures | 29,75 (repli) | 36,45 | **26,15** | 27,01 |
+| 144 dernières heures | 28,49 (repli) | 46,00 | **28,20** | 30,26 |
+| la moitié au hasard | 27,36 | 27,74 | **25,69** | 28,64 |
+
+- **Le masquage aide nettement dès que la semaine est trouée.** Sur les vraies semaines de 83 à 24 h mesurées, B fait 15,7 contre 24,1 pour le repli de A. B est aussi beaucoup plus stable entre graines.
+- Sans masquage, le MLP forcé à prévoir s'effondre (46,0).
+- **Mais B perd 0,39 sur les semaines complètes**, juste au-delà du bruit entre graines (0,36). La règle figée demandait de ne rien perdre : **A reste le MLP servi.**
+- Piste chiffrée, à mesurer dans une nouvelle fiche : servir A sur les semaines complètes et B entre 24 et 83 h, au lieu du repli.
 
 **Test final** (octobre-novembre, lu une seule fois) : _à compléter._
 
@@ -113,7 +141,10 @@ Les deux modèles passent par `predict_24h`, le même point d'entrée que l'appl
 
 ## 9. Recommandation et limites
 
-**Recommandation** : servir le **HGB avec contexte** (`e2-hgb-ctx-20260701-s0-b357`) dans l'application, avec repli sur la référence. Le MLP reste disponible : il est aussi bon en moyenne, mais il dépend du nombre d'heures mesurées. _Compléter avec les conclusions de 04 et 05._
+**Recommandation** : servir le **HGB avec contexte** (`e2-hgb-ctx-20260701-s0-b357`) dans l'application, avec repli sur la référence. Le MLP reste disponible : il est aussi bon en moyenne, mais il dépend du nombre d'heures mesurées.
+- **Garder le contexte**, surtout pour le calendrier : il apporte beaucoup les jours fériés.
+- **Garder le MLP A et son repli** (EXP-E2-05). Pour une suite, mesurer la combinaison A / B, avec B en remplacement du repli sur les semaines trouées.
+- Le modèle bat nettement la référence simple « même heure J−7 » (+25 %). Face à la médiane des 4 semaines, il apporte surtout lors des changements de régime. En régime stable, il fait à peu près comme elle.
 
 **Limites** :
 - protocole `proto-v1` non validé par le professeur ;

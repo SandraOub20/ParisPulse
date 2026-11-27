@@ -30,12 +30,15 @@ Format : [doc/SUIVI_ET_REMISE.md §4](../../doc/SUIVI_ET_REMISE.md). Entrées le
   - semaine par semaine, le gain se concentre sur la baisse des vacances (+32 à +54 %) ;
   - le gain tient aux heures de pointe (+20 à +24 %).
 - **EXP-E2-04** : le contexte aide les deux modèles, au-delà du seuil (HGB 22,25 contre 22,90 ; MLP 22,23 contre 23,38). Il améliore 86 et 88 compteurs sur 95. Le gain est fort les jours fériés, mais **le contexte dégrade les jours de pluie prévue**. L'étape 2 est déclenchée.
-- **EXP-E2-05** : _à compléter à la fin des calculs._
+- **EXP-E2-05**, ma comparaison : 50 calculs (5 niveaux de panne × 10). B, le MLP masqué, gagne nettement dès que la semaine est trouée : 25,2 contre 27,9 sous 48 h de panne, et 15,7 contre 24,1 (repli de A) sur les vraies semaines de 83 à 24 h. Il est aussi bien plus stable entre graines. Mais **il perd 0,39 sur les semaines complètes**, pour un bruit de 0,36. La règle figée demande de ne rien perdre : **A est gardé**.
+- **EXP-E2-04, étape 2** : retirer le calendrier coûte 0,48, la météo 0,17, les grèves rien.
 
 ### Analyse et décisions
 
 - **En régime stable, le modèle vaut une médiane ; il apporte surtout lors des changements de régime.** La médiane met environ 2 semaines à suivre une rupture. À la reprise de fin août, aucune méthode n'anticipe la remontée.
-- **La lecture du test est fixée avant de le lire** : semaines normales, vacances de la Toussaint et transitions, séparées.
+- **La lecture du test est fixée avant de le lire** : semaines normales, vacances de la Toussaint et transitions, séparées. Elle est commitée dans `final_test.py` avant le calcul du test (gel D-07).
+- **EXP-E2-05 perdue de justesse** : j'applique la règle sans la retoucher. La combinaison « A sur les semaines complètes, B à la place du repli » est la suite logique, mais c'est une nouvelle méthode, à figer dans une fiche avant de la mesurer.
+- **Erreur de ma part** : `score.py` plantait quand un bras ne servait aucun cas (A sous 96 h de panne, en lecture brute). Corrigé et testé : le bras reste dans le tableau avec une couverture nulle.
 - **Point clarifié** : la MAE de juin (environ 17,5) est un contrôle d'arrêt anticipé, dans la période d'apprentissage. La validation (environ 22) porte sur l'été. Les deux ne se comparent pas.
 
 ### Partenaires
@@ -45,7 +48,7 @@ Format : [doc/SUIVI_ET_REMISE.md §4](../../doc/SUIVI_ET_REMISE.md). Entrées le
 
 ### Prochaine étape
 
-- Fin d'EXP-E2-05 et de l'étape 2 d'EXP-E2-04 ; gel D-07, puis test final une seule fois ; rapport d'équipe ; message aux équipes.
+- Test final, une seule fois ; rapport d'équipe ; message aux équipes (E1 : décalage de 2 h ; E4 : prévisions de 04, 05 et du test).
 
 ---
 
