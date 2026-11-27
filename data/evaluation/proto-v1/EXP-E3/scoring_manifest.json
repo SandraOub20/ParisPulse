@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-26T17:04:38+00:00",
+  "generated_at": "2026-11-27T13:08:00+00:00",
   "script": "src/eval/backtest.py",
   "snapshot_id": "hist-20261117",
   "protocol_id": "proto-v1",
@@ -10,13 +10,14 @@
     "data\\prediction_results\\EXP-E3\\e3-chronos-2-adapted-v1-validation-b24-b72-b168.pred.csv": "727df209293eabe48bed938acf1550b71724f74bc4f02284e14c6eaca9ab8e37",
     "data\\prediction_results\\EXP-E3\\e3-chronos-2-adapted-v2-validation-b24-b72-b168.pred.csv": "e939e9b25055eca5ab2eab1bfdf541f29dbeb2e0304c6d071281479b48d12079",
     "data\\prediction_results\\EXP-E3\\e3-chronos-2-frozen-v1-validation-all.pred.csv": "673fe8f3b2470e3742cf5bd6496339523b319432f878bb93f44f39451ed2d9ae",
+    "data\\prediction_results\\EXP-E3\\e3-google-TimesFM_2.5-adapted-v2-validation-b24-b72-b168.pred.csv": "c83c1201c4db79b930e7e59d95b9ff0c85849fb2dc5c5d00909491be1cf3f591",
     "data\\prediction_results\\EXP-E3\\e3-google-TimesFM_2.5-frozen-v1-validation-all.pred.csv": "838d53af162862fab56049d68bceb9ef109cc8166f7ee864921631e9c411ee18",
     "data\\prediction_results\\EXP-E3\\e3-team3-mlp-frozen-v1-validation-b-168.pred.csv": "f9af8fe0dbcf4f65844c1034952c8f2e9c3482b9a084db7cb4ab6d8470d69c80"
   },
   "outputs_sha256": {
-    "data\\evaluation\\proto-v1\\EXP-E3\\errors.csv": "f4fc14b63ed7ecf9018a254e643f59c5380bc093d7e1fa47fe5644cce0c13263",
-    "data\\evaluation\\proto-v1\\EXP-E3\\scores.csv": "8c7cfdc0c6b9e80a849634e3ec77b5d252828a3db640150336a1c77d408428dd",
-    "data\\evaluation\\proto-v1\\EXP-E3\\coverage.csv": "cf946ec70380a692330284f2306cb72cfc36f6b7e4682a2b2834cfb13a58d472",
-    "data\\evaluation\\proto-v1\\EXP-E3\\scores_by_counter.csv": "22545776861c2f00622ca488fd7bb6faf684c7a18d15b85b31f5e149c6f92e7a"
+    "data\\evaluation\\proto-v1\\EXP-E3\\errors.csv": "1e9bd2bda322a0db186be11407dadb4fc7df021a83d56552945a1cdb94d172a3",
+    "data\\evaluation\\proto-v1\\EXP-E3\\scores.csv": "1a3bac2a0e650cee5160473796c4e4ccbe62b9dab3d06e22f2001192214f870d",
+    "data\\evaluation\\proto-v1\\EXP-E3\\coverage.csv": "37e5fb41014c59eca814a00e5fb56f4ee153f0f240bdb9c3cfc1c3bc0fdc61d9",
+    "data\\evaluation\\proto-v1\\EXP-E3\\scores_by_counter.csv": "5e0ce6bc23a54bf97332a4e39fc1969b62bbdaa6aa96f4834543505fd6b98b29"
   }
 }
