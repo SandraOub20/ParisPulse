@@ -586,6 +586,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="mlp et hgb : sortie du modèle en bloc (batch.py), mêmes fichiers en quelques s",
     )
+    parser.add_argument(
+        "--degrade",
+        help="EXP-E2-05, avec --batch : niveau d'effacement de la semaine visible "
+        "(d0, panne-48, panne-96, panne-144, trous-50) ; suffixe le method_run_id",
+    )
     parser.add_argument("--method-run-id")
     parser.add_argument("--values", default="measured", choices=VALUE_POLICIES)
     parser.add_argument("--split", action="append", default=None, help="défaut : validation")
@@ -600,6 +605,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("les modèles ont appris sur les mesures seules (D-11) : --values measured")
     if args.min_observed_hours is not None and args.variant != MLP_VARIANT:
         parser.error("--min-observed-hours ne s'applique qu'au MLP")
+    if args.degrade is not None and not args.batch:
+        parser.error("--degrade passe par le calcul en bloc : ajouter --batch")
     if not trained and args.model_run_id:
         parser.error(f"--model-run-id sans objet pour la variante {args.variant}")
     if trained:
@@ -612,15 +619,20 @@ def main(argv: list[str] | None = None) -> int:
     method_run_id = args.method_run_id or (
         args.model_run_id if trained else f"e2-{args.variant}-{args.values}"
     )
+    if args.degrade is not None:
+        method_run_id = f"{method_run_id}_{args.degrade}"
     started = time.perf_counter()
     loader = counts_history_loader(args.snapshot, values=args.values)
     context = load_context(args.snapshot, path=args.context) if trained else None
     loading = time.perf_counter() - started
     runner = run_experiment
+    extra = {}
     if args.batch:
         from src.models.known import batch  # import tardif : batch importe ce module
 
         runner = batch.run_experiment_batch
+        if args.degrade is not None:
+            extra["degrade"] = args.degrade
     pred, runs = runner(
         selected,
         loader,
@@ -630,6 +642,7 @@ def main(argv: list[str] | None = None) -> int:
         context=context,
         model_run_id=args.model_run_id,
         min_observed_hours=args.min_observed_hours,
+        **extra,
     )
     selected.to_csv(pred.parent / f"{method_run_id}.cases_used.csv", index=False)
     report.update(
@@ -638,6 +651,7 @@ def main(argv: list[str] | None = None) -> int:
             "model_run_id": args.model_run_id,
             "min_observed_hours": args.min_observed_hours,
             "mode": "batch" if args.batch and trained else "cas par cas",
+            "degrade": args.degrade,
             "context_rows": None if context is None else len(context),
             "load_seconds": round(loading, 1),
             "total_seconds": round(time.perf_counter() - started, 1),

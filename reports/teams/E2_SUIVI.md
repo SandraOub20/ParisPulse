@@ -40,7 +40,7 @@ Documents de référence : [sujet](../../ParisPulse_Sujet_etudiants.pdf), [archi
 
 ## 2. État d'avancement
 
-_Dernière mise à jour : 2026-11-27 - MOD-018._
+_Dernière mise à jour : 2026-11-27 - MOD-019._
 
 | Étape (README E2) | État | Renvoi |
 | --- | --- | --- |
@@ -126,6 +126,28 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
 - **Vérifications effectuées** : commandes lancées, résultats observés (ou "aucune").
 - **Points ouverts** : ce qui reste incertain ou à valider.
 ```
+
+### MOD-019 - 2026-11-27 - Dégradation de la semaine visible pour EXP-E2-05 (`batch.py`, `--degrade`)
+
+- **Auteur** : Idir.
+- **Branche / commit** : `Team2-idir` (commit indiqué dans l'historique de ce fichier).
+- **Quoi** :
+  - [batch.py](../../src/models/known/batch.py) :
+    - `erased_positions`, `visible_week`, `erased_hours` : les heures effacées par niveau (`d0`, `panne-48/96/144`, `trous-50`) ;
+    - `degrade_history` : passe les heures effacées à « non mesurée » (vide, jamais 0) ;
+    - `batch_raw_mlp(..., degrade=)` : chaque cas reçoit sa propre semaine effacée (`_degraded_weeks`) ;
+    - `run_experiment_batch(..., degrade=)` : le repli et les références voient la même semaine effacée que le modèle.
+  - [predict.py](../../src/models/known/predict.py) : l'option `--degrade` (avec `--batch`) ajoute le niveau en suffixe au `method_run_id`.
+- **Pourquoi** : la population 2 d'[EXP-E2-05](../experiments/EXP-E2-05.md), figée le 2026-11-24, précisée au point 8 avant tout score.
+- **Fichiers** : [batch.py](../../src/models/known/batch.py), [predict.py](../../src/models/known/predict.py), [test_known_batch.py](../../tests/test_known_batch.py), [EXP-E2-05](../experiments/EXP-E2-05.md).
+- **Impact partenaires / contrats** : aucun. Sans `--degrade`, rien ne change.
+- **Vérifications effectuées** : 13 tests ajoutés.
+  - Positions par niveau : la même graine donne les mêmes trous, et les trous diffèrent d'un cas à l'autre.
+  - `degrade_history` : aucun 0 inventé, cibles intactes, original non modifié.
+  - `d0` en bloc est identique au calcul sans dégradation.
+  - En bloc, le résultat est identique à `predict_mlp` cas par cas sur l'historique effacé (seuils 84 et 24).
+  - Le repli du MLP est égal à la référence sur la même semaine effacée.
+  - La commande `--degrade` est testée.
 
 ### MOD-018 - 2026-11-27 - Score recalculable (`score.py`), nettoyage avant remise
 

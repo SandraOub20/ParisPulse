@@ -142,3 +142,16 @@
    - C'est la seule adaptation permise après le gel.
 6. Code : `min_observed_hours` et `mask_windows` (Idir), branchement dans `fit_mlp` (Esther prévenue). Option désactivée par défaut : les modèles existants ne changent pas.
 7. Ordre : les scores d'EXP-E2-05 attendent le gel d'EXP-E2-03.
+8. **Mise en œuvre de la dégradation** (2026-11-27, avant tout score d'EXP-E2-05 ; c'est une précision, pas un changement de choix) :
+   - La « semaine visible » est la grille des 168 heures qui finit à `origin − 24 h`, la même que la fenêtre du MLP. `panne-N` efface les N dernières heures de cette grille. Une heure déjà manquante reste manquante, si bien que « les N dernières heures disponibles » se lit « les N dernières heures de la semaine visible ».
+   - `trous-50` efface 84 heures sur 168, tirées avec la graine 0 et l'identifiant du cas : chaque cas a ses propres trous, identiques pour tous les bras.
+   - Code dans [batch.py](../../src/models/known/batch.py) :
+     - `erased_positions` donne les positions effacées, `degrade_history` efface un historique, et la fenêtre de chaque cas est effacée en bloc ;
+     - le repli du MLP et la référence R voient la même semaine effacée que le modèle ;
+     - chaque fonction est testée : aucun 0 inventé, cibles intactes, le bloc donne le même résultat que le cas par cas sur l'historique effacé, `d0` est identique au calcul sans dégradation.
+   - Commande, pour un niveau et un modèle :
+     ```
+     python -m src.models.known.predict --cases data/evaluation/proto-v1/cases.csv --snapshot hist-20261117 --experiment EXP-E2-05/<niveau> --variant mlp --model-run-id <id> --batch --degrade <niveau>
+     ```
+     A′ ajoute `--min-observed-hours 24 --method-run-id <id>-seuil24`, et R utilise `--variant reference_profile`.
+   - Score : `python -m src.models.known.score --experiment EXP-E2-05 --level <niveau>`.
