@@ -716,7 +716,7 @@ def main(argv: list[str] | None = None) -> int:
     }
     if not args.no_save:
         out = train.save_model(model, args.root)
-        summary["model_dir"] = str(out)
+        summary["model_dir"] = train.repo_relative(out)
         (out / "training_report.json").write_text(
             json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )

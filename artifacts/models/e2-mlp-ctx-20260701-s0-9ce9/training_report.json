@@ -239,5 +239,5 @@
     "torch_threads": 4,
     "fit_seconds": 33.329
   },
-  "model_dir": "/home/esther/ParisPulse/artifacts/models/e2-mlp-ctx-20260701-s0-9ce9"
+  "model_dir": "artifacts/models/e2-mlp-ctx-20260701-s0-9ce9"
 }

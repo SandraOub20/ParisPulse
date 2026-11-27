@@ -40,7 +40,7 @@ Documents de référence : [sujet](../../ParisPulse_Sujet_etudiants.pdf), [archi
 
 ## 2. État d'avancement
 
-_Dernière mise à jour : 2026-11-24 - MOD-017._
+_Dernière mise à jour : 2026-11-27 - MOD-018._
 
 | Étape (README E2) | État | Renvoi |
 | --- | --- | --- |
@@ -126,6 +126,29 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
 - **Vérifications effectuées** : commandes lancées, résultats observés (ou "aucune").
 - **Points ouverts** : ce qui reste incertain ou à valider.
 ```
+
+### MOD-018 - 2026-11-27 - Score recalculable (`score.py`), nettoyage avant remise
+
+- **Auteur** : Idir.
+- **Branche / commit** : `Team2-idir` (commit indiqué dans l'historique de ce fichier).
+- **Quoi** :
+  - [score.py](../../src/models/known/score.py) : le score d'une expérience refait le calcul de `make_common_scores` d'E4 avec leurs fonctions de `src/eval/metrics.py`, sans les recopier. Il donne deux lectures, « système » et « brut », et lit les `.pred.csv` d'un dossier, ou directement le zip livré. Commande : `python -m src.models.known.score --experiment EXP-E2`. Il remplace le script hors Git du score provisoire de 03.
+  - Chemins personnels retirés :
+    - `model_dir` est relatif au dépôt (`train.repo_relative`) dans les bilans d'apprentissage ;
+    - les 11 `training_report.json` commités sont corrigés (ils ne sont pas lus au chargement des modèles).
+  - Code mort retiré :
+    - `train.compare_variants` : les comparaisons passent par les fiches, `batch.py` et `score.py` ;
+    - `baseline.prophet_reference` : Prophet est abandonné (D-04, D-10, C5).
+  - En-têtes de `baseline.py`, `predict.py` et `train.py` réécrits, puisque les « À faire » du gabarit sont faits. [README du dossier](../../src/models/known/README.md) réécrit : modules, expériences, « Refaire les expériences ».
+  - `write_predictions` : le `FutureWarning` de pandas sur les cas en erreur est corrigé (colonnes en objet avant la concaténation).
+- **Pourquoi** : remise. La checklist exige « sans chemin personnel » et un calcul recalculable par un tiers (SUIVI_ET_REMISE §2 et §6).
+- **Fichiers** : [score.py](../../src/models/known/score.py), [test_known_score.py](../../tests/test_known_score.py), [train.py](../../src/models/known/train.py), [neural.py](../../src/models/known/neural.py), [tabular.py](../../src/models/known/tabular.py), [baseline.py](../../src/models/known/baseline.py), [predict.py](../../src/models/known/predict.py), [README](../../src/models/known/README.md), `artifacts/models/*/training_report.json`.
+- **Impact partenaires / contrats** : aucun. Les fonctions retirées n'étaient appelées nulle part (`git grep`) et levaient `NotImplementedError`.
+- **Vérifications effectuées** :
+  - `score.py` sur EXP-E2-03 redonne **exactement** les scores officiels d'E4 (`data/evaluation/proto-v1/EXP-E2/scores.csv`, ligne `common_complete`) : MAE, RMSE, biais, 5 613 cas, 95 compteurs ;
+  - 5 tests calculés à la main : MAE macro, biais, lecture brute, lecture du zip, vide ≠ 0 ;
+  - `git grep "/home/"` sur `artifacts/`, `src/`, `reports/` et `tests/` : aucun résultat ;
+  - `pytest -q` : 425 tests passent. Le seul test écarté est celui d'E3 qui échoue aussi sur `dev`.
 
 ### MOD-017 - 2026-11-24 - Calcul en bloc des prévisions (`batch.py`) ; prévisions d'EXP-E2-03 et score provisoire
 

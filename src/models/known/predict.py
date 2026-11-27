@@ -1,14 +1,16 @@
 """Calcul de 24 heures sur sites connus et traçage des expériences - E2 avec E5.
 
-À faire :
-1. Recevoir un cas et ses seules entrées autorisées ; choisir une version admissible du modèle.
-2. Produire 24 lignes au format forecasts.csv, sans observations cibles.
-3. Sauvegarder <method_run_id>.pred.csv et .runs.csv dans data/prediction_results/<experiment_id>/.
-4. Fournir le même calcul à E5 et prouver le recalcul sur une autre origine.
+- ``predict_24h(case, history, variant=...)`` (signature demandée par E5) : un cas, ses seules
+  entrées admissibles, 24 lignes au format forecasts.csv, sans observation cible.
+- Variantes : ``reference`` et ``reference_profile`` (baseline.py), ``mlp`` (neural.py) et
+  ``hgb`` (tabular.py, retenu pour l'application, D-24). Modèle par défaut : DEFAULT_MODEL_RUN_IDS.
+- ``trained_forecast`` contrôle l'éligibilité (``eligibility_reason``) puis bascule sur la
+  référence en cas de refus ; ``status_reason`` garde le code exact.
+- ``run_experiment`` / ``main`` écrivent <method_run_id>.pred.csv, .runs.csv,
+  .cases_used.csv et .selection.json dans data/prediction_results/<experiment_id>/ ;
+  ``--batch`` fait le même calcul en bloc (batch.py), avec des fichiers identiques.
+- registry.py (C4) n'est pas utilisé : E3 et E5 appellent predict_24h directement.
 
-Signature imposée par E5 pour son code : predict_24h(case, history, variant="reference").
-Coexistence avec ForecastMethod(inputs, variant) du registre : incohérence C4, en suspens
-(voir reports/teams/E2_SUIVI.md, §10).
 predict_24h refiltre lui-même l'historique et le contexte sur le passé admissible : un
 historique complet du compteur peut donc lui être passé sans risque de fuite.
 
@@ -469,7 +471,9 @@ def write_predictions(results: Iterable[ForecastResult], path: Path) -> Path:
         frame = result.to_forecast_frame()
         if len(frame) != HORIZON_HOURS:
             raise ValueError(f"{result.case.case_id} : {len(frame)} lignes au lieu de 24")
-        frames.append(frame)
+        # Colonnes en objet : _write_csv formate tout en texte, et un cas en erreur
+        # (y_pred entièrement vide) ne change alors pas le type des autres.
+        frames.append(frame.astype(object))
     if not frames:
         raise ValueError("aucun résultat à écrire")
     table = pd.concat(frames, ignore_index=True)

@@ -179,5 +179,5 @@
     "torch_threads": 2,
     "fit_seconds": 23.425
   },
-  "model_dir": "/home/requiem/Desktop/ParisPulse/artifacts/models/e2-mlp-noctx-20260701-s0-5114"
+  "model_dir": "artifacts/models/e2-mlp-noctx-20260701-s0-5114"
 }

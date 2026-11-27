@@ -1,10 +1,12 @@
-"""Apprentissage et comparaison des méthodes sur sites connus - E2.
+"""Apprentissage commun des méthodes sur sites connus - E2.
 
-À faire :
-1. Lire les cas et séparations proposés par E4, puis utiliser le protocole validé.
-2. Exclure les sites réservés d'E3 ; vérifier la disponibilité des labels à la coupure.
-3. Comparer au moins une variante explicative et coordonner l'expérience DL collective.
-4. Sauvegarder paramètres, provenance, coût et poids dans artifacts/models/ ; préserver le test final.
+- ``load_training_data`` lit l'instantané ; ``exclude_reserved_sites`` retire les sites réservés à E3.
+- ``fit`` apprend la méthode choisie (backend ``mlp`` de neural.py ou ``hgb`` de tabular.py)
+  jusqu'à la coupure, sur les seuls labels disponibles à cette date.
+- ``save_model`` / ``load_model`` écrivent et relisent artifacts/models/<model_run_id>/
+  (poids, metadata.json, empreinte SHA-256 vérifiée au chargement).
+- Les comparaisons de variantes passent par les fiches reports/experiments/EXP-E2-*.md,
+  le calcul en bloc (batch.py) et le score (score.py) ; le test final n'est lu qu'une fois.
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ from typing import Any
 
 import pandas as pd
 
-from src.common.config import ROOT, data_path, load_config
+from src.common.config import ROOT, data_path, load_config, relative_to_root
 from src.models.known.features import LOCAL_TZ, _default_lag, training_counters, training_origins
 from src.models.schemas import HORIZON_HOURS
 
@@ -318,13 +320,15 @@ def _hardware() -> str:
     return f"{cpu}, {os.cpu_count()} threads, {platform.system()}"
 
 
-def compare_variants(configs: list[TrainConfig], validation_cases: pd.DataFrame) -> pd.DataFrame:
-    """Comparer des variantes sur la validation (jamais sur le test final).
+def repo_relative(path: Path) -> str:
+    """Chemin à écrire dans un bilan commité : relatif à la racine du dépôt, jamais personnel.
 
-    Ex. même modèle avec/sans contexte ; local vs partagé ; autre fonction de perte.
-    Les scores officiels restent calculés par E4.
+    Hors du dépôt (dossier temporaire de test, par exemple), seul le nom du dossier est gardé.
     """
-    raise NotImplementedError("E2 avec E4 : ablation d'information")
+    try:
+        return relative_to_root(path)
+    except ValueError:
+        return Path(path).name
 
 
 def save_model(model: TrainedModel, root: Path | None = None) -> Path:

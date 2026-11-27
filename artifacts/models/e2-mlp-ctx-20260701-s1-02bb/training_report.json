@@ -258,5 +258,5 @@
     },
     "fit_seconds": 47.638
   },
-  "model_dir": "/home/requiem/Desktop/ParisPulse/artifacts/models/e2-mlp-ctx-20260701-s1-02bb"
+  "model_dir": "artifacts/models/e2-mlp-ctx-20260701-s1-02bb"
 }
