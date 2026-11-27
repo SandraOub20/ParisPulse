@@ -55,6 +55,40 @@ Prophet a été envisagé comme référence, puis abandonné : il n'est pas déc
 
 Les deux modèles passent par `predict_24h`, le même point d'entrée que l'application et E3. Ses contrôles d'éligibilité portent sur l'instantané, la coupure, le site présent à l'apprentissage et la version du contexte. En cas de refus, le repli sur la référence se fait avec un code exact.
 
+### Reconnaître un modèle
+
+Le nom d'un modèle se lit ainsi : `e2-<méthode>-<ctx|noctx>-<coupure>-s<graine>-<empreinte>`. Par exemple, `e2-hgb-ctx-20260701-s0-b357` se décompose en :
+- `hgb` : la méthode ;
+- `ctx` : avec contexte ;
+- `20260701` : appris jusqu'au 01/07/2026 ;
+- `s0` : graine 0 ;
+- `b357` : les 4 premiers caractères de l'empreinte de tous ses réglages. Un seul réglage différent donne une autre empreinte.
+
+Chaque modèle est rangé dans `artifacts/models/<nom>/`, avec ses poids, `metadata.json` (réglages, sites exclus, empreinte des poids) et `training_report.json` (bilan d'apprentissage).
+
+| Modèle | Méthode | Contexte | Graine | Réglage particulier | Rôle | Expérience |
+| --- | --- | --- | --- | --- | --- | --- |
+| **`e2-hgb-ctx-20260701-s0-b357`** | HGB | tout | 0 | 342 arbres (s'arrête seul) | **Servi par l'application** (D-24) | 03, 04, test |
+| `e2-hgb-noctx-20260701-s0-0af3` | HGB | aucun | 0 | `max_iter=2000` (679 arbres) | Comparaison sans contexte | 04 |
+| `e2-hgb-ctx-20260701-s0-70b9` | HGB | sans calendrier | 0 | `max_iter=2000` | Étape 2 : rôle du calendrier | 04 |
+| `e2-hgb-ctx-20260701-s0-55d2` | HGB | sans grèves | 0 | `max_iter=2000` | Étape 2 : rôle des grèves | 04 |
+| `e2-hgb-ctx-20260701-s0-6a8b` | HGB | sans météo prévue | 0 | `max_iter=2000` | Étape 2 : rôle de la météo | 04 |
+| **`e2-mlp-ctx-20260701-s0-9ce9`** | MLP (A) | tout | 0 | seuil de 84 h | **MLP de l'application** (avec repli), déclaré dans 03 | 03, 04, 05, test |
+| `e2-mlp-ctx-20260701-s1-9318` | MLP (A) | tout | 1 | seuil de 84 h | Variabilité entre graines | 03, 05 |
+| `e2-mlp-ctx-20260701-s2-6278` | MLP (A) | tout | 2 | seuil de 84 h | Variabilité entre graines | 03, 05 |
+| `e2-mlp-noctx-20260701-s0-5114` | MLP | aucun | 0 | seuil de 84 h | Comparaison sans contexte | 04 |
+| `e2-mlp-ctx-20260701-s0-37f5` | MLP masqué (B) | tout | 0 | masquage 10 %, seuil de 24 h | Bras B ; calculé pour information sur le test | 05, test |
+| `e2-mlp-ctx-20260701-s1-bd12` | MLP masqué (B) | tout | 1 | masquage 10 %, seuil de 24 h | Bras B | 05 |
+| `e2-mlp-ctx-20260701-s2-f26e` | MLP masqué (B) | tout | 2 | masquage 10 %, seuil de 24 h | Bras B | 05 |
+| `e2-mlp-ctx-20260701-s0-a3b2` | MLP masqué | tout | 0 | masquage 25 %, seuil de 24 h | Écarté par le contrôle sur juin, gardé pour la transparence | 05 (gel) |
+| `e2-mlp-ctx-20260701-s1-02bb` | MLP masqué | tout | 1 | masquage 25 %, seuil de 24 h | Idem | 05 (gel) |
+| `e2-mlp-ctx-20260701-s2-5238` | MLP masqué | tout | 2 | masquage 25 %, seuil de 24 h | Idem | 05 (gel) |
+
+Remarques sur ce tableau :
+- Le bras **A′** d'EXP-E2-05 n'est pas un modèle à part : ce sont les poids de A (`9ce9`, `9318`, `6278`), utilisés avec un seuil de 24 h. Ses fichiers de prévision portent le suffixe `-seuil24`.
+- Les **références** n'apprennent rien et n'ont pas de dossier de modèle. Leurs prévisions s'appellent `e2-reference-measured` (même heure 7 jours avant) et `e2-reference_profile-measured` (médiane des 4 semaines). `measured` signifie qu'elles ne lisent que les vraies mesures.
+- Dans EXP-E2-05, les fichiers de prévision ajoutent le niveau de panne au nom, par exemple `e2-mlp-ctx-20260701-s0-37f5_panne-96`.
+
 ## 5. Vérifications
 
 - Chaque fonction est testée sur de petits exemples calculés à la main. La suite `pytest` complète passe (460 tests).
