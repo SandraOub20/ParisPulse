@@ -36,7 +36,7 @@ Détails dans le [guide de l'application](src/app/README.md).
 
 ## Résultats de validation
 
-Cas `proto-v1`, origines de juillet et août 2026, instantané `hist-20261117`. MAE en vélos par heure, moyenne entre compteurs : plus bas est meilleur.
+Cas `proto-v1`, origines de juillet et août 2026, instantané `hist-20261117`. Les erreurs des modèles sont comparées en MAE (erreur absolue moyenne), en vélos par heure, moyenne entre compteurs : plus bas est meilleur.
 
 **Sites connus** (95 compteurs évaluables), [scores E4](data/evaluation/proto-v1/EXP-E2/scores.csv) :
 
@@ -51,13 +51,15 @@ L'écart entre MLP et HGB est plus petit que l'écart entre trois graines du MLP
 
 **Nouveaux sites** (5 compteurs), [scores E4](data/evaluation/proto-v1/EXP-E3/scores.csv) :
 
-| Historique local | Chronos-2 gelé | Chronos-2 adapté v1 | Chronos-2 adapté v2 | TimesFM 2.5 gelé | MLP de l'équipe 2 |
+| Historique local | Chronos-2 gelé | Chronos-2 adapté v1 | **Chronos-2 adapté v2** | TimesFM 2.5 gelé | MLP de l'équipe 2 |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 24 h | 26,09 | 26,21 | 25,89 | 27,98 | non applicable |
-| 72 h | 22,83 | 23,23 | 22,06 | 22,55 | non applicable |
-| 168 h | 19,67 | 19,92 | 19,27 | 19,79 | 18,80 |
+| 24 h | 26,09 | 26,21 | **25,89** | 27,98 | non applicable |
+| 72 h | 22,83 | 23,23 | **22,06** | 22,55 | non applicable |
+| 168 h | 19,67 | 19,92 | **19,27** | 19,79 | 18,80 |
 
-L'adaptation v2 mélange la prévision de Chronos-2 avec le profil horaire local ([fiche E3](reports/experiments/E3-chronos-adapted-v2.md)). Ses poids ont été appris sur des cas de validation de ces mêmes sites : **son gain est probablement optimiste**.
+En gras : le modèle candidat d'E3. À 168 h, le MLP de l'équipe 2 obtient une MAE plus basse, mais il ne s'applique pas à 24 h ni à 72 h.
+
+L'adaptation v2 mélange la prévision de Chronos-2 avec le profil horaire local ([fiche E3](reports/experiments/E3-chronos-adapted-v2.md)). Ses poids ont été choisis sur des cas de validation de ces mêmes sites, sans réentraînement du modèle sur la validation : **son gain est probablement optimiste**.
 
 Ces résultats portent sur la **validation** seulement. Le test final (1er octobre au 14 novembre 2026) reste réservé jusqu'au gel des choix.
 
@@ -66,12 +68,11 @@ Ces résultats portent sur la **validation** seulement. Le test final (1er octob
 - La validation du protocole par le professeur n'est pas enregistrée (`validated_at: null` dans [config/project.yaml](config/project.yaml)).
 - Le MLP des sites connus est utilisable en ligne de commande, mais pas dans l'application.
 - Le HGB ne prévoit qu'à partir du 1er juillet 2026, fin de son apprentissage ; avant, la référence répond.
-- Les poids de Chronos-2 adapté v2 ont été appris sur la validation qui sert à l'évaluer.
+- Les poids de Chronos-2 adapté v2 ont été choisis sur les cas de validation qui servent aussi à l'évaluer.
 - Sur les sites réservés au test, les dates proposées tombent en partie dans le test final.
 - Les scores des nouveaux sites ne comprennent pas de référence simple.
 - `python -m src.eval.protocol` échoue (`KeyError: 'status'`). Le fichier `cases.csv` déjà livré reste utilisable.
 - `./run.sh check` signale des erreurs de lint et de formatage.
-- Un test d'E3 échoue : il attend `chronos-2-blend-v2`, le code écrit `chronos-2-adapted-v2`.
 
 ## Recalculer les résultats
 
