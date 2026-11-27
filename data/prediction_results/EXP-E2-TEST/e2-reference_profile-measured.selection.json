@@ -1,0 +1,16 @@
+{
+  "input": 12659,
+  "not_known_site": 2280,
+  "other_split": 6014,
+  "counter_not_S_train": 0,
+  "snapshot_replaced": 0,
+  "selected": 4365,
+  "values": "measured",
+  "model_run_id": null,
+  "min_observed_hours": null,
+  "mode": "cas par cas",
+  "degrade": null,
+  "context_rows": null,
+  "load_seconds": 9.1,
+  "total_seconds": 170.1
+}

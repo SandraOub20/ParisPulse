@@ -48,7 +48,8 @@ Format : [doc/SUIVI_ET_REMISE.md §4](../../doc/SUIVI_ET_REMISE.md). Entrées le
 
 ### Prochaine étape
 
-- Test final, une seule fois ; rapport d'équipe ; message aux équipes (E1 : décalage de 2 h ; E4 : prévisions de 04, 05 et du test).
+- **Test final fait, une seule fois**, après le gel. MLP A 17,41, HGB 19,86, J−7 25,16, médiane 27,64. Les choix tiennent. Le gain est fort pendant la Toussaint et les transitions (+35 à +57 %) et faible en semaines normales, comme en été. Hors période, le MLP bat le HGB : on le rapporte sans changer le choix, puisque le test n'est pas un jeu de réglage.
+- Reste à faire : livrer les prévisions à E4, fusionner `dev`, puis le message aux équipes et le push après validation.
 
 ---
 

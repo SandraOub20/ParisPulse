@@ -121,7 +121,19 @@ On efface ensuite une partie de la semaine visible des 6 014 cas. MAE en lecture
 - **Mais B perd 0,39 sur les semaines complètes**, juste au-delà du bruit entre graines (0,36). La règle figée demandait de ne rien perdre : **A reste le MLP servi.**
 - Piste chiffrée, à mesurer dans une nouvelle fiche : servir A sur les semaines complètes et B entre 24 et 83 h, au lieu du repli.
 
-**Test final** (octobre-novembre, lu une seule fois) : _à compléter._
+**Test final** ([fiche](../experiments/EXP-E2-TEST.md)) : octobre-novembre 2026, lu une seule fois après le gel D-07. 3 966 cas comparés sur 43 jours, période qui contient la Toussaint, 2 jours fériés et 3 jours de grève.
+
+| Méthode | MAE macro | Gain / médiane | Gain / J−7 |
+| --- | --- | --- | --- |
+| MLP A | **17,41** | +37 % [+25 ; +47] | +31 % [+19 ; +40] |
+| HGB (servi) | 19,86 | +28 % [+19 ; +35] | +21 % [+12 ; +29] |
+| Même heure J−7 | 25,16 | | |
+| Médiane 4 semaines | 27,64 | | |
+
+- **Les choix tiennent hors période** : les deux modèles battent nettement les références, aux heures de pointe comme au total.
+- **La nuance de la validation se confirme.** En semaines normales, le gain sur la médiane n'est pas significatif : +8 % [−14 ; +25] pour le HGB. Pendant les transitions et les vacances, il va de +35 à +57 %.
+- **Hors période, le MLP bat le HGB** (−2,45 vélos/h), surtout pendant les ruptures et les jours fériés ou de grève. Le HGB reste meilleur en semaines normales et les jours de pluie.
+- Aucun choix n'est changé d'après le test (D-07).
 
 ## 7. Cas d'échec
 
@@ -144,7 +156,8 @@ On efface ensuite une partie de la semaine visible des 6 014 cas. MAE en lecture
 **Recommandation** : servir le **HGB avec contexte** (`e2-hgb-ctx-20260701-s0-b357`) dans l'application, avec repli sur la référence. Le MLP reste disponible : il est aussi bon en moyenne, mais il dépend du nombre d'heures mesurées.
 - **Garder le contexte**, surtout pour le calendrier : il apporte beaucoup les jours fériés.
 - **Garder le MLP A et son repli** (EXP-E2-05). Pour une suite, mesurer la combinaison A / B, avec B en remplacement du repli sur les semaines trouées.
-- Le modèle bat nettement la référence simple « même heure J−7 » (+25 %). Face à la médiane des 4 semaines, il apporte surtout lors des changements de régime. En régime stable, il fait à peu près comme elle.
+- Le modèle bat nettement la référence simple « même heure J−7 » (+25 % en validation, +21 à +31 % sur le test). Face à la médiane des 4 semaines, il apporte surtout lors des changements de régime ; en régime stable, il fait à peu près comme elle. Ce constat est confirmé sur le test.
+- **À revoir dans une suite : le choix entre MLP et HGB**, sur une validation qui contienne des ruptures. L'été les donnait à égalité, alors que l'automne favorise le MLP. Ce choix ne peut pas se faire sur le test.
 
 **Un MLP plus complexe ferait-il mieux ?** Ce n'est pas testé : on a gardé les réglages par défaut, sans recherche d'architecture. Plusieurs indices montrent cependant que la limite vient de l'**information disponible** plutôt que de la capacité du réseau :
 - deux familles très différentes finissent au même niveau (MLP 22,23, HGB 22,25) ;
