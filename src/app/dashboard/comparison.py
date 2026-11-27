@@ -13,6 +13,7 @@ Une valeur absente est affichée « non disponible », jamais comme zéro.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -387,10 +388,39 @@ def show_team_evaluation(results: ev.TeamResults, *, key: str | None = None) -> 
         st.dataframe(provenance_table(results), hide_index=True, key=f"{key}_provenance")
 
 
+def visible_teams(teams: Sequence[str] | None = None) -> tuple[str, ...]:
+    """Équipes à afficher, dans l'ordre officiel ; ``None`` = toutes les équipes."""
+    if teams is None:
+        return ev.TEAMS
+    requested = set(teams)
+    unknown = requested - set(ev.TEAMS)
+    if unknown or not requested:
+        raise ValueError(f"Équipes à afficher invalides : {sorted(unknown) or 'aucune'}.")
+    return tuple(team for team in ev.TEAMS if team in requested)
+
+
+def _show_team_or_problem(results: ev.OfficialResults, team: str) -> None:
+    if team in results.problems:
+        st.error(f"Résultats officiels {team} indisponibles : {results.problems[team]}")
+    elif team not in results.teams:
+        st.info(f"Aucun résultat officiel {team} n'a été chargé.")
+    else:
+        show_team_evaluation(results.teams[team])
+
+
 def show_official_evaluation(
-    results: ev.OfficialResults | None = None, *, root: Path | None = None
+    results: ev.OfficialResults | None = None,
+    *,
+    root: Path | None = None,
+    teams: Sequence[str] | None = None,
 ) -> None:
-    """Section globale des évaluations officielles E4, avec une vue par équipe."""
+    """Section globale des évaluations officielles E4.
+
+    ``teams`` choisit seulement les vues affichées (par exemple selon le périmètre de
+    l'application) : les scores restent ceux du protocole E4 complet, jamais refiltrés.
+    Plusieurs équipes s'affichent dans des sous-onglets distincts, jamais mélangées.
+    """
+    shown = visible_teams(teams)
     st.header("Évaluation officielle E4")
     st.caption(
         "Scores calculés par l'Équipe 4 sur l'ensemble des cas du protocole. Ils ne "
@@ -403,11 +433,14 @@ def show_official_evaluation(
             st.error(f"Impossible de charger les résultats officiels E4 : {error}")
             return
 
-    for team, tab in zip(ev.TEAMS, st.tabs([TEAM_LABELS.get(t, t) for t in ev.TEAMS])):
+    if len(shown) == 1:
+        (team,) = shown
+        st.caption(
+            f"Vue limitée à {TEAM_LABELS.get(team, team)} selon le périmètre choisi. "
+            "Les scores restent ceux du protocole E4 complet."
+        )
+        _show_team_or_problem(results, team)
+        return
+    for team, tab in zip(shown, st.tabs([TEAM_LABELS.get(t, t) for t in shown])):
         with tab:
-            if team in results.problems:
-                st.error(f"Résultats officiels {team} indisponibles : {results.problems[team]}")
-            elif team not in results.teams:
-                st.info(f"Aucun résultat officiel {team} n'a été chargé.")
-            else:
-                show_team_evaluation(results.teams[team])
+            _show_team_or_problem(results, team)

@@ -418,6 +418,61 @@ def test_unloadable_results_show_error(monkeypatch):
     assert "disque indisponible" in texts(at.error)
 
 
+# ------------------------------------------------- équipes visibles (périmètre)
+
+
+def test_visible_teams_keeps_official_order_and_refuses_unknown_teams():
+    assert cmp.visible_teams() == ev.TEAMS
+    assert cmp.visible_teams(["E3", "E2"]) == ("E2", "E3")
+    assert cmp.visible_teams(("E3",)) == ("E3",)
+    with pytest.raises(ValueError, match="E4"):
+        cmp.visible_teams(["E4"])
+    with pytest.raises(ValueError, match="aucune"):
+        cmp.visible_teams([])
+
+
+def run_teams(root, teams) -> AppTest:
+    def app(root, teams):
+        from pathlib import Path
+
+        from src.app.dashboard.comparison import show_official_evaluation
+
+        show_official_evaluation(root=Path(root), teams=teams)
+
+    return AppTest.from_function(app, args=(str(root), teams), default_timeout=30).run()
+
+
+@pytest.mark.parametrize(("team", "hidden"), [("E2", "E3"), ("E3", "E2")])
+def test_single_team_view_has_no_subtabs_and_hides_other_team(official_root, team, hidden):
+    at = run_teams(official_root, [team])
+    assert_clean(at)
+    assert not at.tabs
+    assert f"Vue limitée à {cmp.TEAM_LABELS[team]}" in texts(at.caption)
+    keys = [radio.key for radio in at.radio]
+    assert all(key.startswith(f"official_{team}_") for key in keys)
+    assert ("official_E3_budget" in keys) is (team == "E3")
+    (metrics,) = frames_with(at, "MAE macro (vélos/h)")
+    expected = {"e2-mlp", "e2-reference"} if team == "E2" else {CHRONOS, TIMESFM}
+    assert set(metrics["Méthode"]) == expected
+    assert hidden not in texts(at.success)
+
+
+def test_hidden_team_problem_is_not_displayed(tmp_path):
+    write_team(tmp_path, "E3", e3_scores(), e3_coverage())  # E2 absent
+    at = run_teams(tmp_path, ["E3"])
+    assert_clean(at)
+    assert not at.error
+    at = run_teams(tmp_path, ["E2"])
+    assert "E2 indisponibles" in texts(at.error)
+
+
+def test_single_team_view_keeps_official_scores_unchanged(official_root):
+    (alone,) = frames_with(run_teams(official_root, ["E3"]), "MAE macro (vélos/h)")
+    both = run_teams(official_root, None)
+    (together,) = frames_with(both.tabs[1], "MAE macro (vélos/h)")
+    pd.testing.assert_frame_equal(alone, together)
+
+
 # ------------------------------------------- API historique show_model_comparison
 
 
