@@ -61,7 +61,7 @@ Les détails des expériences sont disponibles dans [reports/experiments/E3-*](/
 
   Les premiers résultats obtenus avec les variantes `frozen` (gelé) étant encourageantes, mais cela nous a pas empéché a faire l'étude de l'adaptation, pour cela nous avons poursuivi l'étude sur davantage de sites.
 
-  Chronos-2 a été testé dans deux versions adaptées : [E3-chronos-adapted-v1.md](/reports/experiments/E3-chronos-adapted-v1.md) et [E3-chronos-adapted-v2.md](/reports/experiments/E3-chronos-adapted-v2.md). Google TimesFM est en cours d'étude avec une première version adaptée.
+  Chronos-2 a été testé dans deux versions adaptées : [E3-chronos-adapted-v1.md](/reports/experiments/E3-chronos-adapted-v1.md) et [E3-chronos-adapted-v2.md](/reports/experiments/E3-chronos-adapted-v2.md).  [E3-google-adapted-v2.md](/reports/experiments/E3-google-adapted-v2.md)  est adapté avec une version v2.
 
   Le MLP de l’équipe 2 n’est applicable que lorsque l’historique du site est d'au moins 7 jours. Il ne peut donc pas être considéré comme généralisable aux trois budgets d’historique retenus (1,3,7j) ; nous ne l’avons pas adapté.
 
