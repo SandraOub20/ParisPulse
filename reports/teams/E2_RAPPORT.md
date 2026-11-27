@@ -146,6 +146,15 @@ On efface ensuite une partie de la semaine visible des 6 014 cas. MAE en lecture
 - **Garder le MLP A et son repli** (EXP-E2-05). Pour une suite, mesurer la combinaison A / B, avec B en remplacement du repli sur les semaines trouées.
 - Le modèle bat nettement la référence simple « même heure J−7 » (+25 %). Face à la médiane des 4 semaines, il apporte surtout lors des changements de régime. En régime stable, il fait à peu près comme elle.
 
+**Un MLP plus complexe ferait-il mieux ?** Ce n'est pas testé : on a gardé les réglages par défaut, sans recherche d'architecture. Plusieurs indices montrent cependant que la limite vient de l'**information disponible** plutôt que de la capacité du réseau :
+- deux familles très différentes finissent au même niveau (MLP 22,23, HGB 22,25) ;
+- l'arrêt anticipé arrive tôt (meilleure époque 20 à 24, sur 100 possibles) : le réseau sur-apprend déjà vite ;
+- ce qui a aidé, c'est de **régulariser**, pas de grossir : le masquage à 10 % fait baisser l'erreur de contrôle sur juin, de 17,68 à 17,32 (EXP-E2-05) ;
+- l'écart entre graines (0,36) dépasse déjà l'écart entre le MLP et le HGB (0,02) ;
+- comme le notent Zeng et al., des modèles simples égalent souvent des réseaux plus complexes.
+
+Les erreurs restantes viennent surtout de ce que les entrées ne contiennent pas : la reprise de fin août, que personne n'anticipe, et les jours décalés dans les données. Des informations nouvelles (l'année précédente à la même période, un calendrier plus fin) sont donc une meilleure piste qu'un réseau plus gros. Une vérification simple serait un MLP 2 à 3 fois plus large, sur 3 graines, comparé sur la validation.
+
 **Limites** :
 - protocole `proto-v1` non validé par le professeur ;
 - validation sur l'été seulement : 2 jours fériés et aucune grève dans la période ;
