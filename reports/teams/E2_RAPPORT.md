@@ -138,7 +138,7 @@ On efface ensuite une partie de la semaine visible des 6 014 cas. MAE en lecture
 
 ## 7. Cas d'échec
 
-- **Sites en panne pendant l'été.** C'est le cas de la face 104 rue d'Aubervilliers et de 3 autres sites : leur semaine visible a moins de 84 h mesurées. Le MLP refuse alors ces cas (`mlp_window_too_sparse`, 320 cas) et la référence prend le relais. Le refus est visible dans `status_reason`, jamais caché.
+- **Sites en panne pendant l'été.** C'est le cas de la face 104 rue d'Aubervilliers et de 3 autres sites : leur semaine visible a moins de 84 h mesurées. Le MLP refuse alors ces cas (`mlp_window_too_sparse`, 320 cas) et la référence prend le relais. Le refus est visible dans `status_reason`, jamais caché. Sur ces 320 cas, aucune méthode ne fait bien : HGB 29,3, J−7 29,6, médiane 30,3. Toutes surestiment de +23 à +31 vélos/h, parce qu'au retour d'une panne, le compteur repart plus bas que son niveau d'avant.
 - **La médiane sur 4 semaines surestime l'été (+8,5 vélos/h).** Elle copie des semaines plus chargées que le mois d'août : une méthode simple « stable » n'est pas forcément sans biais.
 - **Les mesures d'E1 sont décalées de 2 h** les 9, 10, 13, 15 et 16 juillet sur la plupart des compteurs : le pic du matin tombe à 7 h au lieu de 9 h. Toutes les méthodes se trompent ces jours-là, et sans eux, la MAE du HGB passe de 22,25 à 19,25. Le défaut est consigné dans le suivi (§8) pour E1.
 - **L'été est la période la plus difficile** : environ 22 vélos/h en validation, contre 17 à 20 sur le test d'automne. Les vacances, le 14 juillet, le 15 août et les jours décalés y pèsent. Le contrôle de juin (environ 17,5) est dans la période d'apprentissage et ne se compare pas directement.
