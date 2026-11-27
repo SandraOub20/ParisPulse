@@ -184,7 +184,7 @@ On efface ensuite une partie de la semaine visible des 6 014 cas. MAE en lecture
 | E1 | L'instantané, les mesures publiées, le contexte (`e1-context/0.3.0`) et la date de début des données | Nos retours : zéros et valeurs remplies (D-11), décalage de 2 h de juillet |
 | E4 | Les cas `proto-v1` et le code de score | Les prévisions d'EXP-E2-03, notées par leur `backtest.py`, avec des scores identiques aux nôtres ; celles d'EXP-E2-04, 05 et du test sont livrées en zip, et leur score officiel reste à confirmer |
 | E3 | La liste des sites réservés | Notre MLP, transféré aux nouveaux sites, ainsi que `predict_24h`, `write_predictions` et `train.load_model` |
-| E5 | La signature `predict_24h(case, history, variant)` | `predict_24h` avec `reference`, `reference_profile`, `hgb` (par défaut) et `mlp` ; codes de refus et repli |
+| E5 | La signature `predict_24h(case, history, variant)` | Sur `dev`, l'application propose **le HGB par défaut** (« EXP-E2-03 retient le HGB »), appelé avec le contexte et les seules vraies mesures, puis nos 2 références. Le repli est affiché quand le HGB refuse. Le MLP d'E2 n'apparaît que pour les nouveaux sites, à travers E3 |
 
 ## 9. Recommandation et limites
 
