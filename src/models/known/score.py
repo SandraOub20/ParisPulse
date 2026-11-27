@@ -154,12 +154,22 @@ def score_detail(
     - n_fallback_cases : cas dont au moins une heure vient du repli.
     Rend aussi le détail par compteur (counter_id, method_run_id, MAE, bias...), celui qui
     sert à compter les compteurs améliorés ou dégradés.
+
+    Une méthode qui ne sert **aucun** cas complet (par exemple le MLP au seuil de 84 h sur
+    une semaine dont il ne reste que 72 h, en lecture brute) est retirée de l'intersection :
+    sinon elle viderait la comparaison des autres. Elle reste dans la table, avec une
+    couverture nulle et sans MAE.
     """
     forecasts = forecasts[forecasts["case_id"].isin(set(cases["case_id"]))]
     c, p, o = metrics._prepare_inputs(cases.copy(), forecasts.copy(), observations.copy())
     evaluation = metrics._build_evaluation(c, p, o)
     coverage = metrics.calculate_coverage(evaluation)
-    comparable = metrics.filter_common_complete_cases(evaluation, coverage)
+    served = coverage.groupby("method_run_id")["is_complete_24h"].any()
+    kept = set(served[served].index)
+    comparable = metrics.filter_common_complete_cases(
+        evaluation[evaluation["method_run_id"].isin(kept)],
+        coverage[coverage["method_run_id"].isin(kept)],
+    )
     rows = {}
     counters = []
     for method, group in comparable.groupby("method_run_id"):
@@ -174,13 +184,23 @@ def score_detail(
             "n_counters": int(group["counter_id"].nunique()),
             "n_compared_cases": int(group["case_id"].nunique()),
         }
+    for method in sorted(set(served.index) - kept):  # aucun cas servi : couverture nulle
+        variant = coverage.loc[coverage["method_run_id"] == method, "variant"].iloc[0]
+        rows[method] = {
+            "variant": variant,
+            "mae_macro": np.nan,
+            "bias": np.nan,
+            "rmse": np.nan,
+            "n_counters": 0,
+            "n_compared_cases": 0,
+        }
     table = pd.DataFrame.from_dict(rows, orient="index")
     by_method = coverage.groupby("method_run_id")
     table["coverage_24h"] = by_method["is_complete_24h"].mean()
     table["n_fallback_cases"] = by_method["n_fallback_hours"].apply(lambda s: int((s > 0).sum()))
     table.index.name = "method_run_id"
     per_counter = pd.concat(counters, ignore_index=True) if counters else pd.DataFrame()
-    return table.sort_values("mae_macro"), per_counter
+    return table.sort_values("mae_macro", na_position="last"), per_counter
 
 
 def score_by_group(

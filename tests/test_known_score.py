@@ -174,3 +174,15 @@ def test_score_par_groupe():
     assert table.loc[("a", "hgb"), "n_compared_cases"] == 1
     with pytest.raises(ValueError, match="aucun cas"):
         S.score_by_group(_cases(), _forecasts(), _observations(), pd.Series(dtype=str))
+
+
+def test_methode_sans_aucun_cas_servi_ne_vide_pas_la_comparaison():
+    """Lecture brute d'une panne : un bras qui refuse tout garde une couverture nulle."""
+    refused = _forecast("mlp", "mlp", {"A": 5.0, "B": 5.0})
+    refused["prediction_status"] = "fallback"  # tout en repli
+    raw = S.as_raw(pd.concat([_forecasts(), refused], ignore_index=True))
+    table = S.score(_cases(), raw, _observations())
+    assert table.loc["mlp", "coverage_24h"] == 0 and table.loc["mlp", "n_compared_cases"] == 0
+    assert np.isnan(table.loc["mlp", "mae_macro"])
+    assert table.loc["ref", "n_compared_cases"] == 1  # les autres restent comparés (cas B)
+    assert list(table.index)[-1] == "mlp"  # sans MAE, en dernier
