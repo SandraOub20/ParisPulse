@@ -148,7 +148,7 @@ On efface ensuite une partie de la semaine visible des 6 014 cas. MAE en lecture
 
 **Un MLP plus complexe ferait-il mieux ?** Ce n'est pas testé : on a gardé les réglages par défaut, sans recherche d'architecture. Plusieurs indices montrent cependant que la limite vient de l'**information disponible** plutôt que de la capacité du réseau :
 - deux familles très différentes finissent au même niveau (MLP 22,23, HGB 22,25) ;
-- l'arrêt anticipé arrive tôt (meilleure époque 20 à 24, sur 100 possibles) : le réseau sur-apprend déjà vite ;
+- l'arrêt anticipé arrive tôt : meilleure époque 20 à 24, sur 100 possibles, puis 8 époques sans progrès. Après ce point, l'erreur d'apprentissage continue de baisser (de 0,175 à 0,170 pour la graine 0), alors que celle de juin **plafonne** (de 0,162 à 0,165). Le réseau n'exploite déjà plus sa capacité actuelle ;
 - ce qui a aidé, c'est de **régulariser**, pas de grossir : le masquage à 10 % fait baisser l'erreur de contrôle sur juin, de 17,68 à 17,32 (EXP-E2-05) ;
 - l'écart entre graines (0,36) dépasse déjà l'écart entre le MLP et le HGB (0,02) ;
 - comme le notent Zeng et al., des modèles simples égalent souvent des réseaux plus complexes.
