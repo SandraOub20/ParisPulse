@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 from html import escape
 from importlib.util import find_spec
 from pathlib import Path
 
 import folium
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -315,15 +317,234 @@ def time_for_study(study: service.Study) -> float | None:
     return float(seconds) if pd.notna(seconds) else None
 
 
-def show_study(studies: tuple[service.Study, ...], evaluations: tuple[dict, ...] | None) -> None:
+def show_hourly_errors(
+    studies: tuple[service.Study, ...],
+    observations: pd.DataFrame,
+) -> None:
+    """Display hourly residuals using only original scoreable observations."""
+
+    st.subheader("Écarts horaires entre prévisions et mesures")
+
+    required_observation_columns = {
+        "target_timestamp",
+        "y_true",
+        "is_scoreable",
+    }
+    missing = required_observation_columns - set(observations.columns)
+    if missing:
+        st.warning(
+            "Impossible de calculer les écarts horaires : colonnes absentes "
+            f"dans les observations ({', '.join(sorted(missing))})."
+        )
+        return
+
+    actual = observations.loc[
+        :,
+        ["target_timestamp", "y_true", "is_scoreable"],
+    ].copy()
+    scoreable = (
+        actual["is_scoreable"]
+        .astype("string")
+        .str.strip()
+        .str.lower()
+        .map({"true": True, "false": False})
+        .fillna(False)
+    )
+    actual["target_timestamp"] = pd.to_datetime(
+        actual["target_timestamp"],
+        utc=True,
+        errors="coerce",
+    )
+    actual["y_true"] = pd.to_numeric(actual["y_true"], errors="coerce")
+    valid_actual = (
+        scoreable
+        & actual["target_timestamp"].notna()
+        & actual["y_true"].notna()
+        & np.isfinite(actual["y_true"])
+        & actual["y_true"].ge(0)
+    )
+    actual = actual.loc[valid_actual].copy()
+
+    if actual.empty:
+        st.info("Aucune observation réelle scoreable n’est disponible sur ces 24 heures.")
+        return
+    if actual["target_timestamp"].duplicated().any():
+        st.warning("Des observations réelles en double empêchent le calcul des écarts horaires.")
+        return
+
+    figure = go.Figure()
+    detail_frames = []
+
+    for index, item in enumerate(studies):
+        forecast = item.forecast.copy()
+        required_forecast_columns = {
+            "target_timestamp",
+            "y_pred",
+            "prediction_status",
+        }
+        missing_forecast = required_forecast_columns - set(forecast.columns)
+        if missing_forecast:
+            st.warning(
+                f"Prévisions incomplètes pour {service.method_label(item)} : "
+                f"{', '.join(sorted(missing_forecast))}."
+            )
+            continue
+
+        prediction = pd.DataFrame(
+            {
+                "target_timestamp": pd.to_datetime(
+                    forecast["target_timestamp"],
+                    utc=True,
+                    errors="coerce",
+                ),
+                "y_pred": pd.to_numeric(forecast["y_pred"], errors="coerce"),
+                "prediction_status": (
+                    forecast["prediction_status"]
+                    .astype("string")
+                    .str.strip()
+                    .str.lower()
+                ),
+            }
+        )
+        valid_prediction = (
+            prediction["target_timestamp"].notna()
+            & prediction["y_pred"].notna()
+            & np.isfinite(prediction["y_pred"])
+            & prediction["y_pred"].ge(0)
+            & prediction["prediction_status"].isin(service.VALID_STATUSES)
+        )
+        prediction = prediction.loc[valid_prediction].copy()
+
+        if prediction["target_timestamp"].duplicated().any():
+            st.warning(
+                f"Des prévisions en double empêchent le calcul des écarts pour "
+                f"{service.method_label(item)}."
+            )
+            continue
+
+        aligned = prediction.merge(
+            actual[["target_timestamp", "y_true"]],
+            on="target_timestamp",
+            how="inner",
+            validate="one_to_one",
+        )
+        if aligned.empty:
+            continue
+
+        aligned["signed_error"] = aligned["y_pred"] - aligned["y_true"]
+        aligned["absolute_error"] = aligned["signed_error"].abs()
+        method_name = service.method_label(item)
+        aligned["method"] = method_name
+        aligned = aligned.sort_values("target_timestamp")
+
+        local_time = local_labels(aligned["target_timestamp"])
+        customdata = np.empty((len(aligned), 4), dtype=object)
+        customdata[:, 0] = local_time.to_numpy()
+        customdata[:, 1] = aligned["y_true"].to_numpy()
+        customdata[:, 2] = aligned["y_pred"].to_numpy()
+        customdata[:, 3] = aligned["absolute_error"].to_numpy()
+
+        figure.add_scatter(
+            x=aligned["target_timestamp"],
+            y=aligned["signed_error"],
+            mode="lines+markers",
+            name=method_name,
+            line={
+                "color": TEAL if index == 0 else AMBER,
+                "width": 2.2,
+                "dash": "solid" if index == 0 else "dash",
+            },
+            marker={"size": 7},
+            customdata=customdata,
+            hovertemplate=(
+                "%{customdata[0]}"
+                "<br>Mesuré : %{customdata[1]:.0f} vélos"
+                "<br>Prévu : %{customdata[2]:.1f} vélos"
+                "<br>Erreur signée (prédit − mesuré) : %{y:+.1f}"
+                "<br>Erreur absolue : %{customdata[3]:.1f}"
+                f"<extra>{method_name}</extra>"
+            ),
+        )
+
+        detail = pd.DataFrame(
+            {
+                "Heure de Paris": local_time,
+                "Méthode": method_name,
+                "Vélos mesurés": aligned["y_true"].round(1),
+                "Vélos prévus": aligned["y_pred"].round(1),
+                "Erreur signée (prédit − mesuré)": aligned["signed_error"].round(1),
+                "Écart absolu": aligned["absolute_error"].round(1),
+            }
+        )
+        detail_frames.append(detail)
+
+    if not detail_frames:
+        st.info("Aucune heure ne possède à la fois une prévision valide et une mesure scoreable.")
+        return
+
+    figure.add_hline(
+        y=0,
+        line_dash="dash",
+        line_color="#64748b",
+        annotation_text="Erreur nulle",
+        annotation_position="top left",
+    )
+    plot_layout(figure, "Erreur signée (prédit − mesuré), vélos/h", 315)
+    figure.update_xaxes(title="Heure de Paris")
+    st.plotly_chart(
+        figure,
+        config={"displaylogo": False, "scrollZoom": False},
+    )
+    st.caption(
+        "Une erreur signée positive signifie que le modèle a surestimé le comptage réel ; "
+        "une erreur négative signifie qu’il l’a sous-estimé. "
+        "Seules les mesures originales scoreables sont utilisées."
+    )
+
+    with st.expander("Détail des écarts horaires", expanded=False):
+        st.dataframe(
+            pd.concat(detail_frames, ignore_index=True),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+
+def show_study(
+    studies: tuple[service.Study, ...],
+    evaluations: tuple[dict, ...] | None,
+    history: pd.DataFrame,
+    *,
+    reveal_key: str,
+) -> None:
     study = studies[0]
     case = study.case
     forecast = study.forecast
     n_valid = int(forecast["prediction_status"].isin(service.VALID_STATUSES).sum())
     n_fallback = int(forecast["prediction_status"].eq("fallback").sum())
+
+    reveal_observations = st.checkbox(
+        "Révéler les observations réelles",
+        key=reveal_key,
+        help=(
+            "Les observations réelles et les erreurs restent masquées "
+            "tant que cette option est décochée."
+        ),
+    )
+
+    if reveal_observations:
+        try:
+            evaluations = tuple(service.reveal(item, history) for item in studies)
+        except (ValueError, KeyError) as error:
+            evaluations = None
+            st.warning(f"Comparaison avec les mesures indisponible · {error}")
+    else:
+        evaluations = None
+
     evaluation = evaluations[0] if evaluations is not None else None
     mae = evaluation["mae"] if evaluation is not None else None
-    score = f"{mae:.1f} vélos/h" if mae is not None else "Indisponible"
+    score = "Masquées"
+    if reveal_observations:
+        score = f"{mae:.1f} vélos/h" if mae is not None else "Indisponible"
     elapsed = time_for_study(study)
     metrics = st.columns(4)
     metrics[0].metric("Heures prédites", f"{n_valid} / {HORIZON_HOURS}", border=True)
@@ -367,6 +588,9 @@ def show_study(studies: tuple[service.Study, ...], evaluations: tuple[dict, ...]
         model_forecast_plot(studies, observations),
         config={"displaylogo": False, "scrollZoom": False},
     )
+
+    if reveal_observations and observations is not None:
+        show_hourly_errors(studies, observations)
 
     if len(studies) > 1:
         show_comparison(studies, evaluations)
@@ -793,6 +1017,9 @@ def main() -> None:
             if st.session_state.get("selection") != selection:
                 st.session_state["selection"] = selection
                 st.session_state.pop("forecast-result", None)
+                active_reveal_key = st.session_state.get("active-reveal-key")
+                if active_reveal_key:
+                    st.session_state[active_reveal_key] = False
             counter = counters.loc[selected]
             status = service.optional_text(counter["selection_status"])
             reason = service.optional_text(counter["status_reason"])
@@ -853,9 +1080,28 @@ def main() -> None:
                     inventory_version,
                     lag,
                 )
+                reveal_token = hashlib.sha1(
+                    repr(run_key).encode("utf-8")
+                ).hexdigest()[:12]
+                reveal_key = f"reveal-observations-{reveal_token}"
+
                 if st.session_state.get("scope") != run_key:
+                    previous_reveal_key = st.session_state.get("active-reveal-key")
+                    if previous_reveal_key:
+                        st.session_state[previous_reveal_key] = False
+
                     st.session_state["scope"] = run_key
                     st.session_state.pop("forecast-result", None)
+                    st.session_state[reveal_key] = False
+                    st.session_state["active-reveal-key"] = reveal_key
+                else:
+                    active_reveal_key = st.session_state.get("active-reveal-key")
+                    if active_reveal_key != reveal_key:
+                        if active_reveal_key:
+                            st.session_state[active_reveal_key] = False
+                        st.session_state[reveal_key] = False
+                        st.session_state["active-reveal-key"] = reveal_key
+
                 opens_only = archive is not None and not method.startswith(
                     service.COMPARE_ARCHIVE_PREFIX
                 )
@@ -889,12 +1135,7 @@ def main() -> None:
                     except (OSError, ValueError, KeyError, RuntimeError) as error:
                         st.error(f"Prévision indisponible · {error}")
                     else:
-                        evaluations = None
-                        try:
-                            evaluations = tuple(service.reveal(study, history) for study in studies)
-                        except (ValueError, KeyError) as error:
-                            st.warning(f"Comparaison avec les mesures indisponible · {error}")
-                        st.session_state["forecast-result"] = (studies, evaluations)
+                        st.session_state["forecast-result"] = (studies, None)
                 if st.session_state.get("forecast-result"):
                     st.markdown("[Voir la courbe et les 24 lignes](#etude-du-cas)")
 
@@ -920,7 +1161,7 @@ def main() -> None:
             show_history(history, case, lag, key="forecast-history-preview")
         else:
             try:
-                show_study(*result)
+                show_study(*result, history=history, reveal_key=reveal_key)
             except (ValueError, KeyError) as error:
                 st.error(f"Impossible d’afficher l’étude · {error}")
     with history_tab:
