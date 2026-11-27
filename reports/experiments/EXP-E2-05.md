@@ -155,3 +155,7 @@
      ```
      A′ ajoute `--min-observed-hours 24 --method-run-id <id>-seuil24`, et R utilise `--variant reference_profile`.
    - Score : `python -m src.models.known.score --experiment EXP-E2-05 --level <niveau>`.
+   - Lecture de la règle, fixée avant les scores :
+     - on compare les **moyennes des 3 graines** de chaque bras, en lecture **système** (ce que voit l'application). La lecture brute est rapportée à côté ;
+     - « l'étendue entre graines » de la condition 1a est celle de A sur le même niveau ou la même tranche ;
+     - en 1b, c'est **la plus grande** des étendues de A′ et de B (lecture prudente).
