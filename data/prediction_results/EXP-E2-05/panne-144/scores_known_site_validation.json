@@ -1,0 +1,213 @@
+{
+  "experiment": "EXP-E2-05",
+  "level": "panne-144",
+  "protocol_id": "proto-v1",
+  "scenario": "known_site",
+  "split": "validation",
+  "scores": {
+    "système": {
+      "e2-mlp-ctx-20260701-s2-f26e_panne-144": {
+        "variant": "mlp",
+        "mae_macro": 27.4859,
+        "bias": -8.8885,
+        "rmse": 55.7317,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 630
+      },
+      "e2-mlp-ctx-20260701-s1-bd12_panne-144": {
+        "variant": "mlp",
+        "mae_macro": 28.1943,
+        "bias": -2.8243,
+        "rmse": 56.5511,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 630
+      },
+      "e2-mlp-ctx-20260701-s1-9318_panne-144": {
+        "variant": "mlp",
+        "mae_macro": 28.4941,
+        "bias": 13.0449,
+        "rmse": 59.027,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 6014
+      },
+      "e2-mlp-ctx-20260701-s0-9ce9_panne-144": {
+        "variant": "mlp",
+        "mae_macro": 28.4941,
+        "bias": 13.0449,
+        "rmse": 59.027,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 6014
+      },
+      "e2-mlp-ctx-20260701-s2-6278_panne-144": {
+        "variant": "mlp",
+        "mae_macro": 28.4941,
+        "bias": 13.0449,
+        "rmse": 59.027,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 6014
+      },
+      "e2-mlp-ctx-20260701-s0-37f5_panne-144": {
+        "variant": "mlp",
+        "mae_macro": 28.9269,
+        "bias": -13.5897,
+        "rmse": 58.3104,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 630
+      },
+      "e2-reference_profile-measured_panne-144": {
+        "variant": "reference_profile",
+        "mae_macro": 30.2574,
+        "bias": 11.5368,
+        "rmse": 62.4683,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 230
+      },
+      "e2-mlp-ctx-20260701-s0-9ce9-seuil24_panne-144": {
+        "variant": "mlp",
+        "mae_macro": 42.9046,
+        "bias": -36.5758,
+        "rmse": 80.5339,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 630
+      },
+      "e2-mlp-ctx-20260701-s2-6278-seuil24_panne-144": {
+        "variant": "mlp",
+        "mae_macro": 47.1474,
+        "bias": -41.8275,
+        "rmse": 86.7687,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 630
+      },
+      "e2-mlp-ctx-20260701-s1-9318-seuil24_panne-144": {
+        "variant": "mlp",
+        "mae_macro": 47.9618,
+        "bias": -42.9914,
+        "rmse": 88.4498,
+        "n_counters": 95,
+        "n_compared_cases": 5613,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 630
+      }
+    },
+    "brut": {
+      "e2-mlp-ctx-20260701-s2-f26e_panne-144": {
+        "variant": "mlp",
+        "mae_macro": 26.576,
+        "bias": -10.6016,
+        "rmse": 53.309,
+        "n_counters": 95,
+        "n_compared_cases": 5262,
+        "coverage_24h": 0.8952,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s1-bd12_panne-144": {
+        "variant": "mlp",
+        "mae_macro": 27.3265,
+        "bias": -4.145,
+        "rmse": 54.22,
+        "n_counters": 95,
+        "n_compared_cases": 5262,
+        "coverage_24h": 0.8952,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s0-37f5_panne-144": {
+        "variant": "mlp",
+        "mae_macro": 28.126,
+        "bias": -15.6072,
+        "rmse": 56.1691,
+        "n_counters": 95,
+        "n_compared_cases": 5262,
+        "coverage_24h": 0.8952,
+        "n_fallback_cases": 0
+      },
+      "e2-reference_profile-measured_panne-144": {
+        "variant": "reference_profile",
+        "mae_macro": 29.3727,
+        "bias": 11.1109,
+        "rmse": 60.4609,
+        "n_counters": 95,
+        "n_compared_cases": 5262,
+        "coverage_24h": 1.0,
+        "n_fallback_cases": 230
+      },
+      "e2-mlp-ctx-20260701-s0-9ce9-seuil24_panne-144": {
+        "variant": "mlp",
+        "mae_macro": 43.0063,
+        "bias": -40.081,
+        "rmse": 80.2514,
+        "n_counters": 95,
+        "n_compared_cases": 5262,
+        "coverage_24h": 0.8952,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s2-6278-seuil24_panne-144": {
+        "variant": "mlp",
+        "mae_macro": 47.5254,
+        "bias": -45.6726,
+        "rmse": 86.8959,
+        "n_counters": 95,
+        "n_compared_cases": 5262,
+        "coverage_24h": 0.8952,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s1-9318-seuil24_panne-144": {
+        "variant": "mlp",
+        "mae_macro": 48.3901,
+        "bias": -46.9119,
+        "rmse": 88.6821,
+        "n_counters": 95,
+        "n_compared_cases": 5262,
+        "coverage_24h": 0.8952,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s0-9ce9_panne-144": {
+        "variant": "mlp",
+        "mae_macro": null,
+        "bias": null,
+        "rmse": null,
+        "n_counters": 0,
+        "n_compared_cases": 0,
+        "coverage_24h": 0.0,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s1-9318_panne-144": {
+        "variant": "mlp",
+        "mae_macro": null,
+        "bias": null,
+        "rmse": null,
+        "n_counters": 0,
+        "n_compared_cases": 0,
+        "coverage_24h": 0.0,
+        "n_fallback_cases": 0
+      },
+      "e2-mlp-ctx-20260701-s2-6278_panne-144": {
+        "variant": "mlp",
+        "mae_macro": null,
+        "bias": null,
+        "rmse": null,
+        "n_counters": 0,
+        "n_compared_cases": 0,
+        "coverage_24h": 0.0,
+        "n_fallback_cases": 0
+      }
+    }
+  }
+}

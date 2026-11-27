@@ -1,6 +1,6 @@
 # EXP-E2-03 - Quelle méthode pour les sites connus : MLP, HGB ou référence ?
 
-> **Statut : figée le 2026-11-24, validée par l'équipe E2** (Idir, Esther, Ania ; commit indiqué dans l'historique de cette fiche). Plus rien n'est modifié avant la lecture des scores. Les résultats restent vides jusqu'aux scores d'E4.
+> **Statut : terminée.** Figée le 2026-11-24 et validée par l'équipe E2 (Idir, Esther, Ania ; commit indiqué dans l'historique de cette fiche). Les scores officiels d'E4 (2026-11-25) confirment exactement le score provisoire. **Décision : HGB retenu pour l'application (D-24).**
 
 - **Date, équipe, responsables et partenaires** :
   - Brouillon le 2026-11-24, E2 : Idir, Esther, Ania, Emmanuelle.
@@ -117,23 +117,23 @@
 
 - **Résultats mesurés : MAE, cas complets/comparables, échecs et coût** :
 
-  **Résultats provisoires du 2026-11-24**, calculés par E2 avec le code de score d'E4 (`src/eval/metrics.evaluate_all`, intersection des cas complets, même masque, MAE par compteur puis moyenne). **À remplacer par `scores.csv` d'E4.**
+  **Scores officiels d'E4** : `data/evaluation/proto-v1/EXP-E2/scores.csv` (sur `dev`, généré le 2026-11-25), lignes `common_complete`, c'est-à-dire l'intersection des cas complets avec le même masque, la MAE par compteur, puis la moyenne. Ils sont **identiques au score provisoire d'E2 du 2026-11-24**, calculé avec les mêmes fonctions d'E4.
   - Livraison à E4 : `data/prediction_results/EXP-E2/EXP-E2-predictions.zip` (12,9 Mo, SHA-256 `1619c83091786456…`), commité normalement, sans LFS. Il contient les `.pred.csv`, `.runs.csv` et `.cases_used.csv` des 6 méthodes (235 Mo une fois décompressé). À décompresser depuis `data/prediction_results/` avec `unzip -o EXP-E2/EXP-E2-predictions.zip`.
   - Prévisions : `data/prediction_results/EXP-E2/`, 6 fichiers, contrôlés par `src/eval/checks/check_forecasts.py` (tout conforme ; `fit_cutoff` vide pour les références, qui n'apprennent rien).
-  - Calcul : `tmp/score_provisoire_exp_e2_03.py`, hors Git.
-  - Population : les 6 014 cas, complets pour les 6 méthodes ; 95 compteurs avec des heures évaluables.
+  - Calcul refaisable : `python -m src.models.known.score --experiment EXP-E2` (MOD-018). Il lit le zip et redonne les valeurs d'E4 à la décimale près.
+  - Population : les 6 014 cas sont complets pour les 6 méthodes. **5 613 cas comparés** (ceux qui ont au moins une heure de vérité évaluable), 133 624 heures, 95 compteurs.
 
-  | Méthode | MAE macro brute | MAE macro système | Couverture brute | Taux de repli (système) | Biais | Coût du calcul |
+  | Méthode | MAE macro brute | MAE macro système (E4) | Couverture brute | Taux de repli (système) | Biais (E4, prévu − vrai) | Coût du calcul |
   | --- | --- | --- | --- | --- | --- | --- |
-  | `reference` | 29,78 | 29,75 | 100 % | 10,4 % (son repli D-03) | à venir (E4) | cas par cas, 3 min 11 |
-  | `reference_profile` | 27,00 | 27,01 | 100 % | 3,4 % (son repli D-03) | à venir (E4) | cas par cas, 3 min 19 |
-  | `mlp` (graine 0) | 22,20 | 22,23 | 94,7 % | 5,3 % (`mlp_window_too_sparse`) | à venir (E4) | en bloc, 2 min 41 |
-  | `mlp` (graines 0-2 : moyenne, étendue) | 22,36 ; 0,36 | 22,39 ; 0,36 | 94,7 % | 5,3 % | à venir (E4) | en bloc, environ 2 min 36 chacune |
-  | `hgb` | 22,24 | 22,25 | 100 % | 0 % | à venir (E4) | en bloc, 2 min 07 |
+  | `reference` | 29,78 | 29,75 | 100 % | 10,4 % (son repli D-03) | +2,39 | cas par cas, 3 min 11 |
+  | `reference_profile` | 27,00 | 27,01 | 100 % | 3,4 % (son repli D-03) | +8,47 | cas par cas, 3 min 19 |
+  | `mlp` (graine 0) | 22,20 | 22,23 | 94,7 % | 5,3 % (`mlp_window_too_sparse`) | −0,81 | en bloc, 2 min 41 |
+  | `mlp` (graines 0-2 : moyenne, étendue) | 22,36 ; 0,36 | 22,39 ; 0,36 | 94,7 % | 5,3 % | −0,13 (de −0,81 à +0,69) | en bloc, environ 2 min 36 chacune |
+  | `hgb` | 22,24 | 22,25 | 100 % | 0 % | −1,13 | en bloc, 2 min 07 |
 
   En brut, les heures en repli des modèles sont marquées non prévues ; les références gardent leur propre repli (il fait partie de leur méthode). Le calcul cas par cas coûte environ 0,4 s par cas, celui de l'application.
 
-- **Analyse, limites et décision** (provisoire, à confirmer avec les scores d'E4) :
+- **Analyse, limites et décision** (définitive, confirmée par les scores d'E4) :
 
   - **Règle 1, appliquée telle quelle.** Face à la meilleure référence (`reference_profile`, 27,01) :
     - HGB : +17,6 %, meilleur sur 97 % des compteurs ;
@@ -143,9 +143,45 @@
 
     Les deux modèles passent largement le seuil de 5 % et la majorité des compteurs.
   - **Règle 2.** MLP graine 0 − HGB = −0,02 vélo/h, alors que l'étendue entre les graines du MLP est de 0,36 : l'écart n'est pas significatif. **Le HGB est retenu pour l'application** : plus simple, il sert 100 % des cas et n'a pas besoin de torch. Conclusion identique en brut.
+  - **Biais** : les modèles sont presque sans biais (entre −1,1 et +0,7 vélo/h). La médiane des 4 semaines surestime de +8,5 vélos/h : elle ne voit pas la baisse de l'été, qu'elle copie des semaines précédentes plus chargées. Le gain des modèles vient en partie de là.
   - L'erreur de validation (environ 22 vélos/h) est plus élevée que le contrôle sur juin (environ 17,5) : l'été est plus difficile (vacances, 14 juillet, 15 août). Mais le gain sur les références est plus grand (environ 17 % contre 12 à 14 %).
 
+  - **Solidité du gain** (analyse du 2026-11-27, faite après coup ; elle ne change pas la décision). Calcul : `robustness.py`, sur les 133 624 heures communes ; intervalles de confiance à 95 % par bootstrap sur **les jours** (2 000 tirages), car les heures d'un même jour sont corrélées.
+    - **Heures de pointe.** Le gain ne vient pas des heures faciles : face à la médiane, le HGB gagne +20 % à la pointe du matin (7-9 h), +24 % à celle du soir (17-19 h), et seulement +7 % la nuit. WAPE sur toutes les heures : 26 % pour le HGB comme pour le MLP, 32 % pour la médiane et 35 % pour J−7.
+    - **Face à « même heure J−7 »**, le gain est stable : +25 % [+20 ; +31], +27 % en juillet et +22 % en août.
+    - **Face à la médiane des 4 semaines**, +18 % [+10 ; +25] sur l'ensemble. Mais ce gain **dépend du mois** :
+      - juillet : +6 % [−3 ; +14], non significatif ;
+      - août : +36 % [+26 ; +44]. En août, la médiane reprend les semaines plus chargées de juillet et surestime de +10,5 vélos/h, alors que le HGB suit la baisse (biais de −0,7).
+
+      **Semaine par semaine**, le gain face à la médiane se concentre sur la baisse des vacances. On a donc la preuve du mécanisme :
+
+      | Semaine du | Vélos/h moyen | Gain du HGB / médiane | Biais de la médiane | Biais du HGB |
+      | --- | --- | --- | --- | --- |
+      | 29/06 | 112 | +1 % | −7,5 | −2,9 |
+      | 06/07 | 103 | +6 % | +7,7 | +0,8 |
+      | 13/07 | 91 | +12 % | +16,6 | −3,2 |
+      | 20/07 | 100 | **−28 %** | +0,5 | −4,6 |
+      | 27/07 | 89 | +32 % | +11,8 | +2,7 |
+      | 03/08 | 71 | +48 % | +22,5 | +6,2 |
+      | 10/08 | 62 | **+54 %** | +24,3 | +2,8 |
+      | 17/08 | 66 | +39 % | +15,6 | +0,4 |
+      | 24/08 | 82 | −2 % | −12,1 | −9,0 |
+
+      Ce que montre ce tableau :
+      - **En régime stable, le modèle vaut une médiane ; il apporte surtout de la valeur lors des changements de régime.** Une médiane glissante sur 4 semaines met environ deux semaines à suivre une rupture : c'est un argument d'usage, pas une faiblesse.
+      - **À la reprise de fin août, aucune méthode n'anticipe la remontée.** Le HGB comme la médiane sous-estiment (biais de −9 et −12).
+      - **La semaine du 20/07, le HGB perd (−28 %).** Ses décalages à 7 jours et ses niveaux récents lisent la semaine du 13/07, décalée de 2 h dans les données d'E1, alors que la médiane sur 4 semaines amortit une semaine fausse. Les jours décalés pèsent donc aussi sur les entrées de la semaine suivante.
+
+      **Lecture du test d'octobre-novembre, fixée avant de le lire** (4 365 cas, du 01/10 au 14/11 ; contexte d'E1) :
+      - vacances de la Toussaint du 17/10 au 01/11 (16 jours) ; jours fériés le 01/11 et le 11/11 ; 3 jours de grève (16/10 → 05/11) ;
+      - on rapportera le gain face aux deux références séparément sur les **semaines normales**, les **semaines de vacances** et les **semaines de transition** (départ le 17/10, retour le 02/11), avec le bootstrap sur les jours ;
+      - si le HGB bat aussi la médiane en semaines normales, la nuance sera retirée.
+
+      Une médiane corrigée du calendrier (les mêmes jours de vacances l'année précédente) serait une référence plus exigeante pendant les ruptures. Elle n'est pas faite : les deux références actuelles suffisent pour conclure.
+    - **Sans les 5 jours décalés d'E1** (§8 du suivi : 9, 10, 13, 15 et 16 juillet), la MAE du HGB passe de 22,25 à 19,25 et celle de la médiane de 27,01 à 24,15 ; les conclusions restent les mêmes.
+
   Limites connues dès maintenant :
+  - le décalage de 2 h dans les mesures d'E1 sur 5 jours de juillet pèse sur toutes les méthodes ;
   - protocole non validé ;
   - été seulement ;
   - modèles figés au 01/07, sans réapprentissage au 01/08 ;
@@ -153,18 +189,21 @@
   - règle d'admissibilité provisoire (C3/M2) ;
   - 4 sites en panne pendant l'été (MLP refusé, E2-TECH-003).
 
-- **Lien vers données de résultats et figures** : `data/prediction_results/EXP-E2-03/<method_run_id>.pred.csv` et `.runs.csv`, plus `cases_used.csv` et `selection.json`, produits par :
+- **Lien vers données de résultats et figures** : `data/prediction_results/EXP-E2/` (le zip livré à E4), avec `<method_run_id>.pred.csv`, `.runs.csv`, `.cases_used.csv` et `.selection.json`. Ils sont produits par :
 
   ```sh
   python -m src.models.known.predict --cases data/evaluation/proto-v1/cases.csv \
-    --snapshot hist-20261117 --experiment EXP-E2-03 --variant <reference|reference_profile>
+    --snapshot hist-20261117 --experiment EXP-E2 --variant <reference|reference_profile>
   python -m src.models.known.predict --cases data/evaluation/proto-v1/cases.csv \
-    --snapshot hist-20261117 --experiment EXP-E2-03 --variant <mlp|hgb> --model-run-id <id>
+    --snapshot hist-20261117 --experiment EXP-E2 --variant <mlp|hgb> --model-run-id <id> --batch
+  python -m src.models.known.score --experiment EXP-E2
   ```
 
-- **Retour d'un partenaire et preuve d'utilisation** : à obtenir.
-  - E4 : accord sur la population, le masque et l'intersection, puis scores.
-  - E5 : `model_run_id` servi par l'application, selon la règle de choix.
+  Le notebook [E2_EXP-03_choix_methode.ipynb](../../notebooks/E2_EXP-03_choix_methode.ipynb) refait le score et montre des cas.
+
+- **Retour d'un partenaire et preuve d'utilisation** :
+  - E4 : les prévisions ont été notées avec leur `backtest.py` (`scores.csv`, `scores_by_counter.csv`, `coverage.csv` sur `dev`, 2026-11-25), et les scores sont identiques aux nôtres ;
+  - E5 : HGB `e2-hgb-ctx-20260701-s0-b357` annoncé comme modèle de l'application (`predict.DEFAULT_MODEL_RUN_IDS`).
 
 ## Décisions du gel (2026-11-24, validées par l'équipe)
 

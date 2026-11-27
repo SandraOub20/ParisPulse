@@ -1,0 +1,16 @@
+{
+  "input": 12659,
+  "not_known_site": 2280,
+  "other_split": 6014,
+  "counter_not_S_train": 0,
+  "snapshot_replaced": 0,
+  "selected": 4365,
+  "values": "measured",
+  "model_run_id": "e2-mlp-ctx-20260701-s0-37f5",
+  "min_observed_hours": null,
+  "mode": "batch",
+  "degrade": null,
+  "context_rows": 165405,
+  "load_seconds": 9.0,
+  "total_seconds": 133.8
+}

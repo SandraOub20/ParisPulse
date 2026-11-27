@@ -778,5 +778,5 @@
     "features_seconds": 3.122,
     "fit_seconds": 272.295
   },
-  "model_dir": "/home/requiem/Desktop/ParisPulse/artifacts/models/e2-hgb-noctx-20260701-s0-0af3"
+  "model_dir": "artifacts/models/e2-hgb-noctx-20260701-s0-0af3"
 }

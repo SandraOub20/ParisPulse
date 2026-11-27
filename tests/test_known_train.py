@@ -382,3 +382,13 @@ def test_load_training_data_erreurs_claires(tmp_path):
         train.load_training_data("absent", root=tmp_path / "absent")
     with pytest.raises(ValueError, match="values"):
         train.load_training_data("snap", root=tmp_path, values="autre")
+
+
+def test_repo_relative_sans_chemin_personnel(tmp_path):
+    """Le bilan commité garde un chemin relatif au dépôt, jamais /home/<personne>/..."""
+    from src.common.config import ROOT
+
+    inside = ROOT / "artifacts" / "models" / "e2-mlp-ctx-20260701-s0-ffff"
+    assert train.repo_relative(inside) == "artifacts/models/e2-mlp-ctx-20260701-s0-ffff"
+    outside = tmp_path / "e2-mlp-ctx-20260701-s0-ffff"  # hors du dépôt : le nom seul
+    assert train.repo_relative(outside) == "e2-mlp-ctx-20260701-s0-ffff"

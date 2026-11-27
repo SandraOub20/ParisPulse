@@ -17,6 +17,7 @@ from __future__ import annotations
 import dataclasses
 import importlib
 import time
+import zlib
 from collections.abc import Callable
 from pathlib import Path
 
@@ -28,6 +29,66 @@ from src.models.known import train
 from src.models.schemas import HORIZON_HOURS, Case
 
 LOCAL_TZ = "Europe/Paris"
+WINDOW_HOURS = 168  # semaine visible du MLP (neural.WINDOW_HOURS), même grille ici
+
+# EXP-E2-05 : niveaux de dégradation de la semaine visible, fixés au gel de la fiche.
+DEGRADATION_LEVELS = ("d0", "panne-48", "panne-96", "panne-144", "trous-50")
+HOLES_SHARE = 0.5
+HOLES_SEED = 0
+
+
+def erased_positions(case: Case, level: str) -> np.ndarray:
+    """Positions (0 = plus ancienne, 167 = dernière) effacées de la semaine visible du cas.
+
+    La semaine visible est la grille de 168 heures qui finit à origin - latence, la même
+    que la fenêtre du MLP (neural.build_windows).
+    - d0 : rien ;
+    - panne-N : les N dernières heures (une panne récente ; panne-144 en laisse 24) ;
+    - trous-50 : la moitié des heures, tirées au hasard avec une graine fixe (0) et
+      l'identifiant du cas : chaque cas a ses trous, les mêmes pour tous les bras.
+    """
+    if level not in DEGRADATION_LEVELS:
+        raise ValueError(f"niveau {level!r} inconnu ; attendus : {DEGRADATION_LEVELS}")
+    if level == "d0":
+        return np.array([], dtype=np.int64)
+    if level.startswith("panne-"):
+        n = int(level.split("-")[1])
+        return np.arange(WINDOW_HOURS - n, WINDOW_HOURS, dtype=np.int64)
+    rng = np.random.default_rng([HOLES_SEED, zlib.crc32(str(case.case_id).encode("utf-8"))])
+    chosen = rng.choice(WINDOW_HOURS, size=int(WINDOW_HOURS * HOLES_SHARE), replace=False)
+    return np.sort(chosen).astype(np.int64)
+
+
+def visible_week(case: Case, publication_lag_hours: int) -> pd.DatetimeIndex:
+    """Les 168 heures (début d'intervalle, UTC) de la semaine visible du cas."""
+    end = pd.Timestamp(case.origin).tz_convert("UTC") - pd.Timedelta(hours=publication_lag_hours)
+    return pd.date_range(end - pd.Timedelta(hours=WINDOW_HOURS), periods=WINDOW_HOURS, freq="h")
+
+
+def erased_hours(case: Case, level: str, publication_lag_hours: int) -> pd.DatetimeIndex:
+    """Heures effacées du cas, en dates : visible_week aux positions d'erased_positions."""
+    return visible_week(case, publication_lag_hours)[erased_positions(case, level)]
+
+
+def degrade_history(
+    history: pd.DataFrame, case: Case, level: str, publication_lag_hours: int
+) -> pd.DataFrame:
+    """Copie de l'historique où les heures effacées du cas deviennent « non mesurées ».
+
+    Les valeurs passent à vide (NaN) et is_observed à False : jamais à 0. Les autres
+    heures, dont les 24 heures cibles, ne changent pas. history n'est pas modifié.
+    Exemple : panne-48 sur une origine au 2026-07-10 00:00 (Paris) vide les heures du
+    07/07 22:00 au 08/07 21:00 UTC, les 48 dernières publiées à l'origine.
+    """
+    out = history.copy()
+    hit = out["timestamp"].isin(erased_hours(case, level, publication_lag_hours))
+    if hit.any():
+        for column in ("count", "count_raw", "count_e1"):
+            if column in out.columns:
+                out.loc[hit, column] = np.nan
+        if "is_observed" in out.columns:
+            out.loc[hit, "is_observed"] = False
+    return out
 
 
 def batch_raw_mlp(
@@ -38,6 +99,7 @@ def batch_raw_mlp(
     *,
     min_observed_hours: int | None = None,
     publication_lag_hours: int | None = None,
+    degrade: str | None = None,
 ) -> tuple[np.ndarray, list[str | None]]:
     """Sortie brute du MLP pour tous les cas : valeurs (n, 24) et code de refus par cas.
 
@@ -52,6 +114,9 @@ def batch_raw_mlp(
     count = mesures publiées seulement (D-11). Seules les heures finies avant
     origin - latence sont lues (fenêtre de build_windows) : aucune cible n'est lue.
     context : context.csv entier ; la disponibilité est appliquée origine par origine.
+    degrade : niveau d'EXP-E2-05 (DEGRADATION_LEVELS). Chaque cas reçoit alors sa propre
+    semaine visible, effacée par erased_positions, sous un identifiant propre au cas
+    (« compteur#rang ») : deux cas d'un même compteur ne se voient pas l'un l'autre.
     Lève ValueError si la latence diffère de celle du réseau (erreur de configuration).
     """
     neural = importlib.import_module(P.TRAINED_VARIANTS[P.MLP_VARIANT])
@@ -115,6 +180,11 @@ def batch_raw_mlp(
         }
     )
     frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True)
+    window_ids = counter_ids[todo]
+    if degrade is not None:
+        frame, window_ids = _degraded_weeks(
+            frame, [cases[i] for i in todo], todo, degrade, int(lag)
+        )
     frame["count_raw"] = np.nan  # cibles inconnues à l'origine : jamais lues ici
     frame["is_scoreable"] = False
     threshold = (
@@ -122,7 +192,7 @@ def batch_raw_mlp(
     )
     windows = neural.build_windows(
         frame,
-        pd.DataFrame({"counter_id": counter_ids[todo], "origin": origins[todo]}),
+        pd.DataFrame({"counter_id": window_ids, "origin": origins[todo]}),
         context if use_context else None,
         use_context=use_context,
         publication_lag_hours=int(lag),
@@ -138,6 +208,40 @@ def batch_raw_mlp(
         else:
             values[i] = predicted[row]
     return values, reasons
+
+
+def _degraded_weeks(
+    frame: pd.DataFrame, cases: list[Case], rows: np.ndarray, level: str, lag: int
+) -> tuple[pd.DataFrame, np.ndarray]:
+    """Une semaine visible par cas, effacée selon level, sous l'identifiant « compteur#rang ».
+
+    frame : counter_id, timestamp (UTC), count. Une heure absente de frame reste vide,
+    comme dans build_windows ; une heure effacée devient vide, jamais 0.
+    """
+    by_counter = {
+        cid: g.set_index("timestamp")["count"] for cid, g in frame.groupby("counter_id", sort=False)
+    }
+    ids, stamps, values = [], [], []
+    for case, row in zip(cases, rows):
+        week = visible_week(case, lag)
+        series = by_counter.get(str(case.counter_id))
+        week_values = (
+            series.reindex(week).to_numpy(dtype=float)
+            if series is not None
+            else np.full(WINDOW_HOURS, np.nan)
+        )
+        week_values[erased_positions(case, level)] = np.nan
+        ids.append(np.repeat(f"{case.counter_id}#{row}", WINDOW_HOURS))
+        stamps.append(week.asi8)
+        values.append(week_values)
+    out = pd.DataFrame(
+        {
+            "counter_id": np.concatenate(ids),
+            "timestamp": pd.to_datetime(np.concatenate(stamps), utc=True),
+            "count": np.concatenate(values),
+        }
+    )
+    return out, np.array([f"{c.counter_id}#{r}" for c, r in zip(cases, rows)])
 
 
 def batch_raw_hgb(
@@ -263,6 +367,7 @@ def run_experiment_batch(
     publication_lag_hours: int | None = None,
     model_run_id: str | None = None,
     min_observed_hours: int | None = None,
+    degrade: str | None = None,
 ) -> tuple[Path, Path]:
     """Comme predict.run_experiment, mais la sortie brute du modèle est calculée en bloc.
 
@@ -273,7 +378,27 @@ def run_experiment_batch(
     fichiers, en statut error. Les références (sans modèle) passent par run_experiment.
     Coût écrit par cas : preparation_seconds = son filtrage causal, inference_seconds = la
     part du calcul en bloc (temps total / nombre de cas).
+
+    degrade (EXP-E2-05) : chaque cas voit sa semaine visible effacée (degrade_history,
+    erased_positions), pour le modèle comme pour son repli et pour les références.
+    Réservé au MLP et aux références, les bras de la fiche.
     """
+    if degrade is not None:
+        if degrade not in DEGRADATION_LEVELS:
+            raise ValueError(f"niveau {degrade!r} inconnu ; attendus : {DEGRADATION_LEVELS}")
+        if variant in RAW_BATCH and variant != P.MLP_VARIANT:
+            raise ValueError(f"dégradation prévue pour le MLP et les références, pas {variant!r}")
+        if variant not in RAW_BATCH:
+            return _run_references_degraded(
+                cases,
+                history_loader,
+                variant,
+                experiment_id,
+                method_run_id,
+                degrade,
+                root=root,
+                publication_lag_hours=publication_lag_hours,
+            )
     if variant not in RAW_BATCH:
         return P.run_experiment(
             cases,
@@ -334,7 +459,11 @@ def run_experiment_batch(
         # saturaient la mémoire)
         needed = sorted({items[k][0].counter_id for k in todo})
         counts = pd.concat([histories[c] for c in needed], ignore_index=True)
-        extra = {"min_observed_hours": min_observed_hours} if variant == P.MLP_VARIANT else {}
+        extra = (
+            {"min_observed_hours": min_observed_hours, "degrade": degrade}
+            if variant == P.MLP_VARIANT
+            else {}
+        )
         values, raw_reasons = RAW_BATCH[variant](
             [items[k][0] for k in todo],
             counts,
@@ -356,13 +485,53 @@ def run_experiment_batch(
             continue
         values = raw_values[k] if reasons[k] is None else None
         if values is None:  # repli : la référence a besoin du passé, reconstruit puis jeté
-            full = P.build_inputs(case, histories[case.counter_id], None, lag)
+            history = histories[case.counter_id]
+            if degrade is not None:  # le repli voit la même semaine effacée que le modèle
+                history = degrade_history(history, case, degrade, lag)
+            full = P.build_inputs(case, history, None, lag)
             inputs = dataclasses.replace(inputs, history=full.history)
         result = P._assemble_result(
             inputs, method, model, values, reasons[k], method_run_id=method_run_id
         )
         result.cost.preparation_seconds = preparation
         result.cost.inference_seconds = share if k in todo else 0.0
+        results.append(result)
+    out_dir = Path(root) if root else P.data_path("predictions") / experiment_id
+    pred = P.write_predictions(results, out_dir / f"{method_run_id}.pred.csv")
+    runs = P.write_runs(results, out_dir / f"{method_run_id}.runs.csv")
+    return pred, runs
+
+
+def _run_references_degraded(
+    cases: pd.DataFrame,
+    history_loader: Callable[[str], pd.DataFrame],
+    variant: str,
+    experiment_id: str,
+    method_run_id: str,
+    degrade: str,
+    *,
+    root: Path | None = None,
+    publication_lag_hours: int | None = None,
+) -> tuple[Path, Path]:
+    """Une référence cas par cas (predict_24h), sur l'historique effacé de chaque cas.
+
+    Même boucle que predict.run_experiment ; seule l'entrée change : degrade_history.
+    """
+    lag = P.default_publication_lag() if publication_lag_hours is None else publication_lag_hours
+    results = []
+    for _, row in cases.iterrows():
+        case = Case.from_row(row)
+        try:
+            history = degrade_history(history_loader(case.counter_id), case, degrade, lag)
+            result = P.predict_24h(
+                case,
+                history,
+                variant,
+                method_run_id=method_run_id,
+                publication_lag_hours=lag,
+            )
+        except Exception as exc:  # noqa: BLE001 - l'échec est tracé, jamais silencieux
+            result = P.error_result(case, method_run_id, variant, exc)
         results.append(result)
     out_dir = Path(root) if root else P.data_path("predictions") / experiment_id
     pred = P.write_predictions(results, out_dir / f"{method_run_id}.pred.csv")

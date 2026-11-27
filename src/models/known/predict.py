@@ -1,14 +1,16 @@
 """Calcul de 24 heures sur sites connus et traçage des expériences - E2 avec E5.
 
-À faire :
-1. Recevoir un cas et ses seules entrées autorisées ; choisir une version admissible du modèle.
-2. Produire 24 lignes au format forecasts.csv, sans observations cibles.
-3. Sauvegarder <method_run_id>.pred.csv et .runs.csv dans data/prediction_results/<experiment_id>/.
-4. Fournir le même calcul à E5 et prouver le recalcul sur une autre origine.
+- ``predict_24h(case, history, variant=...)`` (signature demandée par E5) : un cas, ses seules
+  entrées admissibles, 24 lignes au format forecasts.csv, sans observation cible.
+- Variantes : ``reference`` et ``reference_profile`` (baseline.py), ``mlp`` (neural.py) et
+  ``hgb`` (tabular.py, retenu pour l'application, D-24). Modèle par défaut : DEFAULT_MODEL_RUN_IDS.
+- ``trained_forecast`` contrôle l'éligibilité (``eligibility_reason``) puis bascule sur la
+  référence en cas de refus ; ``status_reason`` garde le code exact.
+- ``run_experiment`` / ``main`` écrivent <method_run_id>.pred.csv, .runs.csv,
+  .cases_used.csv et .selection.json dans data/prediction_results/<experiment_id>/ ;
+  ``--batch`` fait le même calcul en bloc (batch.py), avec des fichiers identiques.
+- registry.py (C4) n'est pas utilisé : E3 et E5 appellent predict_24h directement.
 
-Signature imposée par E5 pour son code : predict_24h(case, history, variant="reference").
-Coexistence avec ForecastMethod(inputs, variant) du registre : incohérence C4, en suspens
-(voir reports/teams/E2_SUIVI.md, §10).
 predict_24h refiltre lui-même l'historique et le contexte sur le passé admissible : un
 historique complet du compteur peut donc lui être passé sans risque de fuite.
 
@@ -469,7 +471,9 @@ def write_predictions(results: Iterable[ForecastResult], path: Path) -> Path:
         frame = result.to_forecast_frame()
         if len(frame) != HORIZON_HOURS:
             raise ValueError(f"{result.case.case_id} : {len(frame)} lignes au lieu de 24")
-        frames.append(frame)
+        # Colonnes en objet : _write_csv formate tout en texte, et un cas en erreur
+        # (y_pred entièrement vide) ne change alors pas le type des autres.
+        frames.append(frame.astype(object))
     if not frames:
         raise ValueError("aucun résultat à écrire")
     table = pd.concat(frames, ignore_index=True)
@@ -582,6 +586,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="mlp et hgb : sortie du modèle en bloc (batch.py), mêmes fichiers en quelques s",
     )
+    parser.add_argument(
+        "--degrade",
+        help="EXP-E2-05, avec --batch : niveau d'effacement de la semaine visible "
+        "(d0, panne-48, panne-96, panne-144, trous-50) ; suffixe le method_run_id",
+    )
     parser.add_argument("--method-run-id")
     parser.add_argument("--values", default="measured", choices=VALUE_POLICIES)
     parser.add_argument("--split", action="append", default=None, help="défaut : validation")
@@ -596,6 +605,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("les modèles ont appris sur les mesures seules (D-11) : --values measured")
     if args.min_observed_hours is not None and args.variant != MLP_VARIANT:
         parser.error("--min-observed-hours ne s'applique qu'au MLP")
+    if args.degrade is not None and not args.batch:
+        parser.error("--degrade passe par le calcul en bloc : ajouter --batch")
     if not trained and args.model_run_id:
         parser.error(f"--model-run-id sans objet pour la variante {args.variant}")
     if trained:
@@ -608,15 +619,20 @@ def main(argv: list[str] | None = None) -> int:
     method_run_id = args.method_run_id or (
         args.model_run_id if trained else f"e2-{args.variant}-{args.values}"
     )
+    if args.degrade is not None:
+        method_run_id = f"{method_run_id}_{args.degrade}"
     started = time.perf_counter()
     loader = counts_history_loader(args.snapshot, values=args.values)
     context = load_context(args.snapshot, path=args.context) if trained else None
     loading = time.perf_counter() - started
     runner = run_experiment
+    extra = {}
     if args.batch:
         from src.models.known import batch  # import tardif : batch importe ce module
 
         runner = batch.run_experiment_batch
+        if args.degrade is not None:
+            extra["degrade"] = args.degrade
     pred, runs = runner(
         selected,
         loader,
@@ -626,6 +642,7 @@ def main(argv: list[str] | None = None) -> int:
         context=context,
         model_run_id=args.model_run_id,
         min_observed_hours=args.min_observed_hours,
+        **extra,
     )
     selected.to_csv(pred.parent / f"{method_run_id}.cases_used.csv", index=False)
     report.update(
@@ -634,6 +651,7 @@ def main(argv: list[str] | None = None) -> int:
             "model_run_id": args.model_run_id,
             "min_observed_hours": args.min_observed_hours,
             "mode": "batch" if args.batch and trained else "cas par cas",
+            "degrade": args.degrade,
             "context_rows": None if context is None else len(context),
             "load_seconds": round(loading, 1),
             "total_seconds": round(time.perf_counter() - started, 1),

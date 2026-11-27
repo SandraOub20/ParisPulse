@@ -439,3 +439,156 @@ def test_historique_passe_une_seule_fois_par_compteur(tmp_path, monkeypatch, cou
     )
     assert seen["duplicates"] == 0
     assert seen["rows"] <= len(counts)  # au plus une copie de chaque compteur
+
+
+# --- EXP-E2-05 : dégradation de la semaine visible -------------------------------------
+
+
+def test_positions_effacees_par_niveau():
+    case = _case("A-1", _paris("2026-07-09"))
+    assert B.erased_positions(case, "d0").size == 0
+    np.testing.assert_array_equal(B.erased_positions(case, "panne-48"), np.arange(120, 168))
+    assert B.erased_positions(case, "panne-144").min() == 24  # il reste les 24 plus anciennes
+    holes = B.erased_positions(case, "trous-50")
+    assert holes.size == 84 and np.unique(holes).size == 84
+    np.testing.assert_array_equal(holes, B.erased_positions(case, "trous-50"))  # même graine
+    other = B.erased_positions(_case("A-2", _paris("2026-07-09")), "trous-50")
+    assert not np.array_equal(holes, other)  # chaque cas a ses propres trous
+    with pytest.raises(ValueError, match="inconnu"):
+        B.erased_positions(case, "panne-12")
+
+
+def test_semaine_visible_finit_a_origine_moins_latence():
+    case = _case("A-1", _paris("2026-07-09"))
+    week = B.visible_week(case, LAG)
+    assert len(week) == 168
+    assert week[-1] == case.origin - pd.Timedelta(hours=LAG + 1)  # dernière heure publiée
+    assert week[0] == case.origin - pd.Timedelta(hours=LAG + 168)
+
+
+@pytest.mark.parametrize("level", ["panne-48", "panne-144", "trous-50"])
+def test_degrade_history_vide_sans_zero_et_garde_les_cibles(counts, level):
+    case = _case("A-1", _paris("2026-07-09"))
+    history = counts.loc[counts["counter_id"] == "A-1"].reset_index(drop=True)
+    before = history.copy()
+    out = B.degrade_history(history, case, level, LAG)
+    pd.testing.assert_frame_equal(history, before)  # l'original ne change pas
+    hit = out["timestamp"].isin(B.erased_hours(case, level, LAG))
+    assert hit.sum() == {"panne-48": 48, "panne-144": 144, "trous-50": 84}[level]
+    assert out.loc[hit, ["count", "count_raw"]].isna().all().all()
+    assert not out.loc[hit, "is_observed"].any()
+    assert (out["count"] == 0).sum() == (history["count"] == 0).sum()  # aucun 0 inventé
+    pd.testing.assert_frame_equal(out[~hit], history[~hit])  # cibles et reste intacts
+    targets = out["timestamp"] >= case.origin
+    assert not (hit & targets).any()
+
+
+def test_bloc_d0_egal_sans_degradation(counts, model):
+    cases = _cases()
+    plain = B.batch_raw_mlp(cases, counts, None, model, publication_lag_hours=LAG)
+    d0 = B.batch_raw_mlp(cases, counts, None, model, publication_lag_hours=LAG, degrade="d0")
+    assert plain[1] == d0[1]
+    np.testing.assert_allclose(d0[0], plain[0], rtol=0, atol=1e-6, equal_nan=True)
+
+
+@pytest.mark.parametrize("threshold", [None, 24])
+@pytest.mark.parametrize("level", ["panne-96", "trous-50"])
+def test_bloc_degrade_egal_cas_par_cas_sur_historique_efface(counts, model, level, threshold):
+    """La fenêtre effacée en bloc = predict_mlp sur l'historique effacé, cas par cas."""
+    cases = [c for c in _cases() if c.counter_id != "A-4"][:20]
+    kw = {} if threshold is None else {"min_observed_hours": threshold}
+    bloc = B.batch_raw_mlp(
+        cases, counts, None, model, publication_lag_hours=LAG, degrade=level, **kw
+    )
+    values, reasons = [], []
+    for case in cases:
+        history = counts.loc[counts["counter_id"] == case.counter_id]
+        history = B.degrade_history(history, case, level, LAG)
+        inputs = P.build_inputs(case, history, None, publication_lag_hours=LAG)
+        out = N.predict_mlp(model.estimator, inputs, fit_cutoff=model.config.fit_cutoff, **kw)
+        values.append(out.values if out.ok else np.full(24, np.nan))
+        reasons.append(out.reason)
+    _check_same(bloc, (np.array(values), reasons))
+    if level == "panne-96" and threshold is None:  # 72 h restantes < 84 : refus
+        assert all(r is not None for r in bloc[1])
+    if threshold == 24:
+        assert any(r is None for r in bloc[1])  # servis avec le seuil abaissé
+
+
+def test_fichiers_degrades_repli_et_reference_sur_la_meme_semaine(
+    tmp_path, monkeypatch, counts, model
+):
+    import dataclasses
+
+    model = dataclasses.replace(model, donor_site_groups=["G"])
+    monkeypatch.setattr(P, "_load_model", lambda v, run_id: model)
+    cases = _cases_frame()
+    loader = _loader(counts)
+    pred_mlp, _ = B.run_experiment_batch(
+        cases,
+        loader,
+        "mlp",
+        "EXP",
+        "mlp-p96",
+        root=tmp_path / "m",
+        publication_lag_hours=LAG,
+        degrade="panne-96",
+    )
+    pred_ref, _ = B.run_experiment_batch(
+        cases,
+        loader,
+        "reference",
+        "EXP",
+        "ref-p96",
+        root=tmp_path / "r",
+        publication_lag_hours=LAG,
+        degrade="panne-96",
+    )
+    mlp = pd.read_csv(pred_mlp, keep_default_na=False)
+    ref = pd.read_csv(pred_ref, keep_default_na=False)
+    # seuil 84 : le MLP refuse tout, son repli = la référence sur la même semaine effacée
+    served = mlp[mlp["prediction_status"] == "fallback"]
+    assert len(served) > 0
+    merged = served.merge(ref, on=["case_id", "horizon"], suffixes=("_m", "_r"))
+    np.testing.assert_allclose(
+        pd.to_numeric(merged["y_pred_m"]), pd.to_numeric(merged["y_pred_r"]), atol=1e-9
+    )
+    # la référence effacée diffère de la référence normale sur au moins un cas
+    normal, _ = P.run_experiment(
+        cases, loader, "reference", "EXP", "ref", root=tmp_path / "n", publication_lag_hours=LAG
+    )
+    plain = pd.read_csv(normal, keep_default_na=False)
+    assert not plain["y_pred"].equals(ref["y_pred"])
+
+
+def test_degradation_refusee_pour_hgb_et_niveau_inconnu(tmp_path, counts):
+    cases = _cases_frame()
+    with pytest.raises(ValueError, match="hgb"):
+        B.run_experiment_batch(
+            cases, _loader(counts), "hgb", "EXP", "h", root=tmp_path, degrade="panne-48"
+        )
+    with pytest.raises(ValueError, match="inconnu"):
+        B.run_experiment_batch(
+            cases, _loader(counts), "reference", "EXP", "r", root=tmp_path, degrade="panne-12"
+        )
+
+
+def test_commande_degrade(tmp_path, monkeypatch, counts):
+    import json
+
+    monkeypatch.setattr(
+        P, "counts_history_loader", lambda snapshot, values="measured": _loader(counts)
+    )
+    monkeypatch.setattr(P, "train_site_counters", lambda snapshot: {"A-1", "A-2", "A-3", "A-4"})
+    monkeypatch.setattr(P, "default_publication_lag", lambda: LAG)
+    monkeypatch.setattr(P, "data_path", lambda key: tmp_path)
+    _cases_frame().to_csv(tmp_path / "cases.csv", index=False)
+    argv = ["--cases", str(tmp_path / "cases.csv"), "--snapshot", "synthetic"]
+    argv += ["--experiment", "EXP-5/panne-48", "--variant", "reference", "--degrade", "panne-48"]
+    with pytest.raises(SystemExit):  # sans --batch : refusé
+        P.main(argv)
+    assert P.main([*argv, "--batch"]) == 0
+    out = tmp_path / "EXP-5" / "panne-48"
+    report = json.loads((out / "e2-reference-measured_panne-48.selection.json").read_text())
+    assert report["degrade"] == "panne-48"
+    assert (out / "e2-reference-measured_panne-48.pred.csv").exists()

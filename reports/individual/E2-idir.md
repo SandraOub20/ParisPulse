@@ -4,6 +4,65 @@ Format : [doc/SUIVI_ET_REMISE.md §4](../../doc/SUIVI_ET_REMISE.md). Entrées le
 
 ---
 
+## 2026-11-27 - Clôture : score recalculable, solidité du gain, EXP-E2-04 et 05, notebooks
+
+- **Objectif** : finir les expériences, rendre chaque chiffre recalculable par un tiers, préparer la remise.
+
+### Travail réalisé
+
+- **[score.py](../../src/models/known/score.py)** (MOD-018) : il refait le score d'E4 avec leurs fonctions et remplace mon script hors Git. Chemins personnels retirés des bilans des modèles ; code mort et en-têtes nettoyés.
+- **Dégradation pour EXP-E2-05** (MOD-019) : `erased_positions` et `degrade_history` dans [batch.py](../../src/models/known/batch.py), option `--degrade`. Le repli et la référence voient la même semaine effacée que le modèle.
+- **Notebooks** (MOD-020) : [demo.py](../../src/models/known/demo.py) (un cas en direct, avec un graphique), puis un notebook par expérience, sans logique propre.
+- **[robustness.py](../../src/models/known/robustness.py)** : tranches horaires, WAPE, mois, bootstrap sur les jours.
+- **EXP-E2-04 figée avant les scores** : seuil de 0,357, pluie à partir de 1 mm, règle pour l'application.
+
+### Contrôles
+
+- `score.py` sur EXP-E2-03 redonne **à la décimale près** le `scores.csv` d'E4 (MAE, biais, RMSE, 5 613 cas).
+- `d0` d'EXP-E2-05, bras A, est identique aux prévisions d'EXP-E2-03 (écart 0,0) : la chaîne de dégradation ne change rien quand rien n'est effacé.
+- Dégradation : aucun 0 inventé, cibles intactes, et le calcul en bloc est égal au cas par cas sur l'historique effacé (13 tests).
+
+### Résultats
+
+- **EXP-E2-03, solidité** (bootstrap sur les jours) :
+  - le HGB bat « même heure J−7 » de +25 % [+20 ; +31], de façon stable ;
+  - il bat la médiane de +18 % [+10 ; +25], mais surtout en août (+36 %) ; en juillet, c'est +6 % [−3 ; +14] ;
+  - semaine par semaine, le gain se concentre sur la baisse des vacances (+32 à +54 %) ;
+  - le gain tient aux heures de pointe (+20 à +24 %).
+- **EXP-E2-04** : le contexte aide les deux modèles, au-delà du seuil (HGB 22,25 contre 22,90 ; MLP 22,23 contre 23,38). Il améliore 86 et 88 compteurs sur 95. Le gain est fort les jours fériés, mais **le contexte dégrade les jours de pluie prévue**. L'étape 2 est déclenchée.
+- **EXP-E2-05**, ma comparaison : 50 calculs (5 niveaux de panne × 10). B, le MLP masqué, gagne nettement dès que la semaine est trouée : 25,2 contre 27,9 sous 48 h de panne, et 15,7 contre 24,1 (repli de A) sur les vraies semaines de 83 à 24 h. Il est aussi bien plus stable entre graines. Mais **il perd 0,39 sur les semaines complètes**, pour un bruit de 0,36. La règle figée demande de ne rien perdre : **A est gardé**.
+- **EXP-E2-04, étape 2** : retirer le calendrier coûte 0,48, la météo 0,17, les grèves rien.
+
+### Analyse et décisions
+
+- **En régime stable, le modèle vaut une médiane ; il apporte surtout lors des changements de régime.** La médiane met environ 2 semaines à suivre une rupture. À la reprise de fin août, aucune méthode n'anticipe la remontée.
+- **La lecture du test est fixée avant de le lire** : semaines normales, vacances de la Toussaint et transitions, séparées. Elle est commitée dans `final_test.py` avant le calcul du test (gel D-07).
+- **EXP-E2-05 perdue de justesse** : j'applique la règle sans la retoucher. La combinaison « A sur les semaines complètes, B à la place du repli » est la suite logique, mais c'est une nouvelle méthode, à figer dans une fiche avant de la mesurer.
+- **Erreur de ma part** : `score.py` plantait quand un bras ne servait aucun cas (A sous 96 h de panne, en lecture brute). Corrigé et testé : le bras reste dans le tableau avec une couverture nulle.
+- **Point clarifié** : la MAE de juin (environ 17,5) est un contrôle d'arrêt anticipé, dans la période d'apprentissage. La validation (environ 22) porte sur l'été. Les deux ne se comparent pas.
+
+### Partenaires
+
+- **E1** : **décalage de 2 h** des mesures les 9, 10, 13, 15 et 16 juillet sur environ 90 compteurs sur 97, trouvé en étudiant un mauvais cas (Sébastopol). Toutes les méthodes se trompent ces jours-là, et la semaine suivante est contaminée par les entrées du HGB. Sans ces jours, la MAE du HGB passe de 22,25 à 19,25. À transmettre.
+- **E4** : scores officiels reçus, identiques aux nôtres ; prévisions de 04, 05 et du test à livrer.
+
+### Prochaine étape
+
+- **Test final fait, une seule fois**, après le gel. MLP A 17,41, HGB 19,86, J−7 25,16, médiane 27,64. Les choix tiennent. Le gain est fort pendant la Toussaint et les transitions (+35 à +57 %) et faible en semaines normales, comme en été. Hors période, le MLP bat le HGB : on le rapporte sans changer le choix, puisque le test n'est pas un jeu de réglage.
+- **Livraisons à E4** : zips d'EXP-E2-04 (13 Mo), du test (7 Mo) et d'EXP-E2-05 (5 × 20 à 24 Mo). `check_forecasts.py` d'E4 passe sur toutes les livraisons, avec seulement l'alerte attendue (`fit_cutoff` vide des références).
+- **`dev` fusionné en local** : 460 tests passent ; le commit retiré de Sandra reste absent.
+
+## 2026-11-28 - Relecture avant remise
+
+- **Notebooks** : les cas en direct étaient mal choisis. Le « jour ordinaire » (Sébastopol, 16/07) lisait la semaine décalée d'E1, et le HGB y paraissait mauvais à tort. Je l'ai remplacé par Magenta le 28/07 (HGB 23,7, MLP 20,0, médiane 36,8, pour 290 vélos/h) et j'ai ajouté un cas où les modèles perdent : la reprise du 25/08. Le trafic du jour est affiché, pour lire les MAE de plus de 100 d'un gros compteur.
+- **Semaine visible vide** (100007049, 13/08) : 0 heure mesurée, le HGB prévoit le niveau d'avant la panne. Ce n'est pas propre au HGB : sur les 320 cas de repli du MLP, toutes les méthodes sont à environ 29-30 et surestiment de +23 à +31.
+- **Pourquoi pas un MLP plus gros** : non testé, mais deux familles finissent au même niveau, l'erreur sur juin plafonne dès l'époque 20 à 24, et régulariser a aidé. La limite vient de l'information, pas de la capacité. C'est écrit dans le rapport.
+- **Ton des documents rendus** : j'ai retiré les tournures qui s'adressaient au lecteur, et corrigé les affirmations périmées du rapport (nombre de tests, « 300 fois plus vite », preuve d'usage d'E4).
+- **Choix final** : le HGB avec contexte reste servi (règle d'EXP-E2-03) ; le test, qui favorise le MLP, ne sert pas à choisir. Recommandation : refaire ce choix sur une validation qui contienne des ruptures.
+- **Prochaine étape** : relecture par l'équipe, message aux équipes, puis push sur `Team2` après validation.
+
+---
+
 ## 2026-11-24 - Vérification du MLP, branchement de `mlp` et `hgb`, fiches EXP-E2-03 / 04 / 05, reconstruction de `Team2`
 
 - **Objectif** : rendre le MLP (Esther) et le HGB (Ania) calculables par E4 et appelables par E5, avec repli sur la référence ; préparer les comparaisons avant les scores.

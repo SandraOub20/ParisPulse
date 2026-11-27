@@ -1,0 +1,16 @@
+{
+  "input": 12659,
+  "not_known_site": 2280,
+  "other_split": 4365,
+  "counter_not_S_train": 0,
+  "snapshot_replaced": 0,
+  "selected": 6014,
+  "values": "measured",
+  "model_run_id": "e2-hgb-ctx-20260701-s0-6a8b",
+  "min_observed_hours": null,
+  "mode": "batch",
+  "degrade": null,
+  "context_rows": 165405,
+  "load_seconds": 9.8,
+  "total_seconds": 148.5
+}
