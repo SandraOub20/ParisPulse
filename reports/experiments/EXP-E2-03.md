@@ -1,6 +1,6 @@
 # EXP-E2-03 - Quelle méthode pour les sites connus : MLP, HGB ou référence ?
 
-> **Statut : figée le 2026-11-24, validée par l'équipe E2** (Idir, Esther, Ania ; commit indiqué dans l'historique de cette fiche). Plus rien n'est modifié avant la lecture des scores. Les résultats restent vides jusqu'aux scores d'E4.
+> **Statut : terminée.** Figée le 2026-11-24 et validée par l'équipe E2 (Idir, Esther, Ania ; commit indiqué dans l'historique de cette fiche). Les scores officiels d'E4 (2026-11-25) confirment exactement le score provisoire. **Décision : HGB retenu pour l'application (D-24).**
 
 - **Date, équipe, responsables et partenaires** :
   - Brouillon le 2026-11-24, E2 : Idir, Esther, Ania, Emmanuelle.
@@ -117,23 +117,23 @@
 
 - **Résultats mesurés : MAE, cas complets/comparables, échecs et coût** :
 
-  **Résultats provisoires du 2026-11-24**, calculés par E2 avec le code de score d'E4 (`src/eval/metrics.evaluate_all`, intersection des cas complets, même masque, MAE par compteur puis moyenne). **À remplacer par `scores.csv` d'E4.**
+  **Scores officiels d'E4** : `data/evaluation/proto-v1/EXP-E2/scores.csv` (sur `dev`, généré le 2026-11-25), lignes `common_complete`, c'est-à-dire l'intersection des cas complets avec le même masque, la MAE par compteur, puis la moyenne. Ils sont **identiques au score provisoire d'E2 du 2026-11-24**, calculé avec les mêmes fonctions d'E4.
   - Livraison à E4 : `data/prediction_results/EXP-E2/EXP-E2-predictions.zip` (12,9 Mo, SHA-256 `1619c83091786456…`), commité normalement, sans LFS. Il contient les `.pred.csv`, `.runs.csv` et `.cases_used.csv` des 6 méthodes (235 Mo une fois décompressé). À décompresser depuis `data/prediction_results/` avec `unzip -o EXP-E2/EXP-E2-predictions.zip`.
   - Prévisions : `data/prediction_results/EXP-E2/`, 6 fichiers, contrôlés par `src/eval/checks/check_forecasts.py` (tout conforme ; `fit_cutoff` vide pour les références, qui n'apprennent rien).
-  - Calcul : `tmp/score_provisoire_exp_e2_03.py`, hors Git.
-  - Population : les 6 014 cas, complets pour les 6 méthodes ; 95 compteurs avec des heures évaluables.
+  - Calcul refaisable : `python -m src.models.known.score --experiment EXP-E2` (MOD-018). Il lit le zip et redonne les valeurs d'E4 à la décimale près.
+  - Population : les 6 014 cas sont complets pour les 6 méthodes. **5 613 cas comparés** (ceux qui ont au moins une heure de vérité évaluable), 133 624 heures, 95 compteurs.
 
-  | Méthode | MAE macro brute | MAE macro système | Couverture brute | Taux de repli (système) | Biais | Coût du calcul |
+  | Méthode | MAE macro brute | MAE macro système (E4) | Couverture brute | Taux de repli (système) | Biais (E4, prévu − vrai) | Coût du calcul |
   | --- | --- | --- | --- | --- | --- | --- |
-  | `reference` | 29,78 | 29,75 | 100 % | 10,4 % (son repli D-03) | à venir (E4) | cas par cas, 3 min 11 |
-  | `reference_profile` | 27,00 | 27,01 | 100 % | 3,4 % (son repli D-03) | à venir (E4) | cas par cas, 3 min 19 |
-  | `mlp` (graine 0) | 22,20 | 22,23 | 94,7 % | 5,3 % (`mlp_window_too_sparse`) | à venir (E4) | en bloc, 2 min 41 |
-  | `mlp` (graines 0-2 : moyenne, étendue) | 22,36 ; 0,36 | 22,39 ; 0,36 | 94,7 % | 5,3 % | à venir (E4) | en bloc, environ 2 min 36 chacune |
-  | `hgb` | 22,24 | 22,25 | 100 % | 0 % | à venir (E4) | en bloc, 2 min 07 |
+  | `reference` | 29,78 | 29,75 | 100 % | 10,4 % (son repli D-03) | +2,39 | cas par cas, 3 min 11 |
+  | `reference_profile` | 27,00 | 27,01 | 100 % | 3,4 % (son repli D-03) | +8,47 | cas par cas, 3 min 19 |
+  | `mlp` (graine 0) | 22,20 | 22,23 | 94,7 % | 5,3 % (`mlp_window_too_sparse`) | −0,81 | en bloc, 2 min 41 |
+  | `mlp` (graines 0-2 : moyenne, étendue) | 22,36 ; 0,36 | 22,39 ; 0,36 | 94,7 % | 5,3 % | −0,13 (de −0,81 à +0,69) | en bloc, environ 2 min 36 chacune |
+  | `hgb` | 22,24 | 22,25 | 100 % | 0 % | −1,13 | en bloc, 2 min 07 |
 
   En brut, les heures en repli des modèles sont marquées non prévues ; les références gardent leur propre repli (il fait partie de leur méthode). Le calcul cas par cas coûte environ 0,4 s par cas, celui de l'application.
 
-- **Analyse, limites et décision** (provisoire, à confirmer avec les scores d'E4) :
+- **Analyse, limites et décision** (définitive, confirmée par les scores d'E4) :
 
   - **Règle 1, appliquée telle quelle.** Face à la meilleure référence (`reference_profile`, 27,01) :
     - HGB : +17,6 %, meilleur sur 97 % des compteurs ;
@@ -143,6 +143,7 @@
 
     Les deux modèles passent largement le seuil de 5 % et la majorité des compteurs.
   - **Règle 2.** MLP graine 0 − HGB = −0,02 vélo/h, alors que l'étendue entre les graines du MLP est de 0,36 : l'écart n'est pas significatif. **Le HGB est retenu pour l'application** : plus simple, il sert 100 % des cas et n'a pas besoin de torch. Conclusion identique en brut.
+  - **Biais** : les modèles sont presque sans biais (entre −1,1 et +0,7 vélo/h). La médiane des 4 semaines surestime de +8,5 vélos/h : elle ne voit pas la baisse de l'été, qu'elle copie des semaines précédentes plus chargées. Le gain des modèles vient en partie de là.
   - L'erreur de validation (environ 22 vélos/h) est plus élevée que le contrôle sur juin (environ 17,5) : l'été est plus difficile (vacances, 14 juillet, 15 août). Mais le gain sur les références est plus grand (environ 17 % contre 12 à 14 %).
 
   Limites connues dès maintenant :
@@ -153,18 +154,21 @@
   - règle d'admissibilité provisoire (C3/M2) ;
   - 4 sites en panne pendant l'été (MLP refusé, E2-TECH-003).
 
-- **Lien vers données de résultats et figures** : `data/prediction_results/EXP-E2-03/<method_run_id>.pred.csv` et `.runs.csv`, plus `cases_used.csv` et `selection.json`, produits par :
+- **Lien vers données de résultats et figures** : `data/prediction_results/EXP-E2/` (le zip livré à E4), avec `<method_run_id>.pred.csv`, `.runs.csv`, `.cases_used.csv` et `.selection.json`. Ils sont produits par :
 
   ```sh
   python -m src.models.known.predict --cases data/evaluation/proto-v1/cases.csv \
-    --snapshot hist-20261117 --experiment EXP-E2-03 --variant <reference|reference_profile>
+    --snapshot hist-20261117 --experiment EXP-E2 --variant <reference|reference_profile>
   python -m src.models.known.predict --cases data/evaluation/proto-v1/cases.csv \
-    --snapshot hist-20261117 --experiment EXP-E2-03 --variant <mlp|hgb> --model-run-id <id>
+    --snapshot hist-20261117 --experiment EXP-E2 --variant <mlp|hgb> --model-run-id <id> --batch
+  python -m src.models.known.score --experiment EXP-E2
   ```
 
-- **Retour d'un partenaire et preuve d'utilisation** : à obtenir.
-  - E4 : accord sur la population, le masque et l'intersection, puis scores.
-  - E5 : `model_run_id` servi par l'application, selon la règle de choix.
+  Le notebook [E2_EXP-03_choix_methode.ipynb](../../notebooks/E2_EXP-03_choix_methode.ipynb) refait le score et montre des cas.
+
+- **Retour d'un partenaire et preuve d'utilisation** :
+  - E4 : les prévisions ont été notées avec leur `backtest.py` (`scores.csv`, `scores_by_counter.csv`, `coverage.csv` sur `dev`, 2026-11-25), et les scores sont identiques aux nôtres ;
+  - E5 : HGB `e2-hgb-ctx-20260701-s0-b357` annoncé comme modèle de l'application (`predict.DEFAULT_MODEL_RUN_IDS`).
 
 ## Décisions du gel (2026-11-24, validées par l'équipe)
 
