@@ -139,7 +139,7 @@ Fonctions réellement implémentées à ce jour (MOD-003 à MOD-005) : `target_t
   - Notebooks `notebooks/E2_EXP-03_choix_methode.ipynb`, `E2_EXP-04_contexte.ipynb` et `E2_EXP-05_masquage.ipynb` : un cas en direct, les scores, la règle appliquée et les cas d'échec.
   - `baseline.MIN_HISTORY_HOURS`, une constante inutilisée, est retiré (I4).
   - Suivi : §2, §5, §6 (décisions closes), §8 et §10 (incohérences closes ou gardées comme limites).
-- **Pourquoi** : présenter les expériences et pouvoir les refaire devant le professeur, sans logique cachée dans les notebooks.
+- **Pourquoi** : présenter les expériences et permettre à un lecteur de les refaire, sans logique cachée dans les notebooks.
 - **Vérifications effectuées** :
   - tests de `demo.py` et `score.py` (petits exemples calculés à la main) ;
   - notebook 03 exécuté du début à la fin : il retrouve les scores d'E4 et la décision HGB.
