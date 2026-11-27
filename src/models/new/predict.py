@@ -31,6 +31,7 @@ from src.models.schemas import (
 )
 
 from ._core import manager
+from .adapt import adapt
 
 CHRONOS_MODEL_NAME = "chronos-2"
 GOOGLE_MODEL_NAME = "google_TimesFM_2.5"
@@ -88,6 +89,7 @@ def predict_24h(
     fit_cutoff = None
     feature_version = None
     context_version = inputs.context_version
+    adaptation_seconds = 0.0
 
     if model_name == CHRONOS_MODEL_NAME:
         if variant == "frozen":
@@ -110,10 +112,31 @@ def predict_24h(
 
             predictions = _extract_predictions(chronos_output, inputs.case.origin, "chronos-2")
         elif variant == "adapted":
-            method_run_id = "e3-chronos-2-adapted-v1"
-            model_run_id= "amazon-chronos-2"
-            manager.load_model(model_name)
-            raise NotImplementedError(f"adapted n'est pas encore implémenté pour {model_name}.")
+            method_run_id = "e3-chronos-2-adapted-v2"
+            model_run_id = "amazon-chronos-2"
+            adaptation_started = time.perf_counter()
+            adapted_model = adapt(
+                model_name,
+                inputs.history,
+                local_budget_hours=inputs.case.local_budget_hours,
+            )
+            adaptation_seconds = time.perf_counter() - adaptation_started
+
+            inference_started = time.perf_counter()
+            chronos_output = adapted_model.model.predict_df(
+                context_df,
+                prediction_length=forecast_length,
+                quantile_levels=[POINT_QUANTILE],
+                id_column="item_id",
+                timestamp_column="timestamp",
+                target="target",
+            )
+            inference_seconds = time.perf_counter() - inference_started
+
+            predictions = _extract_predictions(
+                chronos_output, inputs.case.origin, "chronos-2-adapted-v2"
+            )
+            predictions = adapted_model.correct(predictions)
     elif model_name == GOOGLE_MODEL_NAME:
         if variant == "frozen":
             method_run_id = "e3-google-TimesFM_2.5-frozen-v1"
@@ -143,10 +166,38 @@ def predict_24h(
                 "google-TimesFM-2.5",
             )
         elif variant == "adapted":
-            method_run_id = "e3-google-TimesFM_2.5-adapted-v1"
-            model_run_id= "google-TimesFM_2.5"
-            manager.load_model(model_name)
-            raise NotImplementedError(f"adapted n'est pas encore implémenté pour {model_name}.")
+            method_run_id = "e3-google-TimesFM_2.5-adapted-v2"
+            model_run_id = "google-TimesFM_2.5"
+            adaptation_started = time.perf_counter()
+            adapted_model = adapt(
+                model_name,
+                inputs.history,
+                local_budget_hours=inputs.case.local_budget_hours,
+            )
+            adaptation_seconds = time.perf_counter() - adaptation_started
+
+            inference_started = time.perf_counter()
+            if hasattr(adapted_model.model, "compile"):
+                google_output = adapted_model.model.forecast(
+                    horizon=forecast_length,
+                    inputs=[context_df["target"].to_numpy(dtype=float)],
+                )
+            else:
+                google_output = adapted_model.model.forecast(
+                    [context_df["target"].to_numpy(dtype=float)],
+                    forecast_context_len=1024,
+                    normalize=True,
+                )
+            inference_seconds = time.perf_counter() - inference_started
+
+            predictions = _extract_timesfm_predictions(
+                google_output,
+                inputs.case.origin,
+                inputs.case.support_end,
+                forecast_length,
+                "google-TimesFM-2.5-adapted-v2",
+            )
+            predictions = adapted_model.correct(predictions)
     elif model_name == TEAM2_MODEL_NAME:
         if variant == "frozen":
             method_run_id = "e3-team2-mlp-frozen-v1"
@@ -190,6 +241,7 @@ def predict_24h(
         elif variant == "adapted":
             method_run_id = "e3-team2-mlp-adapted-v1"
             model_run_id= "team2-adapted"
+            manager.load_model(model_name)
             raise NotImplementedError(f"adapted n'est pas encore implémenté pour {model_name}.")
 
     return ForecastResult(
@@ -207,6 +259,7 @@ def predict_24h(
         cost=RunCost(
             preparation_seconds=preparation_seconds,
             inference_seconds=inference_seconds,
+            adaptation_seconds=adaptation_seconds,
             hardware=f"{platform.system()}-{platform.machine()}",
         ),
     )

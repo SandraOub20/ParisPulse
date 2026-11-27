@@ -1,10 +1,6 @@
-"""GABARIT À COMPLÉTER - E4 avec E2/E3
-
+"""
 Exécuter les cas communs et examiner la fiabilité.
 
-Entrées et sorties : voir doc/CONTRATS.md et doc/templates/.
-
-À faire :
 1. Appeler les calculs des partenaires ou lire leurs CSV conformes.
 2. Enregistrer erreurs, scores et couverture sous data/evaluation/<protocol_id>/<experiment_id>/.
 3. Mesurer les coûts et une perturbation des entrées ou la couverture effective d’intervalles.
@@ -285,8 +281,9 @@ def make_error(cases, forecast, observations, path):
     error["protocol_id"] = PROTOCOLE_ID
     error["snapshot_id"] = SNAPSHOT_ID
 
-    # Conversion de l'indicateur de score
-    error["is_scoreable"] = error["is_scoreable"].fillna(False).astype(bool)
+    # y_true seulement les heures réellement mesurées
+    error["y_true"] = error["y_true"].where(error["is_scoreable"].fillna(False).astype(bool))
+    error["is_scoreable"] = error["is_evaluable"].fillna(False).astype(bool)
 
     # Conserver les colonnes de sortie
     error = error[COLUMNS_ERROR]
@@ -620,6 +617,13 @@ def make_coverage(cases, forecast, observations, path):
             how="left",
             validate="one_to_one",
         )
+
+        reasons = (
+            forecast_group.dropna(subset=["status_reason"])
+            .groupby("case_id")["status_reason"]
+            .first()
+        )
+        coverage["status_reason"] = coverage["case_id"].map(reasons)
 
         # Ajouter les identifiants du protocole et du snapshot
         coverage["protocol_id"] = PROTOCOLE_ID

@@ -11,9 +11,10 @@ import numpy as np
 import pandas as pd
 
 from src.app import v1_service
+from src.common.config import load_config
 from src.eval.cases import E3_ROLES, forecasting_team, interactive_case
 from src.models.known.baseline import weekly_reference
-from src.models.known.predict import predict_24h
+from src.models.known.predict import load_context, predict_24h
 from src.models.new import predict as new_predict
 from src.models.schemas import (
     CASE_RUNS_COLUMNS,
@@ -30,11 +31,28 @@ REFERENCE_LABELS = {
     "reference": "Même heure la semaine précédente",
     "reference_profile": "Médiane des quatre semaines précédentes",
 }
+HGB = "hgb"
+# Méthodes d'un site connu. La première est proposée par défaut : EXP-E2-03 retient le HGB.
+KNOWN_SITE_LABELS = {HGB: "HGB (modèle entraîné)", **REFERENCE_LABELS}
 LOCAL_REFERENCE = "local_reference"
 CHRONOS_LIVE = "chronos_live"
 COMPARE_REFERENCES = "compare_references"
 COMPARE_CHRONOS = "compare_chronos"
 COMPARE_ARCHIVE_PREFIX = "compare_archive:"
+CHRONOS_ADAPTED_LIVE = "chronos_adapted_live"
+COMPARE_ADAPTATION = "compare_adaptation"
+COMPARE_ADAPTATION_ARCHIVE = "compare_adaptation_archive"
+# Avant puis après adaptation : la version gelée et celle qu'E3 retient.
+ADAPTATION_PAIR = ("e3-chronos-2-frozen-v1", "e3-chronos-2-adapted-v2")
+# Noms affichés des méthodes d'E3, d'après le method_run_id de ses fichiers.
+E3_METHOD_LABELS = {
+    "e3-chronos-2-frozen-v1": "Chronos-2 gelé",
+    "e3-chronos-2-adapted-v1": "Chronos-2 adapté v1 (résidus)",
+    "e3-chronos-2-adapted-v2": "Chronos-2 adapté v2 (mélange)",
+    "e3-google-TimesFM_2.5-frozen-v1": "TimesFM 2.5 gelé",
+    "e3-team3-mlp-frozen-v1": "MLP d’E2 gelé",
+    "e3-team2-mlp-frozen-v1": "MLP d’E2 gelé",
+}
 CONTEXT_LABELS = {
     "is_holiday": "Jour férié",
     "is_school_holiday": "Vacances scolaires",
@@ -54,14 +72,19 @@ class Study:
     publication_lag_hours: int | None
 
 
+def e3_method_label(method_run_id: str) -> str:
+    """Nom lisible d'une méthode d'E3 ; son identifiant s'il n'est pas connu."""
+    return E3_METHOD_LABELS.get(method_run_id.removesuffix("-live"), method_run_id)
+
+
 def method_label(study: Study) -> str:
     variant = study.forecast["variant"].iloc[0]
     run_id = str(study.forecast["method_run_id"].iloc[0])
     if variant == LOCAL_REFERENCE:
         return "Référence locale"
-    if variant == "frozen" and "chronos" in run_id:
-        return "Chronos-2 gelé"
-    return REFERENCE_LABELS.get(variant, run_id)
+    if variant == HGB and not study.forecast["method_used"].eq(HGB).any():
+        return "Repli du HGB sur la référence"
+    return KNOWN_SITE_LABELS.get(variant) or e3_method_label(run_id)
 
 
 def verify_same_support(first: Study, second: Study) -> None:
@@ -78,6 +101,9 @@ def archived_forecasts(paths: tuple[Path, ...], snapshot_id: str) -> pd.DataFram
     """Indexer les sorties E3 livrées, y compris les cas dont le calcul a échoué."""
     tables = []
     for path in paths:
+        if path.name.endswith("-one-case.pred.csv"):
+            # Essai d'un seul cas, déjà présent dans le lot complet ; E4 l'écarte aussi.
+            continue
         forecasts = pd.read_csv(path, dtype="string", usecols=FORECAST_COLUMNS)
         forecasts = forecasts.loc[
             forecasts["snapshot_id"].eq(snapshot_id) & forecasts["scenario"].eq("new_site")
@@ -143,6 +169,42 @@ def optional_text(value: object) -> str:
     return "" if pd.isna(value) else str(value)
 
 
+def fixed_e3_budget(counter: pd.Series) -> int:
+    """Récupérer le budget fixe attribué à un couple compteur-site."""
+
+    path = Path(__file__).resolve().parent / "cases-app.csv"
+
+    cases = pd.read_csv(
+        path,
+        dtype=str,
+        keep_default_na=False,
+    )
+
+    counter_id = str(counter["counter_id"])
+    site_id = optional_text(counter["site_group_id"])
+
+    rows = cases.loc[
+        cases["counter_id"].eq(counter_id)
+        & cases["site_group_id"].eq(site_id)
+        & cases["scenario"].eq("new_site")
+    ]
+
+    budgets = pd.to_numeric(
+        rows["local_budget_hours"],
+        errors="raise",
+    ).unique()
+
+    if len(budgets) != 1:
+        raise ValueError("Aucun budget unique attribué à ce compteur-site.")
+
+    budget = int(budgets[0])
+
+    if budget not in (24, 72, 168):
+        raise ValueError("Budget E3 invalide.")
+
+    return budget
+
+
 def counter_role(counter: pd.Series) -> str | None:
     """Identifier le rôle du compteur à partir de l'inventaire E1."""
     status = optional_text(counter.get("selection_status"))
@@ -159,6 +221,19 @@ def counter_role(counter: pd.Series) -> str | None:
         return None
     role = declared or role_from_status
     return role if role == "S_train" or role in E3_ROLES else None
+
+
+def default_known_day(first_day: date, last_day: date) -> date:
+    """Date proposée pour un site connu : la fin de la validation, jamais le test réservé.
+
+    Sans date de validation dans la configuration, l'avant-dernier jour mesuré est proposé.
+    """
+    validation_end = (load_config().get("protocol") or {}).get("validation_until")
+    if validation_end is None:
+        wanted = (pd.Timestamp(last_day) - pd.Timedelta(days=1)).date()
+    else:
+        wanted = pd.Timestamp(validation_end).date()
+    return min(max(first_day, wanted), last_day)
 
 
 def technical_case(counter: pd.Series, day: date, snapshot_id: str) -> Case:
@@ -198,10 +273,42 @@ def study_from_result(result: ForecastResult, source: str, lag: int) -> Study:
 def calculate_reference(
     case: Case, history: pd.DataFrame, variant: str, publication_lag_hours: int
 ) -> Study:
-    past = published_history(case, history, publication_lag_hours).copy()
-    past["count"] = past["count_raw"].where(past["is_observed"])
+    past = measured_history(case, history, publication_lag_hours)
     result = predict_24h(case, past, variant=variant, publication_lag_hours=publication_lag_hours)
     return study_from_result(result, "Référence E2 calculée à la demande", publication_lag_hours)
+
+
+def calculate_hgb(
+    case: Case,
+    history: pd.DataFrame,
+    publication_lag_hours: int,
+    context: pd.DataFrame | None = None,
+) -> Study:
+    """Appeler le HGB d'E2 avec le contexte E1 ; s'il refuse le cas, E2 sert la référence."""
+    if context is None:
+        # Sans contexte, le modèle se replie toujours sur la référence.
+        context = load_context(case.snapshot_id)
+    result = predict_24h(
+        case,
+        measured_history(case, history, publication_lag_hours),
+        variant=HGB,
+        context=context,
+        publication_lag_hours=publication_lag_hours,
+    )
+    used = result.predictions["method_used"].eq(HGB).any()
+    source = (
+        "HGB E2 calculé à la demande"
+        if used
+        else "Référence calculée à la demande après refus du HGB"
+    )
+    return study_from_result(result, source, publication_lag_hours)
+
+
+def measured_history(case: Case, history: pd.DataFrame, publication_lag_hours: int) -> pd.DataFrame:
+    """Historique publié du cas où `count` ne contient que les mesures réelles."""
+    past = published_history(case, history, publication_lag_hours).copy()
+    past["count"] = past["count_raw"].where(past["is_observed"])
+    return past
 
 
 def calculate_local_reference(case: Case, history: pd.DataFrame, lag: int) -> Study:
@@ -216,14 +323,19 @@ def calculate_local_reference(case: Case, history: pd.DataFrame, lag: int) -> St
     return study_from_result(result, "Référence locale E3 calculée à la demande", lag)
 
 
-def calculate_chronos(case: Case, history: pd.DataFrame, lag: int) -> Study:
+def calculate_chronos(
+    case: Case, history: pd.DataFrame, lag: int, variant: str = "frozen"
+) -> Study:
     result = new_predict.predict_24h(
         case,
         published_history(case, history, lag),
+        variant=variant,
         publication_lag_hours=lag,
-        method_run_id=f"{new_predict.METHOD_RUN_ID}-live",
     )
-    return study_from_result(result, "Chronos-2 E3 gelé calculé à la demande", lag)
+    # Le suffixe distingue ce calcul de l'archive qui porte le même identifiant E3.
+    result.method_run_id = f"{result.method_run_id}-live"
+    mode = "adapté" if variant == "adapted" else "gelé"
+    return study_from_result(result, f"Chronos-2 E3 {mode} calculé à la demande", lag)
 
 
 def published_history(case: Case, history: pd.DataFrame, lag: int) -> pd.DataFrame:
@@ -268,6 +380,23 @@ def open_archive(case: Case, catalog: pd.DataFrame, file: Path, method_run_id: s
     return Study(case, forecast, runs, f"{file.parent.name}/{file.name}", None)
 
 
+def open_adaptation_archives(case: Case, catalog: pd.DataFrame) -> tuple[Study, ...]:
+    """Ouvrir les prévisions archivées avant et après adaptation d'un même cas."""
+    studies = []
+    for run_id in ADAPTATION_PAIR:
+        rows = catalog.loc[
+            catalog["case_id"].eq(case.case_id) & catalog["method_run_id"].eq(run_id)
+        ]
+        files = rows["archive"].unique()
+        if len(files) != 1:
+            raise ValueError(
+                f"Archive « {e3_method_label(run_id)} » absente ou en double pour ce cas."
+            )
+        studies.append(open_archive(case, catalog, Path(files[0]), run_id))
+    verify_same_support(*studies)
+    return tuple(studies)
+
+
 def run_studies(
     case: Case,
     method: str,
@@ -275,17 +404,26 @@ def run_studies(
     history: pd.DataFrame,
     catalog: pd.DataFrame | None,
     lag: int,
+    *,
+    context: pd.DataFrame | None = None,
 ) -> tuple[Study, ...]:
     """Exécuter le moteur désigné par le cas E4, ou ouvrir une archive explicite."""
     if forecasting_team(case) == "E2":
         variants = tuple(REFERENCE_LABELS) if method == COMPARE_REFERENCES else (method,)
-        if archive is not None or any(variant not in REFERENCE_LABELS for variant in variants):
+        if archive is not None or any(variant not in KNOWN_SITE_LABELS for variant in variants):
             raise ValueError("La méthode sélectionnée est incompatible avec un cas E2.")
-        return tuple(calculate_reference(case, history, variant, lag) for variant in variants)
+        return tuple(
+            calculate_hgb(case, history, lag, context)
+            if variant == HGB
+            else calculate_reference(case, history, variant, lag)
+            for variant in variants
+        )
 
     if archive is not None:
         if catalog is None:
             raise ValueError("Le catalogue des prévisions archivées est indisponible.")
+        if method == COMPARE_ADAPTATION_ARCHIVE:
+            return open_adaptation_archives(case, catalog)
         archived_id = method.removeprefix(COMPARE_ARCHIVE_PREFIX)
         stored = open_archive(case, catalog, archive, archived_id)
         if method == archived_id:
@@ -302,6 +440,13 @@ def run_studies(
         chronos = calculate_chronos(case, history, lag)
         verify_same_support(reference, chronos)
         return reference, chronos
+    if method == CHRONOS_ADAPTED_LIVE:
+        return (calculate_chronos(case, history, lag, "adapted"),)
+    if method == COMPARE_ADAPTATION:
+        frozen = calculate_chronos(case, history, lag)
+        adapted = calculate_chronos(case, history, lag, "adapted")
+        verify_same_support(frozen, adapted)
+        return frozen, adapted
     raise ValueError("La méthode sélectionnée est incompatible avec un cas E3.")
 
 

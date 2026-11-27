@@ -112,7 +112,7 @@ jupyter lab --ip=0.0.0.0 --port=8888 --no-browser
 
 Ouvrir ensuite `http://localhost:8888` avec le jeton du serveur. Les ports 8888 et 8501 sont publiés uniquement sur l'interface locale de l'hôte. Le dépôt est monté dans `/workspace` : les fichiers modifiés dans le conteneur sont conservés sur l'hôte. La session se termine avec `exit` ; les modifications du système de fichiers hors du dépôt monté disparaissent. Sous Linux, adapter l'UID du développeur si les permissions du dossier monté l'exigent.
 
-Le groupe `dl` peut être installé pour une session avec `./run.sh setup --group dl`. Il n'est pas inclus dans l'image de base. Le port 8501 est réservé à la future application Streamlit ; aucun service applicatif n'existe encore.
+Le groupe `dl` est inclus dans l'image : l'application importe PyTorch au démarrage. Dans le conteneur, après extraction de l'instantané de données, lancer l'application avec `./run.sh app --server.address=0.0.0.0` puis ouvrir `http://localhost:8501`.
 
 ## Configuration scientifique et suite du travail
 

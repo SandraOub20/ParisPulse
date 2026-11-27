@@ -32,10 +32,13 @@ colonnes CSV communes. Les fichiers de prévisions et de coûts sont écrits dan
 
 ## Prévision Chronos-2
 
-Chronos-2 est disponible (pour l'instant) qu'en variante `frozen`. La prévision ponctuelle (par defaut si chronos echoue) est la médiane; les
-valeurs négatives sont ramenées à zéro et signalées dans `status_reason`.
+Chronos-2 est disponible en variante `frozen` et en variante `adapted-v2`.
+La v2 mélange la médiane des prévisions Chronos-2 avec le profil horaire local
+du support autorisé; les poids par budget sont lus dans
+`artifacts/models/e3-chronos2-adapted-v2/blend_weights.json`.
+Les valeurs négatives sont ramenées à zéro et signalées dans `status_reason`.
 
-### Lancer la validation Chronos-2
+### Lancer la validation Chronos-2 (Frozen)
 
 Depuis la racine du dépôt, exécuter :
 
@@ -47,6 +50,20 @@ py -m uv run --locked --group dl python .\src\models\new\validation.example.chro
 Le script traite tous les cas de validation `S_dev_new` des budgets 24 (1j), 72 (3j) et 168 (7j) heures,
 puis écrit les prévisions et les exécutions dans `data/prediction_results/EXP-E3/` avec le
 suffixe `validation-all`.
+
+### Lancer la validation Chronos-2 (adapted-v2)
+
+Depuis la racine du dépôt, exécuter :
+
+```powershell
+$env:PYTHONPATH = (Get-Location).Path
+py -m uv run --locked --group dl python .\src\models\new\validation.example.chronos.adapted.py
+```
+
+Le script valide les cas `S_dev_new` de validation de l'instantané `hist-20261117`
+et écrit les prévisions et les exécutions dans `data/prediction_results/EXP-E3/`
+avec le suffixe `e3-chronos-2-adapted-v2-validation-b24-b72-b168`. Ce nom distinct
+préserve les anciens fichiers de résultats v1.
 
 ## Prévision MLP Team2
 

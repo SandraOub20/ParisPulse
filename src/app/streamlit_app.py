@@ -48,6 +48,14 @@ STATUS_REASONS = {
     "lag168_missing;no_fallback_history": "Aucune mesure historique à cette heure",
     "profile_weeks_missing": "Mesures de référence manquantes sur quatre semaines",
     "profile_weeks_missing;no_fallback_history": "Aucune mesure historique à cette heure",
+    "hgb_origin_before_fit_cutoff": "Date antérieure à la fin de l’apprentissage du HGB",
+    "hgb_origin_not_midnight": "Le HGB prévoit uniquement à partir de minuit",
+    "hgb_context_missing": "Contexte E1 (calendrier, grèves, météo) indisponible",
+    "hgb_context_incompatible": "Version du contexte différente de l’apprentissage",
+    "hgb_snapshot_incompatible": "Instantané différent de celui de l’apprentissage",
+    "hgb_site_not_in_training": "Site absent de l’apprentissage du HGB",
+    "hgb_no_history": "Aucune mesure publiée pour ce compteur",
+    "hgb_non_finite_output": "Sortie du HGB inexploitable",
 }
 
 
@@ -324,6 +332,23 @@ def show_study(studies: tuple[service.Study, ...], evaluations: tuple[dict, ...]
     metrics[3].metric(
         "Temps de calcul", f"{elapsed:.3f} s" if elapsed is not None else "—", border=True
     )
+    if forecast["variant"].iloc[0] == service.HGB:
+        refused = forecast.loc[~forecast["method_used"].eq(service.HGB), "status_reason"].dropna()
+        if not refused.empty:
+            reason = STATUS_REASONS.get(refused.iloc[0], refused.iloc[0])
+            st.warning(
+                f"Le HGB n’a pas prévu ce cas : {reason}. "
+                "Les valeurs affichées viennent de la référence hebdomadaire."
+            )
+    adapted_run_id = service.ADAPTATION_PAIR[1]
+    if case.spatial_role == "S_dev_new" and any(
+        str(item.forecast["method_run_id"].iloc[0]).startswith(adapted_run_id) for item in studies
+    ):
+        st.info(
+            "Les paramètres de l’adaptation de Chronos-2 ont été choisis "
+            "sur les données de validation, sans réentraîner le modèle. "
+            "Ses performances doivent être confirmées sur des données de test indépendantes."
+        )
     if n_valid != HORIZON_HOURS:
         st.warning(
             "La prévision est incomplète. Le tableau horaire détaille les heures et les raisons."
@@ -456,17 +481,16 @@ def configure_known(
     if first_day > last_day:
         st.info("Historique publié trop court pour constituer un cas.")
         return None, None, None
-    default_day = max(first_day, (pd.Timestamp(last_day) - pd.Timedelta(days=1)).date())
     day = st.date_input(
         "Date de départ (minuit à Paris)",
-        value=default_day,
+        value=service.default_known_day(first_day, last_day),
         min_value=first_day,
         max_value=last_day,
         format="DD/MM/YYYY",
         key=f"date-{widget_key}",
     )
     methods = {
-        **service.REFERENCE_LABELS,
+        **service.KNOWN_SITE_LABELS,
         service.COMPARE_REFERENCES: "Comparer les deux références",
     }
     method = st.selectbox(
@@ -505,6 +529,18 @@ def configure_new(
     lag: int,
 ) -> tuple:
     counter_id = counter["counter_id"]
+
+    try:
+        budget = service.fixed_e3_budget(counter)
+    except (OSError, ValueError, KeyError) as error:
+        st.warning(f"Budget E3 indisponible : {error}")
+        return None, None, None
+
+    st.metric(
+        "Budget d'historique local attribué",
+        f"{budget} h ({budget // 24} jour(s))",
+    )
+
     rows = catalog.loc[catalog["counter_id"].eq(counter_id)]
     evaluation = protocol_cases(snapshot.name, counter, "new_site")
     try:
@@ -522,18 +558,14 @@ def configure_new(
     except (OSError, ValueError, KeyError, TypeError) as error:
         st.warning(f"Cas des archives E3 indisponibles · {error}")
 
+    # Ne conserver que les cas correspondant au budget fixe
+    by_id = {case_id: case for case_id, case in by_id.items() if case.local_budget_hours == budget}
+
     use_free_date = not by_id or st.toggle(
         "Choisir une date libre",
         key=f"free-date-{widget_key}",
     )
     if not use_free_date:
-        budgets = sorted({case.local_budget_hours or 0 for case in by_id.values()})
-        budget = st.selectbox(
-            "Budget d’historique local",
-            budgets,
-            format_func=lambda value: f"{value} heures" if value else "Budget non renseigné",
-            key=f"budget-{widget_key}",
-        )
         choices = {
             case.case_id: case
             for case in sorted(by_id.values(), key=lambda case: (case.origin, case.protocol_id))
@@ -552,32 +584,40 @@ def configure_new(
         if service.counter_role(counter) not in E3_ROLES:
             st.info("Le rôle réservé à E3 de ce compteur doit être renseigné dans l’inventaire.")
             return None, None, None
-        case = configure_new_date(counter, history, snapshot, widget_key, lag)
+        # case = configure_new_date(counter, history, snapshot, widget_key, lag)
+        case = configure_new_date(counter, history, snapshot, widget_key, lag, budget)
         if case is None:
             return None, None, None
 
-    sources = rows.loc[rows["case_id"].eq(case.case_id), ["archive", "method_run_id", "variant"]]
+    sources = rows.loc[rows["case_id"].eq(case.case_id), ["archive", "method_run_id"]]
     labels = {}
     can_run = case.spatial_role in E3_ROLES and bool(case.local_budget_hours)
     if can_run:
         if find_spec("chronos") is not None and find_spec("torch") is not None:
             labels[(None, service.CHRONOS_LIVE)] = "Chronos-2 gelé · calcul à la demande"
             labels[(None, service.COMPARE_CHRONOS)] = "Comparer la référence locale et Chronos-2"
+            labels[(None, service.CHRONOS_ADAPTED_LIVE)] = (
+                "Chronos-2 adapté v2 · calcul à la demande"
+            )
+            labels[(None, service.COMPARE_ADAPTATION)] = (
+                "Comparer Chronos-2 avant et après adaptation"
+            )
         else:
             st.caption("Chronos-2 à la demande nécessite le groupe de dépendances `dl`.")
         labels[(None, service.LOCAL_REFERENCE)] = "Référence locale E3 · calcul à la demande"
     for row in sources.dropna().drop_duplicates().itertuples(index=False):
-        title = (
-            "Chronos-2 gelé"
-            if row.variant == "frozen" and "chronos" in row.method_run_id
-            else row.method_run_id
-        )
+        title = service.e3_method_label(row.method_run_id)
         labels[(row.archive, row.method_run_id)] = (
             f"{title} · archive {Path(row.archive).parent.name}"
         )
         if can_run:
             comparison = f"{service.COMPARE_ARCHIVE_PREFIX}{row.method_run_id}"
             labels[(row.archive, comparison)] = f"Comparer la référence locale à {title} (archive)"
+    if set(service.ADAPTATION_PAIR) <= set(sources["method_run_id"].dropna()):
+        adapted = sources.loc[sources["method_run_id"].eq(service.ADAPTATION_PAIR[1]), "archive"]
+        labels[(adapted.iloc[0], service.COMPARE_ADAPTATION_ARCHIVE)] = (
+            "Comparer Chronos-2 avant et après adaptation (archives)"
+        )
     if not labels:
         st.info("Ce cas n’a pas de méthode disponible avec le budget renseigné.")
         return None, None, None
@@ -596,6 +636,7 @@ def configure_new_date(
     snapshot: Path,
     widget_key: str,
     lag: int,
+    budget: int,
 ) -> Case | None:
     if history.empty:
         st.info("Aucun comptage enregistré pour ce compteur.")
@@ -607,19 +648,21 @@ def configure_new_date(
     latest = measured.max().tz_convert(service.LOCAL_TZ).date()
     first = measured.min() + pd.Timedelta(hours=lag)
     eligible = {
-        budget: (first + pd.Timedelta(hours=budget)).tz_convert(service.LOCAL_TZ).ceil("D").date()
-        for budget in (24, 72, 168)
+        budget: (first + pd.Timedelta(hours=budget + 1))
+        .tz_convert(service.LOCAL_TZ)
+        .ceil("D")
+        .date()
     }
+
+    if eligible[budget] > latest:
+        st.info(f"Historique insuffisant pour le budget fixe de {budget} heures.")
+        return None
+
     eligible = {budget: day for budget, day in eligible.items() if day <= latest}
     if not eligible:
         st.info("Historique trop court pour constituer un support local de 24 heures.")
         return None
-    budget = st.selectbox(
-        "Budget d’historique local",
-        list(eligible),
-        format_func=lambda value: f"{value} heures",
-        key=f"technical-budget-{widget_key}",
-    )
+
     day = st.date_input(
         "Départ des 24 heures à prévoir (minuit à Paris)",
         value=eligible[budget],
@@ -789,13 +832,27 @@ def main() -> None:
                 engine = forecasting_team(case)
                 archive_version = ()
                 if archive:
-                    archive_version = (
-                        signature(archive),
-                        signature(
-                            archive.with_name(archive.name.removesuffix(".pred.csv") + ".runs.csv")
-                        ),
+                    # Toutes les archives du cas : une comparaison peut en lire plusieurs.
+                    files = sorted(set(catalog.loc[catalog["case_id"].eq(case.case_id), "archive"]))
+                    archive_version = tuple(
+                        signature(path)
+                        for file in map(Path, files)
+                        for path in (
+                            file,
+                            file.with_name(file.name.removesuffix(".pred.csv") + ".runs.csv"),
+                        )
                     )
-                run_key = (case, method, archive_version, counts_version, inventory_version, lag)
+                context_version = signature(snapshot / "context.csv")
+                run_key = (
+                    case,
+                    method,
+                    archive,
+                    archive_version,
+                    counts_version,
+                    context_version,
+                    inventory_version,
+                    lag,
+                )
                 if st.session_state.get("scope") != run_key:
                     st.session_state["scope"] = run_key
                     st.session_state.pop("forecast-result", None)

@@ -54,7 +54,8 @@ case "$COMMAND" in
                     fi
                 done
             fi
-            uv sync --locked --inexact
+            # L'application importe torch au démarrage : le groupe dl est nécessaire.
+            uv sync --locked --inexact --group dl
         fi
         exec uv run --locked --no-sync python -m streamlit run src/app/streamlit_app.py \
             --server.address=127.0.0.1 "$@"
