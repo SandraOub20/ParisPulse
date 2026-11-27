@@ -345,10 +345,10 @@ def show_study(studies: tuple[service.Study, ...], evaluations: tuple[dict, ...]
         str(item.forecast["method_run_id"].iloc[0]).startswith(adapted_run_id) for item in studies
     ):
         st.info(
-    "Les paramètres de l’adaptation de Chronos-2 ont été choisis "
-    "sur les données de validation, sans réentraîner le modèle. "
-    "Ses performances doivent être confirmées sur des données de test indépendantes."
-)
+            "Les paramètres de l’adaptation de Chronos-2 ont été choisis "
+            "sur les données de validation, sans réentraîner le modèle. "
+            "Ses performances doivent être confirmées sur des données de test indépendantes."
+        )
     if n_valid != HORIZON_HOURS:
         st.warning(
             "La prévision est incomplète. Le tableau horaire détaille les heures et les raisons."
@@ -529,7 +529,7 @@ def configure_new(
     lag: int,
 ) -> tuple:
     counter_id = counter["counter_id"]
-    
+
     try:
         budget = service.fixed_e3_budget(counter)
     except (OSError, ValueError, KeyError) as error:
@@ -540,7 +540,7 @@ def configure_new(
         "Budget d'historique local attribué",
         f"{budget} h ({budget // 24} jour(s))",
     )
-    
+
     rows = catalog.loc[catalog["counter_id"].eq(counter_id)]
     evaluation = protocol_cases(snapshot.name, counter, "new_site")
     try:
@@ -557,20 +557,15 @@ def configure_new(
             by_id.setdefault(case.case_id, case)
     except (OSError, ValueError, KeyError, TypeError) as error:
         st.warning(f"Cas des archives E3 indisponibles · {error}")
-        
+
     # Ne conserver que les cas correspondant au budget fixe
-    by_id = {
-        case_id: case
-        for case_id, case in by_id.items()
-        if case.local_budget_hours == budget
-    }
-    
+    by_id = {case_id: case for case_id, case in by_id.items() if case.local_budget_hours == budget}
+
     use_free_date = not by_id or st.toggle(
         "Choisir une date libre",
         key=f"free-date-{widget_key}",
     )
     if not use_free_date:
- 
         choices = {
             case.case_id: case
             for case in sorted(by_id.values(), key=lambda case: (case.origin, case.protocol_id))
@@ -589,10 +584,8 @@ def configure_new(
         if service.counter_role(counter) not in E3_ROLES:
             st.info("Le rôle réservé à E3 de ce compteur doit être renseigné dans l’inventaire.")
             return None, None, None
-        #case = configure_new_date(counter, history, snapshot, widget_key, lag)
-        case = configure_new_date(
-            counter, history, snapshot, widget_key, lag, budget
-        )
+        # case = configure_new_date(counter, history, snapshot, widget_key, lag)
+        case = configure_new_date(counter, history, snapshot, widget_key, lag, budget)
         if case is None:
             return None, None, None
 
@@ -653,29 +646,23 @@ def configure_new_date(
         st.info("Ce compteur ne possède pas de mesure publiée.")
         return None
     latest = measured.max().tz_convert(service.LOCAL_TZ).date()
-    first = measured.min() + pd.Timedelta(hours=lag)    
+    first = measured.min() + pd.Timedelta(hours=lag)
     eligible = {
-        budget: (
-            first + pd.Timedelta(hours=budget + 1)
-        )
+        budget: (first + pd.Timedelta(hours=budget + 1))
         .tz_convert(service.LOCAL_TZ)
         .ceil("D")
         .date()
     }
 
     if eligible[budget] > latest:
-        st.info(
-            f"Historique insuffisant pour le budget fixe "
-            f"de {budget} heures."
-        )
+        st.info(f"Historique insuffisant pour le budget fixe de {budget} heures.")
         return None
-    
-    
+
     eligible = {budget: day for budget, day in eligible.items() if day <= latest}
     if not eligible:
         st.info("Historique trop court pour constituer un support local de 24 heures.")
         return None
-   
+
     day = st.date_input(
         "Départ des 24 heures à prévoir (minuit à Paris)",
         value=eligible[budget],

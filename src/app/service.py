@@ -168,6 +168,7 @@ def archived_cases(
 def optional_text(value: object) -> str:
     return "" if pd.isna(value) else str(value)
 
+
 def fixed_e3_budget(counter: pd.Series) -> int:
     """Récupérer le budget fixe attribué à un couple compteur-site."""
 
@@ -194,9 +195,7 @@ def fixed_e3_budget(counter: pd.Series) -> int:
     ).unique()
 
     if len(budgets) != 1:
-        raise ValueError(
-            "Aucun budget unique attribué à ce compteur-site."
-        )
+        raise ValueError("Aucun budget unique attribué à ce compteur-site.")
 
     budget = int(budgets[0])
 
