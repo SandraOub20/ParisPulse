@@ -227,6 +227,134 @@ def test_e4_version_tracks_every_official_file(paths):
     assert sum(size == 0 for _, _, size in changed) == 1
 
 
+# --------------------------------------------- périmètre de la barre latérale → vues E4
+
+KNOWN, NEW, ALL = "Sites connus", "Nouveaux sites", "Tout le réseau"
+TEAM_TABS = {"E2 · sites connus", "E3 · nouveaux sites"}
+
+
+def e4_metrics(container) -> list[pd.DataFrame]:
+    return [f.value for f in container.dataframe if "MAE macro (vélos/h)" in f.value.columns]
+
+
+def with_perimeter(perimeter: str) -> AppTest:
+    at = run_app()
+    at.radio(key="perimeter").set_value(perimeter).run()
+    assert_clean(at)
+    return at
+
+
+def test_perimeter_reuses_the_single_sidebar_selector(paths):
+    write_snapshot(paths["processed"])
+    write_official(paths["evaluation"])
+    at = run_app()
+    perimeters = [radio for radio in at.sidebar.radio if radio.label == "Périmètre"]
+    assert len(perimeters) == 1 and perimeters[0].key == "perimeter"
+    assert perimeters[0].value == ALL
+    assert [radio.label for radio in at.radio].count("Périmètre") == 1  # pas de 2e sélecteur
+
+
+def test_known_sites_perimeter_shows_only_e2_evaluation(paths):
+    write_snapshot(paths["processed"])
+    write_official(paths["evaluation"])
+    at = with_perimeter(KNOWN)
+    evaluation = top_tabs(at)[EVALUATION]
+    assert not {t.label for t in evaluation.tabs} & TEAM_TABS
+    assert "Vue limitée à E2 · sites connus" in texts(evaluation.caption)
+    (metrics,) = e4_metrics(evaluation)
+    assert set(metrics["Méthode"]) == {"e2-mlp", "e2-reference"}
+    keys = {radio.key for radio in at.radio}
+    assert "official_E2_population" in keys
+    assert not {"official_E3_budget", "official_E3_population"} & keys
+    # Le parcours compteur reste celui des sites connus.
+    assert "Prévision sur 24 h" in texts(top_tabs(at)[EXPLORER].subheader)
+
+
+def test_new_sites_perimeter_shows_only_e3_with_budgets(paths):
+    write_snapshot(paths["processed"])
+    write_official(paths["evaluation"])
+    at = with_perimeter(NEW)
+    evaluation = top_tabs(at)[EVALUATION]
+    assert not {t.label for t in evaluation.tabs} & TEAM_TABS
+    assert "Vue limitée à E3 · nouveaux sites" in texts(evaluation.caption)
+    assert at.radio(key="official_E3_budget").options == ["24 h", "72 h", "168 h"]
+    assert "official_E2_population" not in {radio.key for radio in at.radio}
+    at.radio(key="official_E3_budget").set_value(168).run()
+    assert_clean(at)
+    (metrics,) = e4_metrics(top_tabs(at)[EVALUATION])
+    assert set(metrics["Méthode"]) == {
+        "e3-chronos-2-frozen-v1",
+        "e3-google-TimesFM_2.5-frozen-v1",
+    }
+    (identifiers,) = [
+        f.value for f in top_tabs(at)[EVALUATION].dataframe if "Identifiant" in f.value.columns
+    ]
+    assert "168 h" in identifiers["Valeur"].tolist()
+
+
+def test_whole_network_perimeter_keeps_e2_and_e3_in_separate_subtabs(paths):
+    write_snapshot(paths["processed"])
+    write_official(paths["evaluation"])
+    at = with_perimeter(ALL)
+    evaluation = top_tabs(at)[EVALUATION]
+    subtabs = {t.label: t for t in evaluation.tabs if t.label in TEAM_TABS}
+    assert set(subtabs) == TEAM_TABS
+    (e2,) = e4_metrics(subtabs["E2 · sites connus"])
+    (e3,) = e4_metrics(subtabs["E3 · nouveaux sites"])
+    assert set(e2["Méthode"]) == {"e2-mlp", "e2-reference"}
+    assert set(e3["Méthode"]) == {"e3-chronos-2-frozen-v1", "e3-google-TimesFM_2.5-frozen-v1"}
+    assert not set(e2["Méthode"]) & set(e3["Méthode"])
+    e2_ids, e3_ids = (
+        next(f.value for f in subtabs[label].dataframe if "Identifiant" in f.value)
+        for label in ("E2 · sites connus", "E3 · nouveaux sites")
+    )
+    assert any(str(v).startswith("known_site_") for v in e2_ids["Valeur"])
+    assert any(str(v).startswith("new_site_b") for v in e3_ids["Valeur"])
+
+
+def test_perimeter_changes_views_but_never_the_official_scores(paths):
+    write_snapshot(paths["processed"])
+    write_official(paths["evaluation"])
+    at = with_perimeter(ALL)
+    subtabs = {t.label: t for t in top_tabs(at)[EVALUATION].tabs if t.label in TEAM_TABS}
+    (e2_all,) = e4_metrics(subtabs["E2 · sites connus"])
+    (e3_all,) = e4_metrics(subtabs["E3 · nouveaux sites"])
+    at.radio(key="perimeter").set_value(KNOWN).run()
+    (e2_only,) = e4_metrics(top_tabs(at)[EVALUATION])
+    at.radio(key="perimeter").set_value(NEW).run()
+    (e3_only,) = e4_metrics(top_tabs(at)[EVALUATION])
+    pd.testing.assert_frame_equal(e2_all, e2_only)
+    pd.testing.assert_frame_equal(e3_all, e3_only)
+
+
+def test_perimeter_view_keeps_e4_population_and_coverage(paths):
+    write_snapshot(paths["processed"])
+    write_official(paths["evaluation"])
+    at = with_perimeter(NEW)
+    at.radio(key="official_E3_population").set_value("common_complete").run()
+    assert_clean(at)
+    evaluation = top_tabs(at)[EVALUATION]
+    frames = {column for f in evaluation.dataframe for column in f.value.columns}
+    assert {"MAE macro (vélos/h)", "R²", "Cas évaluables", "Provenance"} <= frames
+    (identifiers,) = [f.value for f in evaluation.dataframe if "Identifiant" in f.value.columns]
+    assert "common_complete" in identifiers["Valeur"].tolist()
+
+
+def test_forecast_is_kept_while_browsing_e4_with_a_perimeter(paths):
+    write_snapshot(paths["processed"])
+    write_official(paths["evaluation"])
+    at = with_perimeter(KNOWN)
+    at = calculate(at, "reference")
+    selection = at.session_state["selection"]
+    at.radio(key="official_E2_population").set_value("self").run()
+    at.run()
+    assert_clean(at)
+    assert at.session_state["selection"] == selection
+    assert at.session_state["forecast-result"] is not None
+    assert at.radio(key="perimeter").value == KNOWN
+    assert "MAE sur ce cas (indicatif)" in labels(at.metric)
+
+
 # --------------------------------------------------- non-régression parcours compteur
 
 

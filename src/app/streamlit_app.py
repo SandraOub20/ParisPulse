@@ -27,6 +27,10 @@ TEAL = "#087f73"
 BLUE = "#245dbb"
 AMBER = "#a45609"
 SCENARIOS = ("Sites connus", "Nouveaux sites", "Tout le réseau")
+# Clé du sélecteur « Périmètre » de la barre latérale, relue par l'onglet E4.
+PERIMETER_KEY = "perimeter"
+# Le périmètre choisit les vues E4 affichées, jamais les scores eux-mêmes.
+E4_TEAMS_BY_SCENARIO = {SCENARIOS[0]: ("E2",), SCENARIOS[1]: ("E3",), SCENARIOS[2]: ("E2", "E3")}
 MAP_ROUTES = {
     "known": ("E2 · Site connu", TEAL),
     "new": ("E3 · Nouveau site réservé", BLUE),
@@ -131,15 +135,16 @@ def official_results_cached(root: Path, version: tuple) -> evaluation_service.Of
     return evaluation_service.load_official_results(root)
 
 
-def show_e4_evaluation() -> None:
-    """Scores globaux E4, indépendants du compteur sélectionné."""
+def show_e4_evaluation(scenario: str = SCENARIOS[2]) -> None:
+    """Scores globaux E4, indépendants du compteur ; le périmètre choisit les vues."""
     try:
         root = data_path("evaluation") / evaluation_service.PROTOCOL_ID
         results = official_results_cached(root, e4_version(root))
     except (OSError, ValueError, KeyError) as error:
         st.error(f"Évaluations officielles E4 indisponibles · {error}")
         return
-    show_official_evaluation(results)
+    teams = E4_TEAMS_BY_SCENARIO.get(scenario, E4_TEAMS_BY_SCENARIO[SCENARIOS[2]])
+    show_official_evaluation(results, teams=teams)
 
 
 def render_map(counters: pd.DataFrame, map_key: str, selection_key: str) -> None:
@@ -747,7 +752,9 @@ def main() -> None:
     with explorer_tab:
         show_counter_explorer()
     with evaluation_tab:
-        show_e4_evaluation()
+        # Le parcours compteur s'exécute avant : le périmètre choisi est déjà connu.
+        # Sans instantané E1, le sélecteur n'est pas affiché : toutes les vues E4 restent.
+        show_e4_evaluation(st.session_state.get(PERIMETER_KEY, SCENARIOS[2]))
 
 
 def show_counter_explorer() -> None:
@@ -766,7 +773,7 @@ def show_counter_explorer() -> None:
     snapshots = {directory.name: directory for directory in directories}
     snapshot_id = st.sidebar.selectbox("Instantané des données", list(snapshots))
     snapshot = snapshots[snapshot_id]
-    scenario = st.sidebar.radio("Périmètre", SCENARIOS, index=2)
+    scenario = st.sidebar.radio("Périmètre", SCENARIOS, index=2, key=PERIMETER_KEY)
     inventory_version = tuple(
         signature(snapshot / name) for name in ("counters.csv", "inventory_quality.csv")
     )
