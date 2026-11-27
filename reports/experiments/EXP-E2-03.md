@@ -153,7 +153,31 @@
       - juillet : +6 % [−3 ; +14], non significatif ;
       - août : +36 % [+26 ; +44]. En août, la médiane reprend les semaines plus chargées de juillet et surestime de +10,5 vélos/h, alors que le HGB suit la baisse (biais de −0,7).
 
-      Le modèle apporte donc surtout quand le régime change. En régime stable, il fait à peu près comme la médiane. Le test d'octobre-novembre (la rentrée) servira de contrôle.
+      **Semaine par semaine**, le gain face à la médiane se concentre sur la baisse des vacances. On a donc la preuve du mécanisme :
+
+      | Semaine du | Vélos/h moyen | Gain du HGB / médiane | Biais de la médiane | Biais du HGB |
+      | --- | --- | --- | --- | --- |
+      | 29/06 | 112 | +1 % | −7,5 | −2,9 |
+      | 06/07 | 103 | +6 % | +7,7 | +0,8 |
+      | 13/07 | 91 | +12 % | +16,6 | −3,2 |
+      | 20/07 | 100 | **−28 %** | +0,5 | −4,6 |
+      | 27/07 | 89 | +32 % | +11,8 | +2,7 |
+      | 03/08 | 71 | +48 % | +22,5 | +6,2 |
+      | 10/08 | 62 | **+54 %** | +24,3 | +2,8 |
+      | 17/08 | 66 | +39 % | +15,6 | +0,4 |
+      | 24/08 | 82 | −2 % | −12,1 | −9,0 |
+
+      Ce que montre ce tableau :
+      - **En régime stable, le modèle vaut une médiane ; il apporte surtout de la valeur lors des changements de régime.** Une médiane glissante sur 4 semaines met environ deux semaines à suivre une rupture : c'est un argument d'usage, pas une faiblesse.
+      - **À la reprise de fin août, aucune méthode n'anticipe la remontée.** Le HGB comme la médiane sous-estiment (biais de −9 et −12).
+      - **La semaine du 20/07, le HGB perd (−28 %).** Ses décalages à 7 jours et ses niveaux récents lisent la semaine du 13/07, décalée de 2 h dans les données d'E1, alors que la médiane sur 4 semaines amortit une semaine fausse. Les jours décalés pèsent donc aussi sur les entrées de la semaine suivante.
+
+      **Lecture du test d'octobre-novembre, fixée avant de le lire** (4 365 cas, du 01/10 au 14/11 ; contexte d'E1) :
+      - vacances de la Toussaint du 17/10 au 01/11 (16 jours) ; jours fériés le 01/11 et le 11/11 ; 3 jours de grève (16/10 → 05/11) ;
+      - on rapportera le gain face aux deux références séparément sur les **semaines normales**, les **semaines de vacances** et les **semaines de transition** (départ le 17/10, retour le 02/11), avec le bootstrap sur les jours ;
+      - si le HGB bat aussi la médiane en semaines normales, la nuance sera retirée.
+
+      Une médiane corrigée du calendrier (les mêmes jours de vacances l'année précédente) serait une référence plus exigeante pendant les ruptures. Elle n'est pas faite : les deux références actuelles suffisent pour conclure.
     - **Sans les 5 jours décalés d'E1** (§8 du suivi : 9, 10, 13, 15 et 16 juillet), la MAE du HGB passe de 22,25 à 19,25 et celle de la médiane de 27,01 à 24,15 ; les conclusions restent les mêmes.
 
   Limites connues dès maintenant :
