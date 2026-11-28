@@ -20,6 +20,7 @@ from src.common.config import data_path
 from src.eval.cases import E3_ROLES, case_csv, forecasting_team
 from src.models.known.predict import default_publication_lag
 from src.models.schemas import HORIZON_HOURS, Case
+from src.app.dashboard.case_errors import show_case_errors
 
 TEAL = "#087f73"
 BLUE = "#245dbb"
@@ -367,9 +368,9 @@ def show_study(studies: tuple[service.Study, ...], evaluations: tuple[dict, ...]
         model_forecast_plot(studies, observations),
         config={"displaylogo": False, "scrollZoom": False},
     )
-
     if len(studies) > 1:
         show_comparison(studies, evaluations)
+    show_case_errors(studies, evaluations)
     with st.expander("Les 24 valeurs horaires et leur provenance", expanded=True):
         details = pd.DataFrame(
             {
@@ -888,6 +889,7 @@ def main() -> None:
                             )
                     except (OSError, ValueError, KeyError, RuntimeError) as error:
                         st.error(f"Prévision indisponible · {error}")
+
                     else:
                         evaluations = None
                         try:
@@ -895,6 +897,7 @@ def main() -> None:
                         except (ValueError, KeyError) as error:
                             st.warning(f"Comparaison avec les mesures indisponible · {error}")
                         st.session_state["forecast-result"] = (studies, evaluations)
+
                 if st.session_state.get("forecast-result"):
                     st.markdown("[Voir la courbe et les 24 lignes](#etude-du-cas)")
 
