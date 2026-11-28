@@ -345,8 +345,9 @@ def show_study(studies: tuple[service.Study, ...], evaluations: tuple[dict, ...]
         str(item.forecast["method_run_id"].iloc[0]).startswith(adapted_run_id) for item in studies
     ):
         st.info(
-            "Adaptation v2 : E3 a appris les poids du mélange sur les cas de validation de ces "
-            "sites. Un gain mesuré ici est probablement optimiste."
+            "Adaptation v2 : Chronos-2 n’est pas réentraîné. E3 a choisi les poids du mélange "
+            "(0,80 à 0,85) sur les cas de validation de ces sites. Un gain mesuré ici est "
+            "probablement optimiste."
         )
     if n_valid != HORIZON_HOURS:
         st.warning(

@@ -29,10 +29,10 @@ L'application propose :
 
 - une carte du réseau et le choix du compteur et du sens ;
 - sites connus : le HGB (par défaut), les deux références hebdomadaires et leur comparaison ;
-- nouveaux sites : une référence locale, Chronos-2 en direct, gelé ou adapté (poids téléchargés au premier calcul), la comparaison avant et après adaptation, et des prévisions archivées ;
+- nouveaux sites : une référence locale, Chronos-2 en direct, gelé ou adapté (poids téléchargés au premier calcul, environ 2 minutes, puis moins d'une seconde par calcul), la comparaison avant et après adaptation, et des prévisions archivées ;
 - l'historique, les données manquantes, le contexte, l'erreur du cas et un export ZIP.
 
-Détails dans le [guide de l'application](src/app/README.md).
+Détails dans le [guide de l'application](src/app/README.md). Trois parcours de démonstration vérifiés sur les données réelles sont décrits dans [E5_DEMONSTRATION.md](reports/teams/E5_DEMONSTRATION.md).
 
 ## Résultats de validation
 
@@ -59,7 +59,7 @@ L'écart entre MLP et HGB est plus petit que l'écart entre trois graines du MLP
 
 En gras : le modèle candidat d'E3. À 168 h, le MLP de l'équipe 2 obtient une MAE plus basse, mais il ne s'applique pas à 24 h ni à 72 h.
 
-L'adaptation v2 mélange la prévision de Chronos-2 avec le profil horaire local ([fiche E3](reports/experiments/E3-chronos-adapted-v2.md)). Ses poids ont été choisis sur des cas de validation de ces mêmes sites, sans réentraînement du modèle sur la validation : **son gain est probablement optimiste**.
+L'adaptation v2 mélange la prévision de Chronos-2 avec le profil horaire local ([fiche E3](reports/experiments/E3-chronos-adapted-v2.md)). Chronos-2 n'est pas réentraîné : seuls les poids du mélange (0,80, 0,80 et 0,85 selon le budget) ont été choisis, sur une grille, à partir des cas de validation de ces mêmes sites. **Son gain est donc probablement optimiste.**
 
 Ces résultats portent sur la **validation** seulement. Le test final (1er octobre au 14 novembre 2026) reste réservé jusqu'au gel des choix.
 
@@ -71,8 +71,11 @@ Ces résultats portent sur la **validation** seulement. Le test final (1er octob
 - Les poids de Chronos-2 adapté v2 ont été choisis sur les cas de validation qui servent aussi à l'évaluer.
 - Sur les sites réservés au test, les dates proposées tombent en partie dans le test final.
 - Les scores des nouveaux sites ne comprennent pas de référence simple.
+- L'application affiche une MAE par cas ; les scores officiels d'E4 (moyenne entre compteurs) n'y sont pas affichés.
+- Le HGB prévoit aussi un compteur dont la dernière mesure est ancienne, sans avertissement (exemple : « 39 quai François Mauriac » le 31/08/2026, sans mesure depuis le 5 juillet).
+- Plusieurs modules de `src/app/dashboard/` et `src/app/counter_map.py` ne sont pas utilisés par l'application.
 - `python -m src.eval.protocol` échoue (`KeyError: 'status'`). Le fichier `cases.csv` déjà livré reste utilisable.
-- `./run.sh check` signale des erreurs de lint et de formatage.
+- `./run.sh check` signale des erreurs de lint (4) et de formatage (22 fichiers). Les 428 tests passent (`./run.sh test`, vérifié le 28/11/2026).
 
 ## Recalculer les résultats
 
@@ -138,6 +141,9 @@ Relancer `./run.sh setup` sans `--group dl` retire PyTorch. Voir [l'environnemen
 | [Fiches d'expérience](reports/experiments/) | Questions, contrôles, résultats et décisions |
 | [Suivi de l'équipe 2](reports/teams/E2_SUIVI.md) | Journal des modifications et décisions |
 | [Prise en main de l'équipe 3](reports/teams/E3-DOC-&-PRISE-EN-MAIN.md) | Utiliser les modèles des nouveaux sites |
+| [Rapport de l'équipe 5](reports/teams/E5_RAPPORT.md) | Application : architecture, intégration, résultats et limites |
+| [Démonstration](reports/teams/E5_DEMONSTRATION.md) | Compteurs, dates et méthodes vérifiés pour la restitution |
+| [Présentation](reports/teams/E5_PRESENTATION.md) | Plan des slides de restitution finale |
 | [Suivi et remise](doc/SUIVI_ET_REMISE.md) | Livrables, barème et journal individuel |
 | [Gabarits](doc/templates/README.md) | Formats d'échange et de suivi |
 | [Plan du projet](PLAN_PROJET.md) | Exigences, priorités et risques |

@@ -1,5 +1,7 @@
 # Architecture de travail - ParisPulse
 
+> **Note (28/11/2026).** Les sections 1 à 7 décrivent la structure prévue **avant** l'implémentation. L'architecture réellement construite autour de l'application est décrite en [section 8](#8-architecture-réalisée-de-lapplication-e5).
+
 Ce dépôt contient une **structure à compléter par les cinq équipes** : fichiers de départ, consignes et formats d'échange. L'[environnement de développement](ENVIRONNEMENT.md) est configuré. Les modules Python sont des gabarits documentés, sans algorithmes implémentés. Les modèles, l'application, les tests applicatifs et le lancement de l'application restent à développer.
 
 Références : [plan collectif](../PLAN_PROJET.md), [contrats](CONTRATS.md), [protocole proposé](PROTOCOLE_EVALUATION.md) et [sujet](../ParisPulse_Sujet_etudiants.pdf).
@@ -147,3 +149,72 @@ Le `Dockerfile`, `compose.yaml` et `run.sh` installent l'environnement commun d�
 Critères de sortie : installation depuis une copie neuve par une autre équipe ; référence recalculée sur un autre cas ; redémarrage et nouvelle sélection ; ressources accessibles sans chemin personnel ; poids et paramètres annoncés fournis ; aucune dépendance obligatoire à un GPU pour les fonctions essentielles.
 
 Les tests à développer sont décrits dans [tests/README.md](../tests/README.md). Les rapports et journaux utilisent les [fiches de suivi](templates/README.md). Les tests et expériences ne sont pas exécutés par ce squelette.
+
+## 8. Architecture réalisée de l'application (E5)
+
+L'application ne recopie aucun calcul scientifique : elle lit les fichiers d'E1 et d'E4, puis
+appelle les fonctions de prévision d'E2 et d'E3.
+
+```mermaid
+flowchart LR
+    subgraph E1[E1 - données]
+        C[(counters.csv
+counts.csv
+context.csv)]
+    end
+    subgraph E4[E4 - évaluation]
+        K[(proto-v1/cases.csv)]
+        CS[eval/cases.py]
+    end
+    subgraph E5[E5 - application]
+        V[v1_service.py
+lecture]
+        S[service.py
+routage et contrôles]
+        UI[streamlit_app.py
+interface]
+        X[export.py
+ZIP]
+    end
+    subgraph E2[E2 - sites connus]
+        P2[models/known/predict.py
+HGB et références]
+    end
+    subgraph E3[E3 - nouveaux sites]
+        P3[models/new/predict.py
+Chronos-2 gelé et adapté]
+    end
+    C --> V
+    K --> V
+    CS --> S
+    V --> S
+    S -->|S_train| P2
+    S -->|S_dev_new, S_test_new| P3
+    P2 --> S
+    P3 --> S
+    S --> UI
+    UI --> X
+```
+
+| Échange | Producteur → E5 | Format | Fonction appelée par E5 |
+| --- | --- | --- | --- |
+| Inventaire des compteurs | E1 | `data/processed/hist-20261117/counters.csv`, `inventory_quality.csv` | `v1_service.load_inventory` |
+| Comptages horaires | E1 | `counts.csv` (lecture d'un seul compteur par blocs) | `v1_service.load_counter_history` |
+| Contexte (calendrier, grèves, météo prévue) | E1 | `context.csv` | `service.load_context` (fonction d'E2) |
+| Cas de prévision | E4 | `data/evaluation/proto-v1/cases.csv` | `v1_service.load_cases`, `eval.cases.interactive_case` |
+| Choix du moteur | E4 | rôle spatial du cas | `eval.cases.forecasting_team` : E2 ou E3 |
+| Prévision site connu | E2 | `ForecastResult` (24 lignes) | `models.known.predict.predict_24h` |
+| Prévision nouveau site | E3 | `ForecastResult` (24 lignes) | `models.new.predict.predict_24h` |
+| Poids des modèles | E2, E3 | `artifacts/models/<model_run_id>/` | chargés par les fonctions d'E2 et d'E3 |
+| Prévisions archivées | E3 | `data/prediction_results/EXP-E3/*.pred.csv` | `service.archived_forecasts`, `open_archive` |
+
+Contrôles faits par E5 à chaque calcul :
+
+1. **Information autorisée** : `service.published_history` ne transmet que les mesures publiées
+   avant l'origine (délai simulé de 24 h) et, pour un nouveau site, limitées au budget local.
+2. **Contrat de sortie** : `service.validate_forecast` vérifie les 24 horizons, l'origine, le
+   scénario et qu'une heure en échec n'a pas de valeur.
+3. **Même support** : pour comparer deux méthodes E3, `verify_same_support` vérifie qu'elles ont
+   reçu le même historique local.
+4. **Révélation séparée** : `service.reveal` lit les mesures cibles après le calcul, sans
+   recalculer la prévision.
