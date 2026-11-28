@@ -32,8 +32,25 @@ REFERENCE_LABELS = {
     "reference_profile": "Médiane des quatre semaines précédentes",
 }
 HGB = "hgb"
-# Méthodes d'un site connu. La première est proposée par défaut : EXP-E2-03 retient le HGB.
-KNOWN_SITE_LABELS = {HGB: "HGB (modèle entraîné)", **REFERENCE_LABELS}
+MLP_A = "mlp_a"
+MLP_B = "mlp_b"
+
+MLP_MODEL_IDS = {
+    MLP_A: "e2-mlp-ctx-20260701-s0-9ce9",
+    MLP_B: "e2-mlp-ctx-20260701-s0-37f5",
+}
+
+MLP_LABELS = {
+    MLP_A: "MLP A (modèle entraîné)",
+    MLP_B: "MLP B (masqué, expérimental)",
+}
+
+# Le HGB reste la méthode proposée par défaut.
+KNOWN_SITE_LABELS = {
+    HGB: "HGB (modèle entraîné)",
+    **MLP_LABELS,
+    **REFERENCE_LABELS,
+}
 LOCAL_REFERENCE = "local_reference"
 CHRONOS_LIVE = "chronos_live"
 COMPARE_REFERENCES = "compare_references"
@@ -80,10 +97,23 @@ def e3_method_label(method_run_id: str) -> str:
 def method_label(study: Study) -> str:
     variant = study.forecast["variant"].iloc[0]
     run_id = str(study.forecast["method_run_id"].iloc[0])
+
     if variant == LOCAL_REFERENCE:
         return "Référence locale"
+
     if variant == HGB and not study.forecast["method_used"].eq(HGB).any():
         return "Repli du HGB sur la référence"
+
+    if variant == "mlp" and study.case.scenario == "known_site":
+        labels = {model_id: MLP_LABELS[key] for key, model_id in MLP_MODEL_IDS.items()}
+
+        label = labels.get(run_id, run_id)
+
+        if not study.forecast["method_used"].eq("mlp").any():
+            return f"Repli de {label} sur la référence"
+
+        return label
+
     return KNOWN_SITE_LABELS.get(variant) or e3_method_label(run_id)
 
 
@@ -304,6 +334,38 @@ def calculate_hgb(
     return study_from_result(result, source, publication_lag_hours)
 
 
+def calculate_mlp(
+    case: Case,
+    history: pd.DataFrame,
+    method: str,
+    publication_lag_hours: int,
+    context: pd.DataFrame | None = None,
+) -> Study:
+    """Appeler le MLP E2 sélectionné avec le contexte E1."""
+    if context is None:
+        context = load_context(case.snapshot_id)
+
+    model_run_id = MLP_MODEL_IDS[method]
+
+    result = predict_24h(
+        case,
+        measured_history(case, history, publication_lag_hours),
+        variant="mlp",
+        model_run_id=model_run_id,
+        context=context,
+        publication_lag_hours=publication_lag_hours,
+    )
+
+    used = result.predictions["method_used"].eq("mlp").any()
+    label = MLP_LABELS[method]
+
+    source = (
+        f"{label} E2 calculé à la demande" if used else f"Référence calculée après refus de {label}"
+    )
+
+    return study_from_result(result, source, publication_lag_hours)
+
+
 def measured_history(case: Case, history: pd.DataFrame, publication_lag_hours: int) -> pd.DataFrame:
     """Historique publié du cas où `count` ne contient que les mesures réelles."""
     past = published_history(case, history, publication_lag_hours).copy()
@@ -412,12 +474,21 @@ def run_studies(
         variants = tuple(REFERENCE_LABELS) if method == COMPARE_REFERENCES else (method,)
         if archive is not None or any(variant not in KNOWN_SITE_LABELS for variant in variants):
             raise ValueError("La méthode sélectionnée est incompatible avec un cas E2.")
-        return tuple(
-            calculate_hgb(case, history, lag, context)
-            if variant == HGB
-            else calculate_reference(case, history, variant, lag)
-            for variant in variants
-        )
+        studies = []
+
+        for variant in variants:
+            if variant == HGB:
+                study = calculate_hgb(case, history, lag, context)
+
+            elif variant in MLP_MODEL_IDS:
+                study = calculate_mlp(case, history, variant, lag, context)
+
+            else:
+                study = calculate_reference(case, history, variant, lag)
+
+            studies.append(study)
+
+        return tuple(studies)
 
     if archive is not None:
         if catalog is None:
