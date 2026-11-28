@@ -8,6 +8,7 @@ Exécuter les cas communs et examiner la fiabilité.
 
 """
 
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -22,7 +23,7 @@ cfg = load_config()
 
 PROTOCOLE_ID = cfg["protocol"]["id"]
 SNAPSHOT_ID = cfg["snapshot_id"]
-EXP_ID = ["EXP-E2", "EXP-E3"]
+EXP_ID = sys.argv[1:] or ["EXP-E2", "EXP-E3"]
 
 EVAL = ROOT / cfg["paths"]["evaluation"]
 PRED = ROOT / cfg["paths"]["predictions"]

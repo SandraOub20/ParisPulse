@@ -1,4 +1,3 @@
-
 import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
@@ -85,11 +84,7 @@ def _prepare_inputs(cases, forecasts, observations):
     forecasts["variant"] = forecasts["variant"].fillna("").astype(str).str.strip()
 
     forecasts["prediction_status"] = (
-        forecasts["prediction_status"]
-        .fillna("")
-        .astype(str)
-        .str.strip()
-        .str.lower()
+        forecasts["prediction_status"].fillna("").astype(str).str.strip().str.lower()
     )
 
     # Vérification des identifiants de cas
@@ -247,9 +242,8 @@ def _build_evaluation(cases, forecasts, observations):
 
     # Vérifier la cohérence du compteur
     if "counter_id_forecast" in evaluation.columns:
-        mismatch = (
-            evaluation["counter_id_forecast"].notna()
-            & (evaluation["counter_id_forecast"] != evaluation["counter_id"])
+        mismatch = evaluation["counter_id_forecast"].notna() & (
+            evaluation["counter_id_forecast"] != evaluation["counter_id"]
         )
 
         if mismatch.any():
@@ -397,10 +391,7 @@ def calculate_coverage(evaluation):
         n_predicted = int(group["is_valid_prediction"].sum())
 
         n_fallback = int(
-            (
-                group["is_valid_prediction"]
-                & (group["prediction_status"] == "fallback")
-            ).sum()
+            (group["is_valid_prediction"] & (group["prediction_status"] == "fallback")).sum()
         )
 
         n_missing = N_EXPECTED_HOURS - n_predicted
@@ -416,9 +407,7 @@ def calculate_coverage(evaluation):
         elif n_predicted > 0:
             status = "partial"
             reason = "Less than 24h of predictions"
-        elif group["prediction_status"].notna().any() and (
-            group["prediction_status"] != ""
-        ).any():
+        elif group["prediction_status"].notna().any() and (group["prediction_status"] != "").any():
             status = "error"
             reason = "Error in the data"
         else:
@@ -635,3 +624,62 @@ def evaluation_cases_from_cases(cases_csv, forecasts_csv, observations_csv):
     observations = all_observations[all_observations["counter_id"].isin(counter_ids)].copy()
 
     return evaluate_all(cases, forecasts, observations)
+
+
+# clé : (variable, agrégat sur le jour local de Paris, opérateur, seuil)
+CONTEXT_THRESHOLDS = {
+    "rain_prev": ("rain_prev", "sum", ">=", 2.0),
+    "rain_obs": ("rain_obs", "sum", ">=", 2.0),
+    "wind_prev": ("wind_prev", "max", ">=", 6.0),
+    "wind_obs": ("wind_obs", "max", ">=", 6.0),
+    "temp_prev_hot": ("temp_prev", "max", ">=", 30.0),
+    "temp_obs_hot": ("temp_obs", "max", ">=", 30.0),
+    "temp_prev_cold": ("temp_prev", "mean", "<=", 5.0),
+    "temp_obs_cold": ("temp_obs", "mean", "<=", 5.0),
+}
+CONTEXT_BOOL_VARS = {"is_holiday", "is_school_holiday", "is_strike"}
+CONTEXT_KEYS = sorted(CONTEXT_BOOL_VARS | set(CONTEXT_THRESHOLDS) | {"is_weekend"})
+
+
+def case_paris_date(cases: pd.DataFrame) -> pd.Series:
+    """Jour local de Paris des 24 h cibles (origine 2026-06-30T22:00Z -> 2026-07-01)."""
+    origin = pd.to_datetime(cases["origin"], utc=True).dt.tz_convert("Europe/Paris")
+    return origin.dt.strftime("%Y-%m-%d")
+
+
+def selection_cases_from_context(cases, context, context_searched: str) -> pd.DataFrame:
+    """Cas dont le jour cible vérifie une condition (calendrier, week-end ou météo journalière)."""
+    if context_searched not in CONTEXT_KEYS:
+        raise ValueError(f"Unknown context: {context_searched}")
+    cases_df = (
+        cases.copy()
+        if isinstance(cases, pd.DataFrame)
+        else pd.read_csv(cases, dtype={"case_id": str, "counter_id": str})
+    )
+    dates = case_paris_date(cases_df)
+
+    if context_searched == "is_weekend":
+        return cases_df[pd.to_datetime(dates).dt.dayofweek >= 5].copy()
+
+    ctx_df = (
+        context.copy() if isinstance(context, pd.DataFrame) else pd.read_csv(context, dtype=str)
+    )
+    if context_searched in CONTEXT_BOOL_VARS:
+        sub = ctx_df[
+            (ctx_df["variable"] == context_searched)
+            & (ctx_df["value"].astype(str).str.strip().str.lower() == "true")
+        ]
+        matched_dates = set(sub["local_date"].dropna().astype(str))
+    else:
+        var, agg, op, thresh = CONTEXT_THRESHOLDS[context_searched]
+        sub = ctx_df[ctx_df["variable"] == var].copy()
+        sub["value"] = pd.to_numeric(sub["value"], errors="coerce")
+        sub["valid_time"] = pd.to_datetime(sub["valid_time"], utc=True)
+        # une valeur par heure (plusieurs lieux de prévision possibles), puis un agrégat par jour
+        hourly = sub.groupby("valid_time")["value"].mean()
+        day = hourly.index.tz_convert("Europe/Paris").strftime("%Y-%m-%d")
+        daily = hourly.groupby(day).agg(agg)
+        hit = daily[daily >= thresh] if op == ">=" else daily[daily <= thresh]
+        matched_dates = set(hit.index)
+
+    return cases_df[dates.isin(matched_dates)].copy()
