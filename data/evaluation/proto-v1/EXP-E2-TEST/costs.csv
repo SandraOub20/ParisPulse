@@ -1,0 +1,6 @@
+experiment_id,method_run_id,n_rows,total_preparation_s,total_inference_s,total_adaptation_s,total_wait_s,pred_file_mb,protocol_id,snapshot_id
+EXP-E2-TEST,e2-hgb-ctx-20260701-s0-b357,4365,76.014358753989,3.8406381449998186,0.0,0.0,30.16,proto-v1,hist-20261117
+EXP-E2-TEST,e2-mlp-ctx-20260701-s0-37f5,4365,75.28563244199566,6.361352325000077,0.0,0.0,30.64,proto-v1,hist-20261117
+EXP-E2-TEST,e2-mlp-ctx-20260701-s0-9ce9,4365,74.38572781897963,5.619686792999701,0.0,0.0,30.65,proto-v1,hist-20261117
+EXP-E2-TEST,e2-reference-measured,4365,73.79902322999422,77.6376671170067,0.0,0.0,22.48,proto-v1,hist-20261117
+EXP-E2-TEST,e2-reference_profile-measured,4365,69.17014026099218,74.28127373898565,0.0,0.0,24.93,proto-v1,hist-20261117

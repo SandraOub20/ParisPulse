@@ -1,0 +1,7 @@
+experiment_id,method_run_id,n_rows,total_preparation_s,total_inference_s,total_adaptation_s,total_wait_s,pred_file_mb,protocol_id,snapshot_id
+EXP-E3,e3-chronos-2-adapted-v1,930,3.8869847011228087,15.63417323036988,161.69094099887297,0.0,7.08,proto-v1,hist-20261117
+EXP-E3,e3-chronos-2-adapted-v2,930,25.1727804998081,101.27057129987222,29.422327800035372,0.0,7.14,proto-v1,hist-20261117
+EXP-E3,e3-chronos-2-frozen-v1,930,24.418162200075997,105.1829665994155,0.0,0.0,6.86,proto-v1,hist-20261117
+EXP-E3,e3-google-TimesFM_2.5-adapted-v2,930,15.884180600085484,760.0392031998927,264.0400903000773,0.0,7.59,proto-v1,hist-20261117
+EXP-E3,e3-google-TimesFM_2.5-frozen-v1,930,3.495067296753359,124.77836349724382,0.0,0.0,7.3,proto-v1,hist-20261117
+EXP-E3,e3-team3-mlp-frozen-v1,310,98.18439949961612,145.3761922000558,0.0,0.0,2.69,proto-v1,hist-20261117
