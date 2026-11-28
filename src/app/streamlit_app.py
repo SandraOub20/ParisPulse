@@ -62,6 +62,16 @@ STATUS_REASONS = {
     "hgb_site_not_in_training": "Site absent de l’apprentissage du HGB",
     "hgb_no_history": "Aucune mesure publiée pour ce compteur",
     "hgb_non_finite_output": "Sortie du HGB inexploitable",
+    "mlp_origin_before_fit_cutoff": "Date antérieure à la fin de l’apprentissage du MLP",
+    "mlp_origin_not_midnight": "Le MLP prévoit uniquement à partir de minuit",
+    "mlp_context_missing": "Contexte E1 indisponible",
+    "mlp_context_incompatible": "Version du contexte incompatible",
+    "mlp_snapshot_incompatible": "Instantané différent de celui de l’apprentissage",
+    "mlp_site_not_in_training": "Site absent de l’apprentissage du MLP",
+    "mlp_no_history": "Aucune mesure publiée pour ce compteur",
+    "mlp_window_too_sparse": "Historique insuffisamment renseigné pour le MLP",
+    "mlp_level_too_low": "Niveau de fréquentation trop faible pour le MLP",
+    "mlp_non_finite_output": "Sortie du MLP inexploitable",
 }
 
 
@@ -379,6 +389,21 @@ def show_study(studies: tuple[service.Study, ...], evaluations: tuple[dict, ...]
                 f"Le HGB n’a pas prévu ce cas : {reason}. "
                 "Les valeurs affichées viennent de la référence hebdomadaire."
             )
+
+    if forecast["variant"].iloc[0] == "mlp" and case.scenario == "known_site":
+        refused = forecast.loc[
+            ~forecast["method_used"].eq("mlp"),
+            "status_reason",
+        ].dropna()
+
+        if not refused.empty:
+            reason = STATUS_REASONS.get(refused.iloc[0], refused.iloc[0])
+
+            st.warning(
+                f"Le MLP sélectionné n’a pas prévu ce cas : {reason}. "
+                "Les valeurs disponibles proviennent de la référence hebdomadaire."
+            )
+
     adapted_run_id = service.ADAPTATION_PAIR[1]
     if case.spatial_role == "S_dev_new" and any(
         str(item.forecast["method_run_id"].iloc[0]).startswith(adapted_run_id) for item in studies
