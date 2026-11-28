@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from html import escape
 from importlib.util import find_spec
 from pathlib import Path
@@ -32,15 +33,15 @@ PERIMETER_KEY = "perimeter"
 # Le périmètre choisit les vues E4 affichées, jamais les scores eux-mêmes.
 E4_TEAMS_BY_SCENARIO = {SCENARIOS[0]: ("E2",), SCENARIOS[1]: ("E3",), SCENARIOS[2]: ("E2", "E3")}
 MAP_ROUTES = {
-    "known": ("E2 · Site connu", TEAL),
-    "new": ("E3 · Nouveau site réservé", BLUE),
+    "known": ("E2 : Site connu", TEAL),
+    "new": ("E3 : Nouveau site réservé", BLUE),
     "inventory": ("Inventaire", "#64748b"),
 }
 STATUS_LABELS = {
     "retained": "Retenu",
     "robustness": "Robustesse",
-    "reserved_dev_new": "Réservé · validation",
-    "reserved_test_new": "Réservé · test",
+    "reserved_dev_new": "Réservé pour la validation",
+    "reserved_test_new": "Réservé pour le test",
     "excluded": "Exclu",
 }
 PREDICTION_LABELS = {
@@ -102,7 +103,7 @@ def e3_archives(snapshot_id: str) -> pd.DataFrame:
         )
         return archive_cached(versions, snapshot_id)
     except (OSError, ValueError, KeyError) as error:
-        st.warning(f"Archives E3 indisponibles · {error}")
+        st.warning(f"Archives E3 indisponibles : {error}")
         return service.archived_forecasts((), snapshot_id)
 
 
@@ -151,7 +152,7 @@ def show_e4_evaluation(scenario: str = SCENARIOS[2]) -> None:
         root = data_path("evaluation") / evaluation_service.PROTOCOL_ID
         results = official_results_cached(root, e4_version(root))
     except (OSError, ValueError, KeyError) as error:
-        st.error(f"Évaluations officielles E4 indisponibles · {error}")
+        st.error(f"Évaluations officielles E4 indisponibles : {error}")
         return
     teams = E4_TEAMS_BY_SCENARIO.get(scenario, E4_TEAMS_BY_SCENARIO[SCENARIOS[2]])
     show_official_evaluation(results, teams=teams)
@@ -180,7 +181,7 @@ def render_map(counters: pd.DataFrame, map_key: str, selection_key: str) -> None
         row = (eligible if not eligible.empty else rows).iloc[0]
         route, color = MAP_ROUTES[row["capability"]]
         label = service.optional_text(row["site_name"]) or str(row["counter_id"])
-        label = f"{label} · {row['counter_id']} · {route}"
+        label = f"{label} : {row['counter_id']} : {route}"
         tooltip = escape(label).replace("`", "&#96;").replace("$", "&#36;").replace("\\", "&#92;")
         groups[label] = (row["counter_id"], rows["counter_id"].tolist())
         folium.CircleMarker(
@@ -258,7 +259,7 @@ def show_history(history: pd.DataFrame, case: Case, lag: int, *, key: str = "his
         mode="lines",
         line={"color": TEAL, "width": 2.2},
         customdata=label,
-        hovertemplate="%{customdata} · %{y:.0f} vélos<extra></extra>",
+        hovertemplate="%{customdata} : %{y:.0f} vélos<extra></extra>",
     )
     figure.add_scatter(
         x=timeline[estimated],
@@ -267,14 +268,14 @@ def show_history(history: pd.DataFrame, case: Case, lag: int, *, key: str = "his
         mode="markers",
         marker={"color": AMBER, "symbol": "diamond"},
         customdata=label[estimated],
-        hovertemplate="%{customdata} · %{y:.0f} vélos<extra></extra>",
+        hovertemplate="%{customdata} : %{y:.0f} vélos<extra></extra>",
     )
     plot_layout(figure, "Vélos / heure", 295)
     figure.update_xaxes(showticklabels=False, title="Survoler pour lire l’heure de Paris")
     st.plotly_chart(figure, config={"displaylogo": False}, key=key)
     st.caption(
-        f"Du {display_date(start)} au {display_date(end)} (Paris) · "
-        f"{observed.sum()} heures mesurées · {estimated.sum()} estimées · "
+        f"Du {display_date(start)} au {display_date(end)} (Paris) "
+        f"{observed.sum()} heures mesurées : {estimated.sum()} estimées "
         f"{missing.sum()} sans valeur"
     )
 
@@ -316,7 +317,7 @@ def show_context(snapshot: Path, case: Case) -> None:
             context_cached(signature(snapshot / "context.csv")), case
         )
     except (OSError, ValueError, KeyError) as error:
-        st.warning(f"Contexte indisponible · {error}")
+        st.warning(f"Contexte indisponible : {error}")
         return
     if context.empty:
         st.info("Aucune donnée de contexte disponible à l’origine sur ces 24 heures.")
@@ -419,7 +420,7 @@ def show_study(studies: tuple[service.Study, ...], evaluations: tuple[dict, ...]
         )
     if evaluation is not None:
         st.caption(
-            f"Score indicatif sur ce cas · {evaluation['n_compared_hours']} heures comparées sur 24."
+            f"Score indicatif sur ce cas : {evaluation['n_compared_hours']} heures comparées sur 24."
         )
 
     st.subheader("Prévisions du modèle" if len(studies) == 1 else "Prévisions des modèles")
@@ -447,8 +448,8 @@ def show_study(studies: tuple[service.Study, ...], evaluations: tuple[dict, ...]
         )
         if len(studies) > 1:
             alternative = service.method_label(studies[1])
-            details[f"Vélos prévus · {alternative}"] = studies[1].forecast["y_pred"].round(1)
-            details[f"Statut · {alternative}"] = (
+            details[f"Vélos prévus - {alternative}"] = studies[1].forecast["y_pred"].round(1)
+            details[f"Statut - {alternative}"] = (
                 studies[1].forecast["prediction_status"].map(PREDICTION_LABELS)
             )
         if evaluation is not None:
@@ -456,7 +457,7 @@ def show_study(studies: tuple[service.Study, ...], evaluations: tuple[dict, ...]
             details["Écart absolu"] = evaluation["errors"]["absolute_error"].round(1)
         st.dataframe(details, hide_index=True, height=310)
         for item in studies:
-            st.caption(f"{item.source} · {service.method_label(item)} · {item.case.protocol_id}")
+            st.caption(f"{item.source} : {service.method_label(item)} : {item.case.protocol_id}")
     alternatives = tuple(
         (item, evaluations[index] if evaluations is not None else None)
         for index, item in enumerate(studies[1:], start=1)
@@ -514,7 +515,7 @@ def protocol_cases(snapshot_id: str, counter: pd.Series, scenario: str) -> pd.Da
     try:
         paths = sorted(data_path("evaluation").glob("*/cases.csv"))
     except KeyError as error:
-        st.warning(f"Cas E4 indisponibles · {error}")
+        st.warning(f"Cas E4 indisponibles : {error}")
         return pd.DataFrame()
     for path in paths:
         try:
@@ -528,7 +529,7 @@ def protocol_cases(snapshot_id: str, counter: pd.Series, scenario: str) -> pd.Da
                 raise ValueError("Le rôle spatial des cas E4 diffère de l’inventaire.")
             tables.append(rows)
         except (OSError, ValueError, KeyError) as error:
-            st.warning(f"Cas du protocole {path.parent.name} indisponibles · {error}")
+            st.warning(f"Cas du protocole {path.parent.name} indisponibles : {error}")
     return pd.concat(tables, ignore_index=True) if tables else pd.DataFrame()
 
 
@@ -584,7 +585,7 @@ def configure_known(
         try:
             case = Case.from_row(matches.iloc[0])
         except ValueError as error:
-            st.warning(f"Cas E4 indisponible. Un cas technique est utilisé · {error}")
+            st.warning(f"Cas E4 indisponible. Un cas technique est utilisé : {error}")
     return case, method, None
 
 
@@ -604,9 +605,11 @@ def configure_new(
         st.warning(f"Budget E3 indisponible : {error}")
         return None, None, None
 
+    days = budget // 24
+
     st.metric(
-        "Budget d'historique local attribué",
-        f"{budget} h ({budget // 24} jour(s))",
+        "Budget d'historique local",
+        f"{budget} h ({days} {'jour' if days == 1 else 'jours'})",
     )
 
     rows = catalog.loc[catalog["counter_id"].eq(counter_id)]
@@ -616,7 +619,7 @@ def configure_new(
             raise ValueError("Un identifiant de cas est présent dans plusieurs protocoles.")
         by_id = {row["case_id"]: Case.from_row(row) for row in evaluation.to_dict("records")}
     except (ValueError, KeyError, TypeError) as error:
-        st.warning(f"Cas du protocole E4 indisponibles · {error}")
+        st.warning(f"Cas du protocole E4 indisponibles : {error}")
         evaluation = pd.DataFrame()
         by_id = {}
     try:
@@ -624,7 +627,7 @@ def configure_new(
         for case in archived:
             by_id.setdefault(case.case_id, case)
     except (OSError, ValueError, KeyError, TypeError) as error:
-        st.warning(f"Cas des archives E3 indisponibles · {error}")
+        st.warning(f"Cas des archives E3 indisponibles : {error}")
 
     # Ne conserver que les cas correspondant au budget fixe
     by_id = {case_id: case for case_id, case in by_id.items() if case.local_budget_hours == budget}
@@ -643,7 +646,7 @@ def configure_new(
             "Départ des 24 heures à prévoir",
             list(choices),
             format_func=lambda cid: (
-                f"{display_date(choices[cid].origin)} · {choices[cid].protocol_id}"
+                f"{display_date(choices[cid].origin)} - {choices[cid].protocol_id}"
             ),
             key=f"archive-date-{widget_key}-{budget}",
         )
@@ -662,21 +665,21 @@ def configure_new(
     can_run = case.spatial_role in E3_ROLES and bool(case.local_budget_hours)
     if can_run:
         if find_spec("chronos") is not None and find_spec("torch") is not None:
-            labels[(None, service.CHRONOS_LIVE)] = "Chronos-2 gelé · calcul à la demande"
+            labels[(None, service.CHRONOS_LIVE)] = "Chronos-2 gelé - calcul à la demande"
             labels[(None, service.COMPARE_CHRONOS)] = "Comparer la référence locale et Chronos-2"
             labels[(None, service.CHRONOS_ADAPTED_LIVE)] = (
-                "Chronos-2 adapté v2 · calcul à la demande"
+                "Chronos-2 adapté v2 - calcul à la demande"
             )
             labels[(None, service.COMPARE_ADAPTATION)] = (
                 "Comparer Chronos-2 avant et après adaptation"
             )
         else:
             st.caption("Chronos-2 à la demande nécessite le groupe de dépendances `dl`.")
-        labels[(None, service.LOCAL_REFERENCE)] = "Référence locale E3 · calcul à la demande"
+        labels[(None, service.LOCAL_REFERENCE)] = "Référence locale E3 - calcul à la demande"
     for row in sources.dropna().drop_duplicates().itertuples(index=False):
         title = service.e3_method_label(row.method_run_id)
         labels[(row.archive, row.method_run_id)] = (
-            f"{title} · archive {Path(row.archive).parent.name}"
+            f"{title} : archive {Path(row.archive).parent.name}"
         )
         if can_run:
             comparison = f"{service.COMPARE_ARCHIVE_PREFIX}{row.method_run_id}"
@@ -744,41 +747,155 @@ def configure_new_date(
 
 
 def main() -> None:
-    st.set_page_config(page_title="ParisPulse V2", page_icon="🚲", layout="wide")
-    st.html("""
+    st.set_page_config(page_title="ParisPulse", layout="wide")
+
+    # Chargement de l'illustration locale
+    image_path = Path(__file__).parent / "assets" / "paris.png"
+    image_html = ""
+
+    if image_path.is_file():
+        image_base64 = base64.b64encode(image_path.read_bytes()).decode("ascii")
+        image_html = (
+            f'<img class="paris-illustration" '
+            f'src="data:image/png;base64,{image_base64}" '
+            f'alt="Illustration de Paris">'
+        )
+
+    st.html(f"""
         <style>
-        .block-container {max-width: 86rem; padding-top: 4.15rem; padding-bottom: 3rem;}
-        .parispulse-header {
-            background: #103c3a; color: #fff; border-radius: 18px;
-            padding: 1.45rem clamp(1.1rem, 3vw, 2.2rem);
-            margin-bottom: 0.6rem; overflow: hidden;
-            background-image: linear-gradient(105deg, #113936 0%, #0b5248 100%);
-        }
-        .parispulse-header h1 {color: #fff; margin: 0; padding: 0; line-height: 1.12;}
-        .parispulse-header p {color: #d5f0eb; margin: 0.4rem 0 0;}
-        .parispulse-header .edition {
-            display: inline-block; margin-left: .55rem; vertical-align: middle;
-            border: 1px solid #9ac9be; border-radius: 999px; color: #ebfaf7;
-            padding: .19rem .5rem; font-size: .75rem; font-weight: 600;
-        }
-        iframe[title="streamlit_folium.st_folium"] {border-radius: 10px;}
-        @media (max-width: 700px) {
-            .block-container {padding-top: 4rem;}
-            .parispulse-header h1 {font-size: 2rem;}
-        }
+        .block-container {{
+            max-width: 86rem;
+            padding-top: 3.5rem;
+            padding-bottom: 3rem;
+        }}
+
+        /* Bannière principale */
+        .parispulse-header {{
+            background: linear-gradient(135deg, #4F836E 0%, #5E927B 100%);
+            color: white;
+            border-radius: 18px;
+            padding: 1rem 2rem;
+            margin-bottom: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 28px;
+            min-height: 220px;
+        }}
+
+        .parispulse-header-text {{
+            flex: 1;
+        }}
+
+        .parispulse-header h1 {{
+            color: white;
+            margin: 0;
+            padding: 0;
+        }}
+
+        .parispulse-header p {{
+            color: #E5F1E9;
+            margin: 0.5rem 0 0;
+        }}
+
+        .paris-illustration {{
+            width: 40%;
+            height: 190px;
+            object-fit: cover;
+            object-position: center;
+            border-radius: 14px;
+            flex-shrink: 0;
+        }}
+
+        /* Carte interactive */
+        iframe[title="streamlit_folium.st_folium"] {{
+            border-radius: 6px;
+        }}
+
+        /* Panneau de prévision */
+        .st-key-forecast_panel {{
+            background-color: #E0EDE5;
+            border: 1px solid #B6CFC0;
+            border-radius: 16px;
+            padding: 18px;
+        }}
+
+        .st-key-forecast_panel h3 {{
+            color: #254B3C;
+            font-weight: 650;
+        }}
+
+        .st-key-forecast_panel [data-baseweb="select"] > div {{
+            background-color: #FFFFFF;
+            border-radius: 10px;
+            border-color: #B6CFC0;
+        }}
+
+        .st-key-forecast_panel [data-baseweb="input"] {{
+            background-color: #FFFFFF;
+            border-radius: 10px;
+            border-color: #B6CFC0;
+        }}
+
+        .st-key-forecast_panel input {{
+            background-color: #FFFFFF;
+        }}
+
+        /* Bouton de calcul */
+        .st-key-forecast_panel button[kind="primary"] {{
+            background-color: #487A68;
+            color: #FFFFFF;
+            border: none;
+            border-radius: 12px;
+            min-height: 46px;
+            font-weight: 600;
+            transition: background-color 0.2s ease;
+        }}
+
+        .st-key-forecast_panel button[kind="primary"]:hover {{
+            background-color: #345E4E;
+            color: #FFFFFF;
+        }}
+
+        /* Bouton de téléchargement */
+        .st-key-forecast_panel [data-testid="stDownloadButton"] button {{
+            background-color: #F4F8F5;
+            color: #254B3C;
+            border: 1px solid #A9C6B4;
+            border-radius: 10px;
+        }}
+
+        /* Adaptation aux petits écrans */
+        @media (max-width: 700px) {{
+            .paris-illustration {{
+                display: none;
+            }}
+
+            .parispulse-header {{
+                min-height: 120px;
+                padding: 1rem;
+            }}
+        }}
         </style>
+
         <header class="parispulse-header">
-            <h1>ParisPulse<span class="edition">V2</span></h1>
-            <p>Observatoire des comptages vélo à Paris</p>
+            <div class="parispulse-header-text">
+                <h1>ParisPulse</h1>
+                <p>Prévision du trafic cycliste à Paris</p>
+            </div>
+
+            {image_html}
         </header>
     """)
+
     # Onglets toujours exécutés : l'état du compteur et de la prévision est conservé.
     explorer_tab, evaluation_tab = st.tabs(["Prévision par compteur", "Évaluation officielle E4"])
+
     with explorer_tab:
         show_counter_explorer()
+
     with evaluation_tab:
-        # Le parcours compteur s'exécute avant : le périmètre choisi est déjà connu.
-        # Sans instantané E1, le sélecteur n'est pas affiché : toutes les vues E4 restent.
+        # Le périmètre choisi détermine les évaluations affichées.
         show_e4_evaluation(st.session_state.get(PERIMETER_KEY, SCENARIOS[2]))
 
 
@@ -796,7 +913,7 @@ def show_counter_explorer() -> None:
         )
         return
     snapshots = {directory.name: directory for directory in directories}
-    snapshot_id = st.sidebar.selectbox("Instantané des données", list(snapshots))
+    snapshot_id = st.sidebar.selectbox("Jeu de données", list(snapshots))
     snapshot = snapshots[snapshot_id]
     scenario = st.sidebar.radio("Périmètre", SCENARIOS, index=2, key=PERIMETER_KEY)
     inventory_version = tuple(
@@ -805,7 +922,7 @@ def show_counter_explorer() -> None:
     try:
         inventory = inventory_cached(snapshot, inventory_version)
     except (OSError, ValueError, KeyError) as error:
-        st.error(f"Impossible de lire l’inventaire · {error}")
+        st.error(f"Impossible de lire l’inventaire : {error}")
         return
 
     inventory["site_role"] = inventory.apply(service.counter_role, axis=1)
@@ -820,13 +937,62 @@ def show_counter_explorer() -> None:
         visible = inventory.loc[new]
     else:
         visible = inventory
-    st.sidebar.caption(f"{len(visible)} compteurs directionnels · {snapshot_id}")
+    # st.sidebar.caption(f"{len(visible)} compteurs directionnels - {snapshot_id}")
+    with st.sidebar:
+        st.html(f"""
+            <div style="
+                background: #D0E4D7;
+                border: 1px solid #B6D1BF;
+                border-radius: 10px;
+                padding: 16px;
+                margin-top: 12px;
+                margin-bottom: 12px;
+            ">
+                <div style="font-size: 13px; color: #34594A;">
+                    Compteurs directionnels
+                </div>
+
+                <div style="
+                    font-size: 32px;
+                    font-weight: 700;
+                    color: #254B3C;
+                    margin: 4px 0;
+                ">
+                    {len(visible)}
+                </div>
+
+                <div style="font-size: 12px; color: #527563;">
+                    Périmètre sélectionné
+                </div>
+            </div>
+
+            <div style="
+                background: #F4F8F5;
+                border: 1px solid #CFDFD5;
+                border-radius: 10px;
+                padding: 14px;
+                margin-bottom: 12px;
+            ">
+                <div style="font-size: 12px; color: #527563;">
+                    Jeu de données
+                </div>
+
+                <div style="
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: #254B3C;
+                    margin-top: 5px;
+                ">
+                    {escape(str(snapshot_id))}
+                </div>
+            </div>
+        """)
     if visible.empty:
         st.info("Aucun compteur dans ce périmètre. Sélectionnez « Tout le réseau » dans le menu.")
         return
     counters = visible.set_index("counter_id", drop=False)
     sites = {
-        cid: " · ".join(
+        cid: " : ".join(
             filter(
                 None,
                 (
@@ -840,7 +1006,7 @@ def show_counter_explorer() -> None:
     }
     duplicates = pd.Series(sites).duplicated(keep=False)
     labels = {
-        cid: (f"{label} · {cid}" if label and duplicates[cid] else label or cid)
+        cid: (f"{label} : {cid}" if label and duplicates[cid] else label or cid)
         for cid, label in sites.items()
     }
     order = visible.sort_values(["selection_status", "label"], ascending=[False, True])[
@@ -857,13 +1023,15 @@ def show_counter_explorer() -> None:
             st.subheader("Carte des compteurs")
             render_map(visible, f"map-{snapshot_id}-{scenario}", selection_key)
             st.caption("Cliquez sur un point, puis choisissez le sens dans le menu.")
-            st.caption("Turquoise · E2   |   Bleu · E3   |   Gris · inventaire")
+            st.caption(
+                "Vert : sites connus | Bleu : nouveaux sites | Gris : hors périmètre de prévision"
+            )
     counts_version = signature(snapshot / "counts.csv")
     with settings:
-        with st.container(border=True):
+        with st.container(border=True, key="forecast_panel"):
             st.subheader("Prévision sur 24 h")
             selected = st.selectbox(
-                "Compteur et sens",
+                "Choix du compteur",
                 order,
                 key=selection_key,
                 format_func=labels.__getitem__,
@@ -876,7 +1044,7 @@ def show_counter_explorer() -> None:
             status = service.optional_text(counter["selection_status"])
             reason = service.optional_text(counter["status_reason"])
             status_text = STATUS_LABELS.get(status, status or "Statut E1 non renseigné")
-            st.caption(f"Compteur {selected} · {status_text}")
+            st.caption(f"Compteur {selected} : {status_text}")
             if not counts_version[1]:
                 st.warning("counts.csv est absent de cet instantané. Réinstallez le fichier E1.")
                 return
@@ -884,7 +1052,7 @@ def show_counter_explorer() -> None:
                 history = history_cached(snapshot, selected, counts_version)
                 lag = default_publication_lag()
             except (OSError, ValueError, KeyError) as error:
-                st.error(f"Impossible de préparer le compteur · {error}")
+                st.error(f"Impossible de préparer le compteur : {error}")
                 return
             widget_key = f"{snapshot_id}-{selected}"
             case = None
@@ -945,7 +1113,7 @@ def show_counter_explorer() -> None:
                     if archive is not None
                     else "calcul à la demande"
                 )
-                st.caption(f"Cas {case.protocol_id} · E4 → {engine} · {mode}")
+                st.caption(f"Cas {case.protocol_id} : E4 => {engine} : {mode}")
                 st.download_button(
                     "Télécharger cases.csv",
                     case_csv(case),
@@ -966,14 +1134,14 @@ def show_counter_explorer() -> None:
                                 case, method, archive, history, catalog, lag
                             )
                     except (OSError, ValueError, KeyError, RuntimeError) as error:
-                        st.error(f"Prévision indisponible · {error}")
+                        st.error(f"Prévision indisponible : {error}")
 
                     else:
                         evaluations = None
                         try:
                             evaluations = tuple(service.reveal(study, history) for study in studies)
                         except (ValueError, KeyError) as error:
-                            st.warning(f"Comparaison avec les mesures indisponible · {error}")
+                            st.warning(f"Comparaison avec les mesures indisponible : {error}")
                         st.session_state["forecast-result"] = (studies, evaluations)
 
                 if st.session_state.get("forecast-result"):
@@ -992,7 +1160,7 @@ def show_counter_explorer() -> None:
     with forecast_tab:
         end = case.origin + pd.Timedelta(hours=HORIZON_HOURS)
         st.caption(
-            f"Compteur {case.counter_id} · Période à prévoir du {display_date(case.origin)} "
+            f"Compteur {case.counter_id} : Période à prévoir du {display_date(case.origin)} "
             f"au {display_date(end)} (heure de Paris)"
         )
         if result is None:
@@ -1003,7 +1171,7 @@ def show_counter_explorer() -> None:
             try:
                 show_study(*result)
             except (ValueError, KeyError) as error:
-                st.error(f"Impossible d’afficher l’étude · {error}")
+                st.error(f"Impossible d’afficher l’étude : {error}")
     with history_tab:
         show_history(history, case, lag)
     with coverage_tab:
