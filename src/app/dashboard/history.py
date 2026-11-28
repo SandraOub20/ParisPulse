@@ -1,4 +1,3 @@
-
 """Historical bicycle observations visualization using E1 data."""
 
 import numpy as np
@@ -12,11 +11,7 @@ LOCAL_TZ = "Europe/Paris"
 def _parse_bool(values: pd.Series) -> pd.Series:
     """Parse CSV boolean values without treating missing values as False."""
 
-    normalized = (
-        values.astype("string")
-        .str.strip()
-        .str.lower()
-    )
+    normalized = values.astype("string").str.strip().str.lower()
 
     return normalized.map(
         {
@@ -47,9 +42,7 @@ def show_history(data: pd.DataFrame) -> None:
     missing_columns = required_columns - set(data.columns)
 
     if missing_columns:
-        st.error(
-            f"Missing required columns: {', '.join(sorted(missing_columns))}"
-        )
+        st.error(f"Missing required columns: {', '.join(sorted(missing_columns))}")
         return
 
     if data.empty:
@@ -100,10 +93,7 @@ def show_history(data: pd.DataFrame) -> None:
         history["is_observed"] = history["count_raw"].notna()
 
     if "is_scoreable" not in history.columns:
-        history["is_scoreable"] = (
-            history["is_observed"]
-            & history["count_raw"].notna()
-        )
+        history["is_scoreable"] = history["is_observed"] & history["count_raw"].notna()
 
     # ---------------------------------------------------------
     # 2. Parse timestamps and numerical values
@@ -128,18 +118,14 @@ def show_history(data: pd.DataFrame) -> None:
         errors="coerce",
     )
 
-    invalid_timestamps = int(
-        history["timestamp"].isna().sum()
-    )
+    invalid_timestamps = int(history["timestamp"].isna().sum())
 
     invalid_processed_values = int(
         (
             original_count.notna()
             & (
                 history["count"].isna()
-                | ~np.isfinite(
-                    history["count"].fillna(0)
-                )
+                | ~np.isfinite(history["count"].fillna(0))
                 | history["count"].lt(0)
             )
         ).sum()
@@ -150,9 +136,7 @@ def show_history(data: pd.DataFrame) -> None:
             original_raw_count.notna()
             & (
                 history["count_raw"].isna()
-                | ~np.isfinite(
-                    history["count_raw"].fillna(0)
-                )
+                | ~np.isfinite(history["count_raw"].fillna(0))
                 | history["count_raw"].lt(0)
             )
         ).sum()
@@ -160,9 +144,7 @@ def show_history(data: pd.DataFrame) -> None:
 
     # Invalid numerical values become unavailable, never zero.
     valid_processed = (
-        history["count"].notna()
-        & np.isfinite(history["count"])
-        & history["count"].ge(0)
+        history["count"].notna() & np.isfinite(history["count"]) & history["count"].ge(0)
     )
 
     valid_raw = (
@@ -175,28 +157,20 @@ def show_history(data: pd.DataFrame) -> None:
     history.loc[~valid_raw, "count_raw"] = np.nan
 
     # Remove invalid timestamps.
-    history = history.dropna(
-        subset=["timestamp"]
-    ).copy()
+    history = history.dropna(subset=["timestamp"]).copy()
 
     if history.empty:
         st.warning("No valid historical timestamps are available.")
-        st.caption(
-            f"Invalid timestamps: {invalid_timestamps}"
-        )
+        st.caption(f"Invalid timestamps: {invalid_timestamps}")
         return
 
     # ---------------------------------------------------------
     # 3. Parse E1 quality indicators
     # ---------------------------------------------------------
 
-    history["observed_flag"] = _parse_bool(
-        history["is_observed"]
-    )
+    history["observed_flag"] = _parse_bool(history["is_observed"])
 
-    history["scoreable_flag"] = _parse_bool(
-        history["is_scoreable"]
-    )
+    history["scoreable_flag"] = _parse_bool(history["is_scoreable"])
 
     observed = history["observed_flag"].eq(True).fillna(False)
     not_observed = history["observed_flag"].eq(False).fillna(False)
@@ -205,36 +179,21 @@ def show_history(data: pd.DataFrame) -> None:
     not_scoreable = history["scoreable_flag"].eq(False).fillna(False)
 
     # An original measurement that is eligible as an evaluation target.
-    measured_scoreable = (
-        observed
-        & scoreable
-        & history["count_raw"].notna()
-    )
+    measured_scoreable = observed & scoreable & history["count_raw"].notna()
 
     # An original source measurement that is not eligible as a target.
-    reported_not_scoreable = (
-        observed
-        & not_scoreable
-        & history["count_raw"].notna()
-    )
+    reported_not_scoreable = observed & not_scoreable & history["count_raw"].notna()
 
     # A processed value that is not an original scoreable measurement.
     # This includes J-7 replacements and eligible prior-year replacements.
     processed_replacement = (
         not_scoreable
         & history["count"].notna()
-        & (
-            not_observed
-            | history["count_raw"].isna()
-            | history["count"].ne(history["count_raw"])
-        )
+        & (not_observed | history["count_raw"].isna() | history["count"].ne(history["count_raw"]))
     )
 
     # Genuine measured zero: original zero and scoreable.
-    genuine_zero = (
-        measured_scoreable
-        & history["count_raw"].eq(0)
-    )
+    genuine_zero = measured_scoreable & history["count_raw"].eq(0)
 
     history["display_status"] = "Unknown / not classified"
 
@@ -268,14 +227,10 @@ def show_history(data: pd.DataFrame) -> None:
     # ---------------------------------------------------------
 
     # Convert UTC timestamps to Paris time only for display.
-    history["timestamp"] = (
-        history["timestamp"].dt.tz_convert(LOCAL_TZ)
-    )
+    history["timestamp"] = history["timestamp"].dt.tz_convert(LOCAL_TZ)
 
     if history["timestamp"].duplicated().any():
-        duplicate_count = int(
-            history["timestamp"].duplicated().sum()
-        )
+        duplicate_count = int(history["timestamp"].duplicated().sum())
 
         st.error(
             f"{duplicate_count} duplicate timestamps were detected. "
@@ -283,9 +238,7 @@ def show_history(data: pd.DataFrame) -> None:
         )
         return
 
-    history = history.sort_values(
-        "timestamp"
-    ).copy()
+    history = history.sort_values("timestamp").copy()
 
     # ---------------------------------------------------------
     # 5. Prepare hover information
@@ -300,14 +253,19 @@ def show_history(data: pd.DataFrame) -> None:
         if column not in history.columns:
             history[column] = ""
 
-    hover_data = history[
-        [
-            "is_observed",
-            "is_scoreable",
-            "quality_flags",
-            "source_file_id",
+    hover_data = (
+        history[
+            [
+                "is_observed",
+                "is_scoreable",
+                "quality_flags",
+                "source_file_id",
+            ]
         ]
-    ].fillna("").astype(str).to_numpy()
+        .fillna("")
+        .astype(str)
+        .to_numpy()
+    )
 
     # ---------------------------------------------------------
     # 6. Draw the historical chart
@@ -320,9 +278,7 @@ def show_history(data: pd.DataFrame) -> None:
     fig.add_trace(
         go.Scatter(
             x=history["timestamp"],
-            y=history["count_raw"].where(
-                measured_scoreable
-            ),
+            y=history["count_raw"].where(measured_scoreable),
             mode="lines+markers",
             name="Original measurements (scoreable)",
             line=dict(
@@ -349,9 +305,7 @@ def show_history(data: pd.DataFrame) -> None:
 
     # Grey markers: published values that E1 marked as not scoreable.
     # For example, an original zero that was replaced in processed count.
-    reported_data = history.loc[
-        reported_not_scoreable
-    ].copy()
+    reported_data = history.loc[reported_not_scoreable].copy()
 
     if not reported_data.empty:
         fig.add_trace(
@@ -371,7 +325,10 @@ def show_history(data: pd.DataFrame) -> None:
                         "quality_flags",
                         "is_scoreable",
                     ]
-                ].fillna("").astype(str).to_numpy(),
+                ]
+                .fillna("")
+                .astype(str)
+                .to_numpy(),
                 hovertemplate=(
                     "Time: %{x}<br>"
                     "Original published count: %{y}<br>"
@@ -384,9 +341,7 @@ def show_history(data: pd.DataFrame) -> None:
 
     # Orange diamonds: E1 processed replacements.
     # These are never labelled as original measurements.
-    replacement_data = history.loc[
-        processed_replacement
-    ].copy()
+    replacement_data = history.loc[processed_replacement].copy()
 
     if not replacement_data.empty:
         fig.add_trace(
@@ -411,7 +366,10 @@ def show_history(data: pd.DataFrame) -> None:
                         "is_scoreable",
                         "quality_flags",
                     ]
-                ].fillna("").astype(str).to_numpy(),
+                ]
+                .fillna("")
+                .astype(str)
+                .to_numpy(),
                 hovertemplate=(
                     "Time: %{x}<br>"
                     "Processed value: %{y}<br>"
@@ -451,22 +409,13 @@ def show_history(data: pd.DataFrame) -> None:
     # 7. Historical data summary
     # ---------------------------------------------------------
 
-    missing_processed = int(
-        history["count"].isna().sum()
-    )
+    missing_processed = int(history["count"].isna().sum())
 
-    original_measurements = int(
-        measured_scoreable.sum()
-        + reported_not_scoreable.sum()
-    )
+    original_measurements = int(measured_scoreable.sum() + reported_not_scoreable.sum())
 
-    replacement_count = int(
-        processed_replacement.sum()
-    )
+    replacement_count = int(processed_replacement.sum())
 
-    genuine_zero_count = int(
-        genuine_zero.sum()
-    )
+    genuine_zero_count = int(genuine_zero.sum())
 
     metric_columns = st.columns(5)
 
@@ -521,9 +470,7 @@ def show_history(data: pd.DataFrame) -> None:
     ].copy()
 
     if not exceptional_rows.empty:
-        with st.expander(
-            "Inspect missing, replaced and non-scoreable values"
-        ):
+        with st.expander("Inspect missing, replaced and non-scoreable values"):
             st.caption(
                 "Showing up to 100 rows. Processed replacements are "
                 "not original measurements and are not evaluation targets."

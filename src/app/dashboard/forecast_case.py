@@ -9,7 +9,6 @@ from plotly.subplots import make_subplots
 from src.app.service import LOCAL_TZ, Study, method_label
 from src.models.schemas import HORIZON_HOURS
 
-
 # Libellés des statuts retournés par les modèles.
 PREDICTION_LABELS = {
     "ok": "Disponible",

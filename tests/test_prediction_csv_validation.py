@@ -1,4 +1,3 @@
-
 import csv
 import tempfile
 import unittest
@@ -12,7 +11,6 @@ from src.app.prediction_csv_validation import (
 
 
 class TestPredictionCSVValidation(unittest.TestCase):
-
     def creer_csv(self, chemin, modifier=None):
         """Crée un fichier CSV fictif de 24 horizons."""
 
@@ -22,30 +20,30 @@ class TestPredictionCSVValidation(unittest.TestCase):
         lignes = []
 
         for i in range(24):
-            lignes.append({
-                "case_id": "cas_test",
-                "method_run_id": "modele_test",
-                "model_run_id": "",
-                "counter_id": "compteur_test",
-                "origin": origine,
-                "scenario": "known_site",
-                "horizon": str(i + 1),
-                "target_timestamp": (
-                    debut + timedelta(hours=i)
-                ).isoformat(),
-                "y_pred": "25.0",
-                "variant": "reference",
-                "method_used": "weekly_naive",
-                "prediction_status": "ok",
-                "status_reason": "",
-                "fit_cutoff": "",
-                "support_id": "",
-                "adaptation_id": "",
-                "snapshot_id": "snapshot_test",
-                "context_version": "",
-                "protocol_id": "proto_test",
-                "feature_version": "",
-            })
+            lignes.append(
+                {
+                    "case_id": "cas_test",
+                    "method_run_id": "modele_test",
+                    "model_run_id": "",
+                    "counter_id": "compteur_test",
+                    "origin": origine,
+                    "scenario": "known_site",
+                    "horizon": str(i + 1),
+                    "target_timestamp": (debut + timedelta(hours=i)).isoformat(),
+                    "y_pred": "25.0",
+                    "variant": "reference",
+                    "method_used": "weekly_naive",
+                    "prediction_status": "ok",
+                    "status_reason": "",
+                    "fit_cutoff": "",
+                    "support_id": "",
+                    "adaptation_id": "",
+                    "snapshot_id": "snapshot_test",
+                    "context_version": "",
+                    "protocol_id": "proto_test",
+                    "feature_version": "",
+                }
+            )
 
         if modifier is not None:
             modifier(lignes)
@@ -158,6 +156,7 @@ class TestPredictionCSVValidation(unittest.TestCase):
     def test_csv_error_avec_valeur_ou_sans_raison(self):
         for valeur, raison in (("25.0", "Erreur"), ("", "")):
             with self.subTest(valeur=valeur, raison=raison):
+
                 def modifier(lignes):
                     lignes[5].update(prediction_status="error", y_pred=valeur, status_reason=raison)
 
@@ -191,9 +190,7 @@ class TestPredictionCSVValidation(unittest.TestCase):
     # TEST 13 : horodatage incorrect
     def test_csv_horodatage_incorrect(self):
         def modifier(lignes):
-            lignes[5]["target_timestamp"] = (
-                "2026-06-01T12:00:00+00:00"
-            )
+            lignes[5]["target_timestamp"] = "2026-06-01T12:00:00+00:00"
 
         with self.assertRaises(ValueError):
             self.executer_validation(modifier)

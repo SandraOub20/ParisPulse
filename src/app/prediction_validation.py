@@ -1,7 +1,7 @@
-
 import math
-from numbers import Real
 from datetime import datetime, timedelta, timezone
+from numbers import Real
+
 
 def verifier_24_predictions(predictions):
     """
@@ -10,13 +10,9 @@ def verifier_24_predictions(predictions):
     """
 
     if len(predictions) != 24:
-        raise ValueError(
-            f"24 prévisions attendues, "
-            f"{len(predictions)} reçues."
-        )
+        raise ValueError(f"24 prévisions attendues, {len(predictions)} reçues.")
 
     return True
-
 
 
 def verifier_valeurs(predictions):
@@ -32,11 +28,10 @@ def verifier_valeurs(predictions):
             or not math.isfinite(valeur)
             or valeur < 0
         ):
-            raise ValueError(
-                f"Valeur invalide à l'horizon {i}: {valeur}"
-            )
+            raise ValueError(f"Valeur invalide à l'horizon {i}: {valeur}")
 
     return True
+
 
 def verifier_horizons(origin, heures):
     """
@@ -44,9 +39,7 @@ def verifier_horizons(origin, heures):
     à partir d'une origine UTC.
     """
 
-    debut = datetime.fromisoformat(
-        origin.replace("Z", "+00:00")
-    )
+    debut = datetime.fromisoformat(origin.replace("Z", "+00:00"))
 
     if debut.tzinfo is None:
         raise ValueError("L'origine doit avoir un fuseau horaire.")
@@ -57,9 +50,7 @@ def verifier_horizons(origin, heures):
         raise ValueError("Il faut exactement 24 horodatages.")
 
     for i, heure in enumerate(heures):
-        date = datetime.fromisoformat(
-            heure.replace("Z", "+00:00")
-        )
+        date = datetime.fromisoformat(heure.replace("Z", "+00:00"))
 
         if date.tzinfo is None:
             raise ValueError("Horodatage sans fuseau horaire.")
@@ -68,25 +59,21 @@ def verifier_horizons(origin, heures):
         attendu = debut + timedelta(hours=i)
 
         if date_utc != attendu:
-            raise ValueError(
-                f"Horizon {i + 1} : heure incorrecte."
-            )
+            raise ValueError(f"Horizon {i + 1} : heure incorrecte.")
 
     return True
+
 
 if __name__ == "__main__":
     origine = "2025-10-15T00:00:00Z"
 
     heures = [
-        (
-            datetime.fromisoformat(
-                origine.replace("Z", "+00:00")
-            ) + timedelta(hours=i)
-        ).isoformat()
+        (datetime.fromisoformat(origine.replace("Z", "+00:00")) + timedelta(hours=i)).isoformat()
         for i in range(24)
     ]
 
     print("Horizons valides :", verifier_horizons(origine, heures))
+
 
 def verifier_predictions_avec_statut(predictions, statut):
     """
@@ -101,24 +88,16 @@ def verifier_predictions_avec_statut(predictions, statut):
     if statut not in ("ok", "fallback", "unavailable"):
         raise ValueError(f"Statut inconnu : {statut}")
 
-    valeurs_manquantes = sum(
-        valeur is None for valeur in predictions
-    )
+    valeurs_manquantes = sum(valeur is None for valeur in predictions)
 
     if statut in ("ok", "fallback") and valeurs_manquantes > 0:
-        raise ValueError(
-            "Une prévision complète ne doit pas contenir de valeur manquante."
-        )
+        raise ValueError("Une prévision complète ne doit pas contenir de valeur manquante.")
 
     if statut == "unavailable" and valeurs_manquantes == 0:
-        raise ValueError(
-            "Le statut unavailable nécessite au moins une valeur manquante."
-        )
+        raise ValueError("Le statut unavailable nécessite au moins une valeur manquante.")
 
     # Vérifier toutes les valeurs présentes.
-    valeurs_presentes = [
-        valeur for valeur in predictions if valeur is not None
-    ]
+    valeurs_presentes = [valeur for valeur in predictions if valeur is not None]
 
     verifier_valeurs(valeurs_presentes)
 

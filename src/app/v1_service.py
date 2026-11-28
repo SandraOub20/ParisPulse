@@ -16,13 +16,28 @@ ROOT = Path(__file__).resolve().parents[2]
 LOCAL_TZ = "Europe/Paris"
 SNAPSHOT_DEFAULT = "hist-20261117"
 COUNT_INPUT_COLUMNS = [
-    "counter_id", "timestamp", "interval_end", "count_raw", "count",
-    "is_observed", "is_scoreable",
+    "counter_id",
+    "timestamp",
+    "interval_end",
+    "count_raw",
+    "count",
+    "is_observed",
+    "is_scoreable",
 ]
 ERROR_COLUMNS = [
-    "case_id", "counter_id", "horizon", "target_timestamp", "method_run_id",
-    "y_true", "y_pred", "is_scoreable", "signed_error", "absolute_error",
-    "squared_error", "protocol_id", "snapshot_id",
+    "case_id",
+    "counter_id",
+    "horizon",
+    "target_timestamp",
+    "method_run_id",
+    "y_true",
+    "y_pred",
+    "is_scoreable",
+    "signed_error",
+    "absolute_error",
+    "squared_error",
+    "protocol_id",
+    "snapshot_id",
 ]
 
 
@@ -57,11 +72,19 @@ def load_inventory(snapshot_dir: Path) -> pd.DataFrame:
             counters[name] = ""
     for coord in ("latitude", "longitude"):
         counters[coord] = pd.to_numeric(counters[coord], errors="coerce")
-    counters["located"] = counters["latitude"].between(-90, 90) & counters["longitude"].between(-180, 180)
+    counters["located"] = counters["latitude"].between(-90, 90) & counters["longitude"].between(
+        -180, 180
+    )
     names = counters["counter_name"].fillna("").astype(str).str.strip()
     names = names.mask(names.eq(""), counters["site_name"].fillna("").astype(str))
     names = names.mask(names.eq(""), "Compteur")
-    counters["label"] = names + " | " + counters["direction"].fillna("").astype(str) + " | " + counters["counter_id"].astype(str)
+    counters["label"] = (
+        names
+        + " | "
+        + counters["direction"].fillna("").astype(str)
+        + " | "
+        + counters["counter_id"].astype(str)
+    )
 
     quality_file = snapshot_dir / "inventory_quality.csv"
     if quality_file.is_file():
@@ -75,21 +98,28 @@ def load_inventory(snapshot_dir: Path) -> pd.DataFrame:
             quality = quality.drop_duplicates("counter_id")
             names = ["selection_status", "status_reason", "site_role", "n_observed"]
             selected = ["counter_id"] + [c for c in names if c in quality]
-            counters = counters.merge(quality[selected], on="counter_id", how="left", validate="one_to_one")
+            counters = counters.merge(
+                quality[selected], on="counter_id", how="left", validate="one_to_one"
+            )
     for name in ("selection_status", "status_reason", "site_role", "n_observed"):
         if name not in counters:
             counters[name] = pd.NA
     return counters.sort_values("label").reset_index(drop=True)
 
 
-def load_counter_history(snapshot_dir: Path, counter_id: str, chunksize: int = 150_000) -> pd.DataFrame:
+def load_counter_history(
+    snapshot_dir: Path, counter_id: str, chunksize: int = 150_000
+) -> pd.DataFrame:
     """Lit seulement un compteur pour ne pas charger 3 millions de lignes en mémoire."""
     path = snapshot_dir / "counts.csv"
     if not path.is_file():
         raise FileNotFoundError(f"Fichier absent : {path}")
     found: list[pd.DataFrame] = []
     for chunk in pd.read_csv(
-        path, usecols=COUNT_INPUT_COLUMNS, dtype={"counter_id": "string"}, chunksize=chunksize,
+        path,
+        usecols=COUNT_INPUT_COLUMNS,
+        dtype={"counter_id": "string"},
+        chunksize=chunksize,
         low_memory=False,
     ):
         selected = chunk.loc[chunk["counter_id"].eq(str(counter_id))].copy()
@@ -132,19 +162,26 @@ def pilot_case(counter_id: str, day: Any, snapshot_id: str, *, site_group_id: st
     origin = pd.Timestamp(day).tz_localize(LOCAL_TZ).tz_convert("UTC")
     return Case(
         case_id=f"v1-{counter_id}-{origin:%Y%m%dT%H%M}",
-        counter_id=str(counter_id), site_group_id=site_group_id,
-        origin=origin, scenario="known_site", protocol_id="v1-technique-non-valide",
-        snapshot_id=snapshot_id, temporal_split="technical",
+        counter_id=str(counter_id),
+        site_group_id=site_group_id,
+        origin=origin,
+        scenario="known_site",
+        protocol_id="v1-technique-non-valide",
+        snapshot_id=snapshot_id,
+        temporal_split="technical",
         spatial_role="S_train",
     )
 
 
 def make_case(row: pd.Series | dict[str, Any]):
     from src.models.schemas import Case
+
     return Case.from_row(row)
 
 
-def predict_known_reference(case: Any, history: pd.DataFrame, variant: str = "reference") -> pd.DataFrame:
+def predict_known_reference(
+    case: Any, history: pd.DataFrame, variant: str = "reference"
+) -> pd.DataFrame:
     """Appelle réellement E2, sans lui fournir les observations des heures cibles."""
     from src.models.known.predict import default_publication_lag, predict_24h
 
@@ -164,7 +201,9 @@ def precomputed_new_forecast(case: Any, root: Path = ROOT) -> pd.DataFrame:
     paths = sorted((root / "data" / "prediction_results").glob("*/*.pred.csv"))
     for path in paths:
         matches: list[pd.DataFrame] = []
-        for chunk in pd.read_csv(path, dtype={"case_id": "string", "counter_id": "string"}, chunksize=50_000):
+        for chunk in pd.read_csv(
+            path, dtype={"case_id": "string", "counter_id": "string"}, chunksize=50_000
+        ):
             sub = chunk.loc[chunk["case_id"].eq(case.case_id)]
             if not sub.empty:
                 matches.append(sub.copy())
@@ -173,20 +212,28 @@ def precomputed_new_forecast(case: Any, root: Path = ROOT) -> pd.DataFrame:
             methods = result["method_run_id"].dropna().unique().tolist()
             if len(methods) != 1:
                 raise ValueError("E3 : plusieurs méthodes pour un cas, sélection manuelle requise")
-            if "snapshot_id" in result and not result["snapshot_id"].astype(str).eq(case.snapshot_id).all():
+            if (
+                "snapshot_id" in result
+                and not result["snapshot_id"].astype(str).eq(case.snapshot_id).all()
+            ):
                 raise ValueError("E3 : snapshot différent de celui du cas")
             return result
     raise FileNotFoundError(
-        "Aucune prévision E3 enregistrée pour ce cas. "
-        "La V1 n'exécute pas Chronos-2 en direct."
+        "Aucune prévision E3 enregistrée pour ce cas. La V1 n'exécute pas Chronos-2 en direct."
     )
 
 
 def validate_forecast(forecasts: pd.DataFrame, case: Any) -> pd.DataFrame:
     """Vérifie les 24 horizons E2/E3 avant tout affichage et toute évaluation."""
     required = {
-        "case_id", "counter_id", "origin", "horizon", "target_timestamp", "y_pred",
-        "method_run_id", "prediction_status",
+        "case_id",
+        "counter_id",
+        "origin",
+        "horizon",
+        "target_timestamp",
+        "y_pred",
+        "method_run_id",
+        "prediction_status",
     }
     absent = required - set(forecasts.columns)
     if absent:
@@ -204,7 +251,8 @@ def validate_forecast(forecasts: pd.DataFrame, case: Any) -> pd.DataFrame:
     if f["method_run_id"].nunique(dropna=False) != 1 or f["method_run_id"].isna().any():
         raise ValueError("Prévisions : plusieurs exécutions ou identifiant de méthode absent")
     for column, expected_value in (
-        ("snapshot_id", case.snapshot_id), ("protocol_id", case.protocol_id)
+        ("snapshot_id", case.snapshot_id),
+        ("protocol_id", case.protocol_id),
     ):
         if column in f and not f[column].astype(str).eq(expected_value).all():
             raise ValueError(f"Prévisions : {column} différent du cas")
@@ -232,8 +280,11 @@ def evaluate_local(case: Any, forecasts: pd.DataFrame, history: pd.DataFrame) ->
     if obs.duplicated(["counter_id", "timestamp"]).any():
         raise ValueError("Observations : compteur + heure dupliqués")
     aligned = f.merge(
-        obs, how="left", left_on=["counter_id", "target_timestamp"],
-        right_on=["counter_id", "timestamp"], validate="one_to_one",
+        obs,
+        how="left",
+        left_on=["counter_id", "target_timestamp"],
+        right_on=["counter_id", "timestamp"],
+        validate="one_to_one",
     )
     y_true = pd.to_numeric(aligned["count_raw"], errors="coerce")
     y_pred = pd.to_numeric(aligned["y_pred"], errors="coerce")
@@ -243,21 +294,23 @@ def evaluate_local(case: Any, forecasts: pd.DataFrame, history: pd.DataFrame) ->
     signed = (y_pred - y_true).where(valid)
     absolute = signed.abs()
     square = signed.pow(2)
-    errors = pd.DataFrame({
-        "case_id": case.case_id,
-        "counter_id": case.counter_id,
-        "horizon": aligned["horizon"],
-        "target_timestamp": aligned["target_timestamp"],
-        "method_run_id": aligned["method_run_id"],
-        "y_true": y_true,
-        "y_pred": y_pred,
-        "is_scoreable": valid,
-        "signed_error": signed,
-        "absolute_error": absolute,
-        "squared_error": square,
-        "protocol_id": case.protocol_id,
-        "snapshot_id": case.snapshot_id,
-    })[ERROR_COLUMNS]
+    errors = pd.DataFrame(
+        {
+            "case_id": case.case_id,
+            "counter_id": case.counter_id,
+            "horizon": aligned["horizon"],
+            "target_timestamp": aligned["target_timestamp"],
+            "method_run_id": aligned["method_run_id"],
+            "y_true": y_true,
+            "y_pred": y_pred,
+            "is_scoreable": valid,
+            "signed_error": signed,
+            "absolute_error": absolute,
+            "squared_error": square,
+            "protocol_id": case.protocol_id,
+            "snapshot_id": case.snapshot_id,
+        }
+    )[ERROR_COLUMNS]
     n = int(valid.sum())
     return {
         "mae": float(absolute.mean()) if n else None,
