@@ -1,10 +1,13 @@
 # Équipe 3 — Documentation, rôle et prise en main
 
+> **Note**: Ce fichier constitue une documentation rapide présentant le rôle de l’équipe 5 ainsi qu’un guide de prise en main destiné à l’équipe Application et Intégration (E5). Le **rapport global de l’équipe 3**, destiné à être remis au prof, est disponible ici :  [/reports/teams/E3-RAPPORT.md](/reports/teams/E3-RAPPORT.md).
+
+
 **Date de dernière mise à jour : 25 novembre 2026**
 
 **Auteurs :** membres de l’équipe 3
 
-- Lynda Khazem
+- Lynda Khazem 
 - Massinissa Machter
 - Andrew Zgheib
 - Michaela El Rif
@@ -12,7 +15,7 @@
 
 ---
 
-# DOC 
+# E3 QUICK DOC 
 
 ## 1. Comprendre le rôle de l’équipe 3 dans le projet 
 
@@ -80,8 +83,8 @@ Les principaux éléments produits ou modifiés par l’équipe 3 sont :
 - [data/prediction_results/EXP-E3/](/data/prediction_results/EXP-E3/) : résultats des prévisions en variantes `frozen` (gelé) et `adapted` (adapté), avec les fichiers `.pred.csv` et `.runs.csv` ;
 - [data/evaluation/proto-v1/EXP-E3/](/data/evaluation/proto-v1/EXP-E3/) : évaluations reçues de l’équipe 4, incluant les scores, erreurs et taux de couverture ;
 - [artifacts/models/](/artifacts/models/) : poids retenus pour Chronos-2 en variante `adapted` (adapté) v2 ;
-- [reports/experiments/](/reports/experiments/) : résultats des prévisions gelées, adaptations, approfondissements et comparaisons ;
-- [reports/teams/E3-DOC-&-PRISE-EN-MAIN.md](/reports/teams/E3-DOC-&-PRISE-EN-MAIN.md) : présente le rapport global de l'équipe 3, avec le rôle de l’équipe, les tâches réalisées et les éléments nécessaires à l’intégration dans l'application E5 ;
+- [reports/experiments/E3-*](/reports/experiments/) : résultats des prévisions gelées, adaptations, approfondissements et comparaisons ;
+- [reports/teams/E3-DOC-&-PRISE-EN-MAIN.md](/reports/teams/E3-DOC-&-PRISE-EN-MAIN.md) : présente le doc  global (et lien vers les experementations) de l'équipe 3, avec le rôle de l’équipe, les tâches réalisées et les éléments nécessaires à l’intégration dans l'application E5 ;
 - [reports/individual/](/reports/individual/) : suivi individuel des membres de l’équipe.
 
 ---
