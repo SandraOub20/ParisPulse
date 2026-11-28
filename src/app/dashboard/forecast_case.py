@@ -147,7 +147,7 @@ def model_forecast_plot(
                     "symbol": "diamond",
                     "line": {"color": color, "width": 1.5},
                 },
-                name=f"Heures avec repli · {name}" if len(studies) > 1 else "Heures avec repli",
+                name=f"Heures avec repli : {name}" if len(studies) > 1 else "Heures avec repli",
                 customdata=forecast_hover(fallback).to_numpy(),
                 hovertemplate=hover_template,
                 row=1,
@@ -167,7 +167,7 @@ def model_forecast_plot(
                     "size": 10,
                     "symbol": "x",
                 },
-                name=f"Heures indisponibles · {name}"
+                name=f"Heures indisponibles : {name}"
                 if len(studies) > 1
                 else "Heures indisponibles",
                 customdata=forecast_hover(unavailable).to_numpy(),

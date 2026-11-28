@@ -132,7 +132,7 @@ def test_main_navigation_has_explorer_and_official_evaluation_tabs(paths):
     tabs = top_tabs(at)
     assert [t.label for t in tabs[EXPLORER].tabs] == STUDY_TABS
     team_tabs = {t.label for t in tabs[EVALUATION].tabs}
-    assert team_tabs == {"E2 · sites connus", "E3 · nouveaux sites"}
+    assert team_tabs == {"E2 : sites connus", "E3 : nouveaux sites"}
     assert "Évaluation officielle E4" in texts(tabs[EVALUATION].header)
     assert "Évaluation officielle E4" not in texts(tabs[EXPLORER].header)
     assert "Prévision sur 24 h" in texts(tabs[EXPLORER].subheader)
@@ -231,7 +231,7 @@ def test_e4_version_tracks_every_official_file(paths):
 # --------------------------------------------- périmètre de la barre latérale → vues E4
 
 KNOWN, NEW, ALL = "Sites connus", "Nouveaux sites", "Tout le réseau"
-TEAM_TABS = {"E2 · sites connus", "E3 · nouveaux sites"}
+TEAM_TABS = {"E2 : sites connus", "E3 : nouveaux sites"}
 
 
 def e4_metrics(container) -> list[pd.DataFrame]:
@@ -261,7 +261,7 @@ def test_known_sites_perimeter_shows_only_e2_evaluation(paths):
     at = with_perimeter(KNOWN)
     evaluation = top_tabs(at)[EVALUATION]
     assert not {t.label for t in evaluation.tabs} & TEAM_TABS
-    assert "Vue limitée à E2 · sites connus" in texts(evaluation.caption)
+    assert "Vue limitée à E2 : sites connus" in texts(evaluation.caption)
     (metrics,) = e4_metrics(evaluation)
     assert set(metrics["Méthode"]) == {"e2-mlp", "e2-reference"}
     keys = {radio.key for radio in at.radio}
@@ -277,7 +277,7 @@ def test_new_sites_perimeter_shows_only_e3_with_budgets(paths):
     at = with_perimeter(NEW)
     evaluation = top_tabs(at)[EVALUATION]
     assert not {t.label for t in evaluation.tabs} & TEAM_TABS
-    assert "Vue limitée à E3 · nouveaux sites" in texts(evaluation.caption)
+    assert "Vue limitée à E3 : nouveaux sites" in texts(evaluation.caption)
     assert at.radio(key="official_E3_budget").options == ["24 h", "72 h", "168 h"]
     assert "official_E2_population" not in {radio.key for radio in at.radio}
     at.radio(key="official_E3_budget").set_value(168).run()
@@ -300,14 +300,14 @@ def test_whole_network_perimeter_keeps_e2_and_e3_in_separate_subtabs(paths):
     evaluation = top_tabs(at)[EVALUATION]
     subtabs = {t.label: t for t in evaluation.tabs if t.label in TEAM_TABS}
     assert set(subtabs) == TEAM_TABS
-    (e2,) = e4_metrics(subtabs["E2 · sites connus"])
-    (e3,) = e4_metrics(subtabs["E3 · nouveaux sites"])
+    (e2,) = e4_metrics(subtabs["E2 : sites connus"])
+    (e3,) = e4_metrics(subtabs["E3 : nouveaux sites"])
     assert set(e2["Méthode"]) == {"e2-mlp", "e2-reference"}
     assert set(e3["Méthode"]) == {"e3-chronos-2-frozen-v1", "e3-google-TimesFM_2.5-frozen-v1"}
     assert not set(e2["Méthode"]) & set(e3["Méthode"])
     e2_ids, e3_ids = (
         next(f.value for f in subtabs[label].dataframe if "Identifiant" in f.value)
-        for label in ("E2 · sites connus", "E3 · nouveaux sites")
+        for label in ("E2 : sites connus", "E3 : nouveaux sites")
     )
     assert any(str(v).startswith("known_site_") for v in e2_ids["Valeur"])
     assert any(str(v).startswith("new_site_b") for v in e3_ids["Valeur"])
@@ -318,8 +318,8 @@ def test_perimeter_changes_views_but_never_the_official_scores(paths):
     write_official(paths["evaluation"])
     at = with_perimeter(ALL)
     subtabs = {t.label: t for t in top_tabs(at)[EVALUATION].tabs if t.label in TEAM_TABS}
-    (e2_all,) = e4_metrics(subtabs["E2 · sites connus"])
-    (e3_all,) = e4_metrics(subtabs["E3 · nouveaux sites"])
+    (e2_all,) = e4_metrics(subtabs["E2 : sites connus"])
+    (e3_all,) = e4_metrics(subtabs["E3 : nouveaux sites"])
     at.radio(key="perimeter").set_value(KNOWN).run()
     (e2_only,) = e4_metrics(top_tabs(at)[EVALUATION])
     at.radio(key="perimeter").set_value(NEW).run()

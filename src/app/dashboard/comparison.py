@@ -38,8 +38,8 @@ METRICS = {
 }
 POPULATION_SIZE_COLUMNS = ("n_complete_cases", "n_compared_cases", "n_compared_hours")
 POPULATION_LABELS = {
-    ev.POPULATION_SELF: "self · chaque méthode sur ses propres cas",
-    ev.POPULATION_COMMON: "common_complete · mêmes cas complets pour toutes les méthodes",
+    ev.POPULATION_SELF: "self : chaque méthode sur ses propres cas",
+    ev.POPULATION_COMMON: "common_complete : mêmes cas complets pour toutes les méthodes",
 }
 POPULATION_HELP = {
     ev.POPULATION_SELF: (
@@ -51,7 +51,7 @@ POPULATION_HELP = {
         "sur les mêmes heures mesurées : c'est la comparaison à privilégier."
     ),
 }
-TEAM_LABELS = {"E2": "E2 · sites connus", "E3": "E3 · nouveaux sites"}
+TEAM_LABELS = {"E2": "E2 : sites connus", "E3": "E3 : nouveaux sites"}
 COVERAGE_LABELS = {
     "method_run_id": "Méthode",
     "variant": "Variante",
@@ -280,8 +280,24 @@ def _render_population(
             x="method_run_id",
             y="mae_macro",
             color="variant",
+            color_discrete_sequence=[
+                "#91B8A0",  # Vert sauge
+                "#E5CE83",  # Jaune pastel
+                "#A4BFD9",  # Bleu pastel
+                "#C6B3DB",  # Mauve pastel
+                "#91CBC5",  # Turquoise pastel
+                "#B8C99D",  # Vert olive clair
+            ],
             title="MAE macro officielle par méthode (plus bas = meilleur)",
-            labels={"method_run_id": "Méthode", "mae_macro": "MAE macro (vélos/h)"},
+            labels={
+                "method_run_id": "Méthode",
+                "mae_macro": "MAE macro (vélos/h)",
+            },
+        )
+
+        figure.update_traces(
+            marker_line_width=0.5,
+            marker_line_color="#64748b",
         )
         st.plotly_chart(figure, key=f"{key}_chart")
         best = with_mae.iloc[0]  # population déjà triée par ev.ranked_methods
@@ -295,8 +311,8 @@ def _render_population(
     if coverage_summary is not None:
         st.markdown("**Couverture officielle E4**")
         st.caption(
-            "Cas prédits : au moins une heure prévue · complets : 24 heures prévues, repli "
-            "compris · évaluables : au moins une heure prévue et mesurée. La couverture porte "
+            "Cas prédits : au moins une heure prévue - complets : 24 heures prévues, repli "
+            "compris - évaluables : au moins une heure prévue et mesurée. La couverture porte "
             "sur tous les cas attendus du protocole, quelle que soit la population choisie."
         )
         table = coverage_table(coverage_summary, population)
