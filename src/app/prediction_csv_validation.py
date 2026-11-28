@@ -1,4 +1,3 @@
-
 import csv
 from collections import defaultdict
 
@@ -38,16 +37,10 @@ def verifier_colonnes(colonnes):
     if colonnes is None:
         raise ValueError("Fichier CSV sans en-tête.")
 
-    manquantes = [
-        colonne
-        for colonne in COLONNES_ATTENDUES
-        if colonne not in colonnes
-    ]
+    manquantes = [colonne for colonne in COLONNES_ATTENDUES if colonne not in colonnes]
 
     if manquantes:
-        raise ValueError(
-            f"Colonnes manquantes : {manquantes}"
-        )
+        raise ValueError(f"Colonnes manquantes : {manquantes}")
 
     return True
 
@@ -64,36 +57,24 @@ def verifier_statut_ligne(ligne):
         raise ValueError(f"Statut inconnu : {statut}")
 
     if statut in ("ok", "fallback") and not valeur:
-        raise ValueError(
-            "Une prévision ok/fallback doit avoir une valeur."
-        )
+        raise ValueError("Une prévision ok/fallback doit avoir une valeur.")
 
     if statut in ("unavailable", "error"):
         if valeur:
-            raise ValueError(
-                f"Une prévision {statut} doit être vide."
-            )
+            raise ValueError(f"Une prévision {statut} doit être vide.")
 
         if not raison:
-            raise ValueError(
-                f"Une prévision {statut} doit avoir une raison."
-            )
+            raise ValueError(f"Une prévision {statut} doit avoir une raison.")
 
     if statut == "fallback":
         if not raison:
-            raise ValueError(
-                "Un fallback doit avoir une raison."
-            )
+            raise ValueError("Un fallback doit avoir une raison.")
 
         if not methode:
-            raise ValueError(
-                "Un fallback doit identifier sa méthode."
-            )
+            raise ValueError("Un fallback doit identifier sa méthode.")
 
     if statut in ("ok", "fallback") and not methode:
-        raise ValueError(
-            "Une méthode doit être indiquée."
-        )
+        raise ValueError("Une méthode doit être indiquée.")
 
     return True
 
@@ -112,20 +93,13 @@ def verifier_coherence_groupe(lignes):
     ]
 
     for champ in champs:
-        valeurs = {
-            ligne[champ].strip()
-            for ligne in lignes
-        }
+        valeurs = {ligne[champ].strip() for ligne in lignes}
 
         if len(valeurs) != 1:
-            raise ValueError(
-                f"Valeurs incohérentes pour {champ}"
-            )
+            raise ValueError(f"Valeurs incohérentes pour {champ}")
 
         if not lignes[0][champ].strip():
-            raise ValueError(
-                f"Champ obligatoire vide : {champ}"
-            )
+            raise ValueError(f"Champ obligatoire vide : {champ}")
 
     if lignes[0]["scenario"] not in (
         "known_site",
@@ -141,24 +115,14 @@ def verifier_fichier_predictions_csv(chemin_fichier):
 
     groupes = defaultdict(list)
 
-    with open(
-        chemin_fichier,
-        "r",
-        encoding="utf-8-sig",
-        newline=""
-    ) as fichier:
-
+    with open(chemin_fichier, "r", encoding="utf-8-sig", newline="") as fichier:
         lecteur = csv.DictReader(fichier)
 
         verifier_colonnes(lecteur.fieldnames)
 
         for numero, ligne in enumerate(lecteur, start=2):
-            if None in ligne or any(
-                valeur is None for valeur in ligne.values()
-            ):
-                raise ValueError(
-                    f"Ligne CSV mal formée : {numero}"
-                )
+            if None in ligne or any(valeur is None for valeur in ligne.values()):
+                raise ValueError(f"Ligne CSV mal formée : {numero}")
 
             verifier_statut_ligne(ligne)
 
@@ -170,31 +134,19 @@ def verifier_fichier_predictions_csv(chemin_fichier):
             groupes[cle].append(ligne)
 
     for cle, lignes in groupes.items():
-
         verifier_24_predictions(lignes)
         verifier_coherence_groupe(lignes)
 
-        lignes_tries = sorted(
-            lignes,
-            key=lambda ligne: int(ligne["horizon"])
-        )
+        lignes_tries = sorted(lignes, key=lambda ligne: int(ligne["horizon"]))
 
-        horizons = [
-            int(ligne["horizon"])
-            for ligne in lignes_tries
-        ]
+        horizons = [int(ligne["horizon"]) for ligne in lignes_tries]
 
         if horizons != list(range(1, 25)):
-            raise ValueError(
-                f"Horizons incorrects pour {cle}"
-            )
+            raise ValueError(f"Horizons incorrects pour {cle}")
 
         origine = lignes_tries[0]["origin"]
 
-        heures = [
-            ligne["target_timestamp"]
-            for ligne in lignes_tries
-        ]
+        heures = [ligne["target_timestamp"] for ligne in lignes_tries]
 
         verifier_horizons(origine, heures)
 
@@ -209,14 +161,9 @@ def verifier_fichier_predictions_csv(chemin_fichier):
                 try:
                     predictions.append(float(valeur))
                 except ValueError as erreur:
-                    raise ValueError(
-                        f"Valeur invalide pour {cle}: {valeur}"
-                    ) from erreur
+                    raise ValueError(f"Valeur invalide pour {cle}: {valeur}") from erreur
 
-        statuts = [
-            ligne["prediction_status"].strip()
-            for ligne in lignes_tries
-        ]
+        statuts = [ligne["prediction_status"].strip() for ligne in lignes_tries]
 
         if "unavailable" in statuts or "error" in statuts:
             statut_cas = "unavailable"

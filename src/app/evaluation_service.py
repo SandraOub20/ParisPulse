@@ -519,9 +519,7 @@ class OfficialResults:
         return pd.DataFrame(columns=["team", *SCORE_COLUMNS, "population_kind"])
 
 
-def load_team_results(
-    team: str, root: Path | None = None, *, verify: bool = True
-) -> TeamResults:
+def load_team_results(team: str, root: Path | None = None, *, verify: bool = True) -> TeamResults:
     return TeamResults(
         team,
         load_scores(team, root, verify=verify),

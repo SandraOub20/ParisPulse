@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
-import sys
-import types
 
 import numpy as np
 import pandas as pd
@@ -24,8 +24,12 @@ class V1ServiceTests(unittest.TestCase):
         self.snapshot.mkdir(parents=True)
         self.origin = pd.Timestamp("2026-08-10T00:00:00+00:00")
         self.case = SimpleNamespace(
-            case_id="case-1", counter_id="SENS-A", origin=self.origin,
-            scenario="known_site", snapshot_id="hist-test", protocol_id="proto-test",
+            case_id="case-1",
+            counter_id="SENS-A",
+            origin=self.origin,
+            scenario="known_site",
+            snapshot_id="hist-test",
+            protocol_id="proto-test",
         )
 
     def tearDown(self):
@@ -33,12 +37,17 @@ class V1ServiceTests(unittest.TestCase):
 
     def make_history(self):
         hours = pd.date_range(self.origin, periods=24, freq="h", tz="UTC")
-        x = pd.DataFrame({
-            "counter_id": ["SENS-A"] * 24, "timestamp": hours,
-            "interval_end": hours + pd.Timedelta(hours=1),
-            "count_raw": [100.0] * 24, "count": [100.0] * 24,
-            "is_observed": [True] * 24, "is_scoreable": [True] * 24,
-        })
+        x = pd.DataFrame(
+            {
+                "counter_id": ["SENS-A"] * 24,
+                "timestamp": hours,
+                "interval_end": hours + pd.Timedelta(hours=1),
+                "count_raw": [100.0] * 24,
+                "count": [100.0] * 24,
+                "is_observed": [True] * 24,
+                "is_scoreable": [True] * 24,
+            }
+        )
         x.loc[3, ["count_raw", "count"]] = [np.nan, 70.0]
         x.loc[3, ["is_observed", "is_scoreable"]] = [False, False]
         x.loc[5, ["count_raw", "count"]] = [0.0, 0.0]
@@ -46,30 +55,37 @@ class V1ServiceTests(unittest.TestCase):
 
     def make_forecasts(self):
         hours = pd.date_range(self.origin, periods=24, freq="h", tz="UTC")
-        return pd.DataFrame({
-            "case_id": ["case-1"] * 24,
-            "counter_id": ["SENS-A"] * 24,
-            "origin": [self.origin] * 24,
-            "horizon": list(range(1, 25)),
-            "target_timestamp": hours,
-            "y_pred": [110.0] * 24,
-            "method_run_id": ["baseline"] * 24,
-            "prediction_status": ["ok"] * 24,
-        })
+        return pd.DataFrame(
+            {
+                "case_id": ["case-1"] * 24,
+                "counter_id": ["SENS-A"] * 24,
+                "origin": [self.origin] * 24,
+                "horizon": list(range(1, 25)),
+                "target_timestamp": hours,
+                "y_pred": [110.0] * 24,
+                "method_run_id": ["baseline"] * 24,
+                "prediction_status": ["ok"] * 24,
+            }
+        )
 
     def test_inventory_keeps_two_directions_separate(self):
-        pd.DataFrame({
-            "counter_id": ["SENS-A", "SENS-B"],
-            "site_name": ["Même site", "Même site"],
-            "latitude": [48.8, 48.8], "longitude": [2.3, 2.3],
-            "direction": ["Nord", "Sud"],
-        }).to_csv(self.snapshot / "counters.csv", index=False)
-        pd.DataFrame({
-            "counter_id": ["SENS-A", "SENS-A", "SENS-B"],
-            "period_role": ["quality", "selection", "selection"],
-            "selection_status": ["excluded", "retained", "retained"],
-            "site_role": ["S_train", "S_train", "S_train"],
-        }).to_csv(self.snapshot / "inventory_quality.csv", index=False)
+        pd.DataFrame(
+            {
+                "counter_id": ["SENS-A", "SENS-B"],
+                "site_name": ["Même site", "Même site"],
+                "latitude": [48.8, 48.8],
+                "longitude": [2.3, 2.3],
+                "direction": ["Nord", "Sud"],
+            }
+        ).to_csv(self.snapshot / "counters.csv", index=False)
+        pd.DataFrame(
+            {
+                "counter_id": ["SENS-A", "SENS-A", "SENS-B"],
+                "period_role": ["quality", "selection", "selection"],
+                "selection_status": ["excluded", "retained", "retained"],
+                "site_role": ["S_train", "S_train", "S_train"],
+            }
+        ).to_csv(self.snapshot / "inventory_quality.csv", index=False)
         inv = svc.load_inventory(self.snapshot)
         self.assertEqual(len(inv), 2)
         self.assertEqual(set(inv["counter_id"]), {"SENS-A", "SENS-B"})
@@ -79,7 +95,9 @@ class V1ServiceTests(unittest.TestCase):
         data = self.make_history()
         other = data.copy()
         other["counter_id"] = "SENS-B"
-        pd.concat([data, other], ignore_index=True).to_csv(self.snapshot / "counts.csv", index=False)
+        pd.concat([data, other], ignore_index=True).to_csv(
+            self.snapshot / "counts.csv", index=False
+        )
         got = svc.load_counter_history(self.snapshot, "SENS-A", chunksize=7)
         self.assertEqual(len(got), 24)
         self.assertEqual(set(got["counter_id"]), {"SENS-A"})
@@ -131,18 +149,24 @@ class V1ServiceTests(unittest.TestCase):
         fake_mod = types.ModuleType("src.models.known.predict")
         fake_mod.default_publication_lag = lambda: 24
         observed = {}
+
         def fake_predict(case, history, variant):
             observed["latest"] = history["interval_end"].max()
             observed["values"] = list(history["count"])
             observed["variant"] = variant
             return SimpleNamespace(to_forecast_frame=lambda: self.make_forecasts())
+
         fake_mod.predict_24h = fake_predict
         parent = types.ModuleType("src.models")
         known = types.ModuleType("src.models.known")
-        with patch.dict(sys.modules, {
-            "src.models": parent, "src.models.known": known,
-            "src.models.known.predict": fake_mod,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "src.models": parent,
+                "src.models.known": known,
+                "src.models.known.predict": fake_mod,
+            },
+        ):
             got = svc.predict_known_reference(self.case, h)
         self.assertEqual(len(got), 24)
         self.assertLessEqual(observed["latest"], self.origin - pd.Timedelta(hours=24))

@@ -1,4 +1,3 @@
-
 """Missing observation analysis for the ParisPulse dashboard."""
 
 import numpy as np
@@ -30,9 +29,7 @@ def show_missing_data(data: pd.DataFrame) -> None:
     missing_columns = required_columns - set(data.columns)
 
     if missing_columns:
-        st.error(
-            f"Missing required columns: {', '.join(sorted(missing_columns))}"
-        )
+        st.error(f"Missing required columns: {', '.join(sorted(missing_columns))}")
         return
 
     if data.empty:
@@ -73,9 +70,7 @@ def show_missing_data(data: pd.DataFrame) -> None:
     invalid_timestamps = int(history["timestamp"].isna().sum())
 
     valid_counts = (
-        history["count"].notna()
-        & np.isfinite(history["count"].fillna(0))
-        & history["count"].ge(0)
+        history["count"].notna() & np.isfinite(history["count"].fillna(0)) & history["count"].ge(0)
     )
 
     valid_raw_counts = (
@@ -84,13 +79,9 @@ def show_missing_data(data: pd.DataFrame) -> None:
         & history["count_raw"].ge(0)
     )
 
-    invalid_processed_values = int(
-        (history["count"].notna() & ~valid_counts).sum()
-    )
+    invalid_processed_values = int((history["count"].notna() & ~valid_counts).sum())
 
-    invalid_raw_values = int(
-        (history["count_raw"].notna() & ~valid_raw_counts).sum()
-    )
+    invalid_raw_values = int((history["count_raw"].notna() & ~valid_raw_counts).sum())
 
     history.loc[~valid_counts, "count"] = np.nan
     history.loc[~valid_raw_counts, "count_raw"] = np.nan
@@ -103,19 +94,12 @@ def show_missing_data(data: pd.DataFrame) -> None:
         return
 
     # Convert UTC timestamps to Paris local time.
-    history["timestamp"] = (
-        history["timestamp"].dt.tz_convert(LOCAL_TZ)
-    )
+    history["timestamp"] = history["timestamp"].dt.tz_convert(LOCAL_TZ)
 
     # Each counter must have one row per timestamp.
     if history["timestamp"].duplicated().any():
-        duplicate_count = int(
-            history["timestamp"].duplicated().sum()
-        )
-        st.error(
-            f"{duplicate_count} duplicate observation timestamps "
-            "were detected."
-        )
+        duplicate_count = int(history["timestamp"].duplicated().sum())
+        st.error(f"{duplicate_count} duplicate observation timestamps were detected.")
         return
 
     history = history.sort_values("timestamp").copy()
@@ -148,33 +132,20 @@ def show_missing_data(data: pd.DataFrame) -> None:
 
     if is_e1_data:
         # Original observations eligible for evaluation.
-        scoreable_measurements = (
-            observed
-            & scoreable
-            & valid_raw_counts
-        )
+        scoreable_measurements = observed & scoreable & valid_raw_counts
 
         # Missing source measurements that received an E1 replacement.
-        gap_replacements = (
-            not_observed
-            & valid_counts
-        )
+        gap_replacements = not_observed & valid_counts
 
         # Missing source measurements that remain unfilled.
-        unfilled_source_gaps = (
-            not_observed
-            & ~valid_counts
-        )
+        unfilled_source_gaps = not_observed & ~valid_counts
 
         # Observed source values that were replaced during processing.
         observed_replacements = (
             observed
             & not_scoreable
             & valid_counts
-            & (
-                ~valid_raw_counts
-                | history["count"].ne(history["count_raw"]).fillna(False)
-            )
+            & (~valid_raw_counts | history["count"].ne(history["count_raw"]).fillna(False))
         )
 
         # Original values retained but excluded from evaluation.
@@ -242,10 +213,7 @@ def show_missing_data(data: pd.DataFrame) -> None:
             "data_status",
         ] = "Missing observation"
 
-        st.info(
-            "Legacy mode: the complete E1 observation contract "
-            "is not available."
-        )
+        st.info("Legacy mode: the complete E1 observation contract is not available.")
 
     # ---------------------------------------------------------
     # Summary statistics.
@@ -255,50 +223,23 @@ def show_missing_data(data: pd.DataFrame) -> None:
 
     missing_source_count = int(not_observed.sum())
 
-    scoreable_count = int(
-        scoreable_measurements.sum()
-    )
+    scoreable_count = int(scoreable_measurements.sum())
 
-    gap_replacement_count = int(
-        gap_replacements.sum()
-    )
+    gap_replacement_count = int(gap_replacements.sum())
 
-    observed_replacement_count = int(
-        observed_replacements.sum()
-    )
+    observed_replacement_count = int(observed_replacements.sum())
 
-    replacement_count = (
-        gap_replacement_count
-        + observed_replacement_count
-    )
+    replacement_count = gap_replacement_count + observed_replacement_count
 
-    unfilled_count = int(
-        unfilled_source_gaps.sum()
-    )
+    unfilled_count = int(unfilled_source_gaps.sum())
 
-    original_non_scoreable_count = int(
-        original_non_scoreable.sum()
-    )
+    original_non_scoreable_count = int(original_non_scoreable.sum())
 
-    genuine_zero_count = int(
-        (
-            scoreable_measurements
-            & history["count_raw"].eq(0)
-        ).sum()
-    )
+    genuine_zero_count = int((scoreable_measurements & history["count_raw"].eq(0)).sum())
 
-    unavailable_observed_count = int(
-        (
-            observed
-            & ~history["count"].notna()
-        ).sum()
-    )
+    unavailable_observed_count = int((observed & ~history["count"].notna()).sum())
 
-    missing_percentage = (
-        missing_source_count / total_count * 100
-        if total_count
-        else 0
-    )
+    missing_percentage = missing_source_count / total_count * 100 if total_count else 0
 
     # ---------------------------------------------------------
     # Display metrics.
@@ -329,9 +270,7 @@ def show_missing_data(data: pd.DataFrame) -> None:
     # Plot valid processed counts, preserving their data status.
     # ---------------------------------------------------------
 
-    chart_data = history.loc[
-        history["count"].notna()
-    ].copy()
+    chart_data = history.loc[history["count"].notna()].copy()
 
     if not chart_data.empty:
         fig = px.scatter(

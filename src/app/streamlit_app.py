@@ -13,6 +13,7 @@ import streamlit as st
 from streamlit_folium import st_folium
 
 from src.app import evaluation_service, service, v1_service
+from src.app.dashboard.case_errors import show_case_errors
 from src.app.dashboard.comparison import show_official_evaluation
 from src.app.dashboard.coverage import hourly_window, show_coverage
 from src.app.dashboard.forecast_case import model_forecast_plot
@@ -21,7 +22,6 @@ from src.common.config import data_path
 from src.eval.cases import E3_ROLES, case_csv, forecasting_team
 from src.models.known.predict import default_publication_lag
 from src.models.schemas import HORIZON_HOURS, Case
-from src.app.dashboard.case_errors import show_case_errors
 
 TEAL = "#087f73"
 BLUE = "#245dbb"

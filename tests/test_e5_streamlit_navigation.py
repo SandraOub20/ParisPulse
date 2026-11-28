@@ -207,7 +207,8 @@ def test_official_results_are_cached_and_reloaded_when_files_change(paths, monke
     assert_clean(at)
     assert len(calls) == 2
     frames = [
-        f.value for f in top_tabs(at)[EVALUATION].dataframe
+        f.value
+        for f in top_tabs(at)[EVALUATION].dataframe
         if "MAE macro (vélos/h)" in f.value.columns
     ]
     assert "21.90" in frames[0]["MAE macro (vélos/h)"].tolist()

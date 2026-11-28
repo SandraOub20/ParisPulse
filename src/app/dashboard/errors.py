@@ -1,4 +1,3 @@
-
 """Prediction error visualizations supplied by Team 4."""
 
 import numpy as np
@@ -45,17 +44,11 @@ def show_errors(
     data = errors.copy()
 
     # Parse timestamps and numerical errors.
-    data["target_timestamp"] = pd.to_datetime(
-        data["target_timestamp"], utc=True, errors="coerce"
-    )
+    data["target_timestamp"] = pd.to_datetime(data["target_timestamp"], utc=True, errors="coerce")
 
-    data["signed_error"] = pd.to_numeric(
-        data["signed_error"], errors="coerce"
-    )
+    data["signed_error"] = pd.to_numeric(data["signed_error"], errors="coerce")
 
-    data["absolute_error"] = pd.to_numeric(
-        data["absolute_error"], errors="coerce"
-    )
+    data["absolute_error"] = pd.to_numeric(data["absolute_error"], errors="coerce")
 
     invalid_timestamps = int(data["target_timestamp"].isna().sum())
 
@@ -99,9 +92,7 @@ def show_errors(
         return
 
     # Convert UTC timestamps to Paris local time.
-    data["target_timestamp"] = (
-        data["target_timestamp"].dt.tz_convert("Europe/Paris")
-    )
+    data["target_timestamp"] = data["target_timestamp"].dt.tz_convert("Europe/Paris")
 
     data = data.sort_values("target_timestamp").copy()
 
@@ -118,13 +109,9 @@ def show_errors(
 
         comparison = data.copy()
 
-        comparison["y_true"] = pd.to_numeric(
-            comparison["y_true"], errors="coerce"
-        )
+        comparison["y_true"] = pd.to_numeric(comparison["y_true"], errors="coerce")
 
-        comparison["y_pred"] = pd.to_numeric(
-            comparison["y_pred"], errors="coerce"
-        )
+        comparison["y_pred"] = pd.to_numeric(comparison["y_pred"], errors="coerce")
 
         valid_comparison = (
             comparison["y_true"].notna()
